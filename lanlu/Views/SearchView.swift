@@ -1,8 +1,17 @@
 import SwiftUI
 
 struct SearchView: View {
+    
     let server: Server
-
+    @Binding var showFilter: Bool
+    @Binding var searching: Bool
+    @Binding var sortField: String
+    @Binding var sortOrder: String
+    @Binding var dateEnabled: Bool
+    @Binding var dateFrom: Date
+    @Binding var dateTo: Date
+    @Binding var untaggedOnly: Bool
+    @Binding var favoriteOnly: Bool
     @State private var suggestions: [AutocompleteSuggestion] = []
     @State private var results: [SearchResultItem] = []
     @State private var isLoading = false
@@ -11,15 +20,6 @@ struct SearchView: View {
     @State private var query = ""
     @State private var currentQuery = ""
     @State private var nextStart = 0
-
-    @State private var sortField = "created_at"
-    @State private var sortOrder = "desc"
-    @State private var dateEnabled = false
-    @State private var dateFrom = Date()
-    @State private var dateTo = Date()
-    @State private var untaggedOnly = false
-    @State private var favoriteOnly = false
-    @State private var showFilter = false
 
     private let pageSize = 20
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
@@ -40,40 +40,14 @@ struct SearchView: View {
                 suggestionsView
             }
         }
-        .searchable(text: $query, prompt: "search_prompt")
+        .searchable(text: $query, isPresented: $searching, prompt: "search_prompt")
         .onSubmit(of: .search) {
             performSearch()
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 8) {
-                    if !query.isEmpty {
-                        Button(String(localized: "search_go")) {
-                            performSearch()
-                        }
-                        .fontWeight(.semibold)
-                    }
-                    Button { showFilter = true } label: {
-                        Image(systemName: "slider.horizontal.3")
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $showFilter) {
-            FilterSheetView(
-                sortField: $sortField, sortOrder: $sortOrder,
-                dateEnabled: $dateEnabled,
-                dateFrom: $dateFrom, dateTo: $dateTo,
-                untaggedOnly: $untaggedOnly, favoriteOnly: $favoriteOnly,
-                onReset: resetFilters
-            )
         }
         .onChange(of: query) { _, newValue in
             hasSearched = false
             if !newValue.isEmpty { Task { await loadSuggestions() } }
         }
-        .navigationTitle(String(localized: "tab_search"))
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var historyView: some View {
@@ -233,11 +207,5 @@ struct SearchView: View {
             hasMore = items.count == pageSize
         } catch { hasMore = false }
         isLoading = false
-    }
-
-    private func resetFilters() {
-        sortField = "created_at"; sortOrder = "desc"
-        dateEnabled = false; dateFrom = Date(); dateTo = Date()
-        untaggedOnly = false; favoriteOnly = false
     }
 }

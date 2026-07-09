@@ -110,5 +110,6 @@
 "search_no_suggestions" = "No suggestions";
 "search_no_results" = "No results";
 "search_no_results_desc" = "Try adjusting your search or filters";
+"search_filter" = "Search Filter";
 "search_go" = "Search";
 "filter_date_enable" = "Enable Date Range";
