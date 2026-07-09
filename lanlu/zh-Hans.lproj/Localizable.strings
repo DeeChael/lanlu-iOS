@@ -65,3 +65,15 @@
 "restart_message" = "语言切换需要重启应用后才能生效。";
 "restart_now" = "立即重启";
 "later" = "稍后";
+"server_settings" = "服务端设置";
+"ss_account_security" = "账户安全";
+"ss_category" = "分类";
+"ss_tags" = "标签";
+"ss_smart_filters" = "智能筛选";
+"ss_user_management" = "用户管理";
+"ss_system_settings" = "系统设置";
+"ss_background_tasks" = "后台任务";
+"ss_scheduled_tasks" = "定时任务";
+"ss_plugin_management" = "插件管理";
+"ss_statistics" = "统计信息";
+"badge_admin" = "管理员";

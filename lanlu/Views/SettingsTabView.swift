@@ -54,8 +54,20 @@ struct SettingsTabView: View {
                         if isLoadingUser {
                             ProgressView()
                         } else {
-                            Text(user?.username ?? server.cachedUsername ?? "---")
-                                .font(.headline)
+                            HStack(spacing: 6) {
+                                Text(user?.username ?? server.cachedUsername ?? "---")
+                                    .font(.headline)
+                                if user?.isAdmin == true {
+                                    Text("badge_admin")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor)
+                                        .clipShape(Capsule())
+                                }
+                            }
                         }
 
                         Text(server.name)
@@ -70,6 +82,7 @@ struct SettingsTabView: View {
                     Spacer()
 
                     Button {
+                        UserDefaults.standard.removeObject(forKey: "last_server_url")
                         dismiss()
                     } label: {
                         Image(systemName: "arrow.left.arrow.right")
@@ -181,14 +194,135 @@ struct SettingsTabView: View {
                     .contentShape(Rectangle())
                 }
                 .tint(.red)
-                .buttonStyle(.plain)
                 .alert(String(localized: "clear_cache_title"), isPresented: $showClearCacheAlert) {
                     Button(String(localized: "cancel"), role: .cancel) {}
-                    Button(String(localized: "confirm"), role: .destructive) {
-                        clearCache()
-                    }
+                    Button(String(localized: "confirm"), role: .destructive) { clearCache() }
                 } message: {
                     Text(String(localized: "clear_cache_message"))
+                }
+            }
+
+            Section(String(localized: "server_settings")) {
+                Button {} label: {
+                    HStack {
+                        Label(String(localized: "ss_account_security"), systemImage: "shield.fill")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if user?.isAdmin == true {
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_category"), systemImage: "folder.fill")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_tags"), systemImage: "tag.fill")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_smart_filters"), systemImage: "line.3.horizontal.decrease")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_user_management"), systemImage: "person.2.fill")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_system_settings"), systemImage: "server.rack")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_background_tasks"), systemImage: "calendar.badge.clock")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_scheduled_tasks"), systemImage: "clock.fill")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_plugin_management"), systemImage: "puzzlepiece.fill")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {} label: {
+                        HStack {
+                            Label(String(localized: "ss_statistics"), systemImage: "chart.bar.fill")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -229,11 +363,9 @@ struct SettingsTabView: View {
             if let assetId = server.cachedAvatarAssetId {
                 avatarData = try? await loadAvatar(assetId: assetId)
             }
-            isLoadingUser = false
-            return
         }
 
-        isLoadingUser = true
+        isLoadingUser = !(server.cachedUsername != nil)
         do {
             let userData = try await client.verifyToken()
             user = userData
@@ -245,7 +377,7 @@ struct SettingsTabView: View {
                 avatarData = try? await loadAvatar(assetId: assetId)
             }
         } catch {
-            user = nil
+            if server.cachedUsername == nil { user = nil }
         }
         isLoadingUser = false
     }

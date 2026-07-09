@@ -65,3 +65,15 @@
 "restart_message" = "The language change will take effect after restarting the app.";
 "restart_now" = "Restart Now";
 "later" = "Later";
+"server_settings" = "Server Settings";
+"ss_account_security" = "Account Security";
+"ss_category" = "Categories";
+"ss_tags" = "Tags";
+"ss_smart_filters" = "Smart Filters";
+"ss_user_management" = "User Management";
+"ss_system_settings" = "System Settings";
+"ss_background_tasks" = "Background Tasks";
+"ss_scheduled_tasks" = "Scheduled Tasks";
+"ss_plugin_management" = "Plugin Management";
+"ss_statistics" = "Statistics";
+"badge_admin" = "Admin";
