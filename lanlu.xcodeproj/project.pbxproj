@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		BB8B87F62FFF8A1100A67955 /* lanlu.icon in Resources */ = {isa = PBXBuildFile; fileRef = BB8B87F52FFF8A1100A67955 /* lanlu.icon */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		BB1D44C12FFE91D30079F88B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		BB1D44B12FFE91D20079F88B /* lanlu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = lanlu.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB1D44C02FFE91D30079F88B /* lanluTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = lanluTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB1D44CA2FFE91D30079F88B /* lanluUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = lanluUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB8B87F52FFF8A1100A67955 /* lanlu.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = lanlu.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -79,6 +84,7 @@
 				BB1D44C32FFE91D30079F88B /* lanluTests */,
 				BB1D44CD2FFE91D30079F88B /* lanluUITests */,
 				BB1D44B22FFE91D20079F88B /* Products */,
+				BB8B87F52FFF8A1100A67955 /* lanlu.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -214,6 +220,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB8B87F62FFF8A1100A67955 /* lanlu.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -395,7 +402,7 @@
 		BB1D44D52FFE91D30079F88B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = lanlu;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -428,7 +435,7 @@
 		BB1D44D62FFE91D30079F88B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = lanlu;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
