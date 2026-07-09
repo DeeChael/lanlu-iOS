@@ -13,6 +13,7 @@ struct SearchView: View {
     @Binding var untaggedOnly: Bool
     @Binding var favoriteOnly: Bool
     @State private var suggestions: [AutocompleteSuggestion] = []
+    @State private var cachedSuggestions: [AutocompleteSuggestion] = []
     @State private var results: [SearchResultItem] = []
     @State private var isLoading = false
     @FocusState private var searchFocused: Bool
@@ -22,16 +23,28 @@ struct SearchView: View {
     @State private var currentQuery = ""
     @State private var currentTags: String? = nil
     @State private var nextStart = 0
-    @State private var tags: [(value: String, display: String)] = []
+    @State private var tags: [(value: String, label: String, display: String)] = []
     @State private var isAddingTag = false
+    @State private var showClearHistoryAlert = false
 
     private let pageSize = 20
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
     private let historyKey = "search_history"
 
-    private var recentSearches: [String] {
-        get { UserDefaults.standard.stringArray(forKey: historyKey) ?? [] }
-        nonmutating set { UserDefaults.standard.set(newValue, forKey: historyKey) }
+    private struct HistoryEntry: Codable, Hashable {
+        let query: String
+        let tags: [String]
+    }
+
+    private var recentSearches: [HistoryEntry] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: historyKey) else { return [] }
+            return (try? JSONDecoder().decode([HistoryEntry].self, from: data)) ?? []
+        }
+        nonmutating set {
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            UserDefaults.standard.set(data, forKey: historyKey)
+        }
     }
 
     var body: some View {
@@ -46,9 +59,10 @@ struct SearchView: View {
                 }
             }
         }
+        .frame(maxHeight: .infinity)
         .safeAreaInset(edge: .bottom) {
             if !tags.isEmpty {
-                TagFlowView(tags: $tags)
+                TagFlowView(tags: $tags, onTagRemoved: { onTagRemoved() })
                     .padding(.horizontal, 16)
                     .padding(.bottom, searchFocused ? 60 : 4)
             }
@@ -61,9 +75,8 @@ struct SearchView: View {
         .onChange(of: query) { _, newValue in
             hasSearched = false
             if isAddingTag { isAddingTag = false; return }
-            if newValue.isEmpty { tags = [] }
-            if newValue.hasSuffix(" ") { suggestions = [] }
-            else if !newValue.isEmpty { Task { await loadSuggestions() } }
+            if newValue.isEmpty { suggestions = [] }
+            else { Task { await loadSuggestions() } }
         }
     }
 
@@ -75,16 +88,40 @@ struct SearchView: View {
             } else {
                 List {
                     Section(String(localized: "search_history")) {
-                        ForEach(history, id: \.self) { term in
+                        ForEach(history, id: \.self) { entry in
                             Button {
-                                query = term
+                                query = entry.query
+                                tags = entry.tags.map { (value: $0, label: $0, display: $0) }
                                 DispatchQueue.main.async { performSearch() }
                             } label: {
                                 HStack {
                                     Image(systemName: "clock.arrow.circlepath").foregroundColor(.secondary)
-                                    Text(term).foregroundColor(.primary)
+                                    Text(entry.query).foregroundColor(.primary)
+                                    if !entry.tags.isEmpty {
+                                        Spacer()
+                                        Text("+\(entry.tags.count) \(String(localized: "search_tag_count"))")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                             }
+                            .swipeActions(edge: .trailing) {
+                                Button(String(localized: "delete"), role: .destructive) {
+                                    var h = recentSearches
+                                    h.removeAll { $0 == entry }
+                                    recentSearches = h
+                                }
+                            }
+                        }
+                    }
+
+                    Button(String(localized: "search_clear_history"), role: .destructive) {
+                        showClearHistoryAlert = true
+                    }
+                    .alert(String(localized: "clear_history_confirm"), isPresented: $showClearHistoryAlert) {
+                        Button(String(localized: "cancel"), role: .cancel) {}
+                        Button(String(localized: "confirm"), role: .destructive) {
+                            UserDefaults.standard.removeObject(forKey: historyKey)
                         }
                     }
                 }
@@ -102,9 +139,8 @@ struct SearchView: View {
                 Section(String(localized: "search_suggestions")) {
                     ForEach(suggestions, id: \.value) { sug in
                         Button {
-                            tags.append((value: sug.value, display: sug.display ?? sug.label))
-                            isAddingTag = true
-                            query = ""
+                            tags.append((value: sug.value, label: sug.label, display: sug.display ?? sug.label))
+                            suggestions.removeAll { $0.value == sug.value }
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(sug.label).foregroundColor(.primary)
@@ -127,28 +163,38 @@ struct SearchView: View {
                 ContentUnavailableView("search_no_results", systemImage: "magnifyingglass", description: Text("search_no_results_desc"))
             } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(results, id: \.arcid) { item in
-                            ArchiveGridCell(archive: item, server: server)
-                                .onAppear { loadMoreIfNeeded(item) }
+                    VStack(spacing: 0) {
+                        if let t = currentTags, !t.isEmpty {
+                            HStack {
+                                Spacer()
+                                Text("(+\(t.components(separatedBy: ",").count) \(String(localized: "search_tag_count"))")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 6)
+                            }
                         }
-                        if isLoading {
-                            ProgressView().frame(maxWidth: .infinity).padding()
+
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(results, id: \.arcid) { item in
+                                ArchiveGridCell(archive: item, server: server)
+                                    .onAppear { loadMoreIfNeeded(item) }
+                            }
+                            if isLoading {
+                                ProgressView().frame(maxWidth: .infinity).padding()
+                            }
                         }
+                        .padding(12)
                     }
-                    .padding(12)
                 }
             }
         }
     }
 
-    private func saveHistory(_ term: String) {
-        var history = recentSearches
-        if !history.contains(term) {
-            history.insert(term, at: 0)
-            if history.count > 20 { history = Array(history.prefix(20)) }
-            recentSearches = history
-        }
+    private func onTagRemoved() {
+        hasSearched = false
+        let tagValues = Set(tags.map(\.value))
+        suggestions = cachedSuggestions.filter { !tagValues.contains($0.value) }
     }
 
     private func performSearch() {
@@ -161,8 +207,17 @@ struct SearchView: View {
         currentQuery = query
         currentTags = tags.isEmpty ? nil : tags.map(\.value).joined(separator: ",")
         nextStart = 0
-        if !query.isEmpty { saveHistory(query) }
+        saveHistory(HistoryEntry(query: query, tags: tags.map(\.value)))
         Task { await doSearch() }
+    }
+
+    private func saveHistory(_ entry: HistoryEntry) {
+        var history = recentSearches
+        if !history.contains(entry) {
+            history.insert(entry, at: 0)
+            if history.count > 20 { history = Array(history.prefix(20)) }
+            recentSearches = history
+        }
     }
 
     private func doSearch() async {
@@ -199,7 +254,8 @@ struct SearchView: View {
             lastWord = query
         }
         guard !lastWord.isEmpty else { suggestions = []; return }
-        do { suggestions = try await server.apiClient.autocomplete(query: lastWord) }
+        do { suggestions = try await server.apiClient.autocomplete(query: lastWord)
+             cachedSuggestions = suggestions }
         catch { suggestions = [] }
     }
 
@@ -238,15 +294,27 @@ struct SearchView: View {
 }
 
 struct TagFlowView: View {
-    @Binding var tags: [(value: String, display: String)]
+    @Binding var tags: [(value: String, label: String, display: String)]
+    let onTagRemoved: () -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                Button {
+                    tags.removeAll()
+                    onTagRemoved()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+
                 ForEach(tags.indices, id: \.self) { i in
                     HStack(spacing: 4) {
                         Button {
                             tags.remove(at: i)
+                            DispatchQueue.main.async { onTagRemoved() }
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.caption2)

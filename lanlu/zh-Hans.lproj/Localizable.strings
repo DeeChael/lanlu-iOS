@@ -119,3 +119,6 @@
 "home_filter_all" = "全部";
 "search_go" = "搜索";
 "filter_date_enable" = "启用日期范围";
+"search_tag_count" = "个标签";
+"clear_history_confirm" = "确认清除所有搜索记录？此操作不可撤销。";
+"clear_history_confirm" = "确认清除所有搜索记录？此操作不可撤销。";
