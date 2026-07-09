@@ -63,13 +63,15 @@ struct ArchiveAsset: Codable, Sendable {
 
     struct SearchResultItem: Codable, Sendable {
         let type: String?
-        let arcid: String
+        let arcid: String?
+        let tankoubonId: String?
         let archivetype: String?
         let filename: String?
         let title: String?
         let description: String?
         let summary: String?
         let pagecount: Int?
+        let archiveCount: Int?
         let progress: Int?
         let size: Int?
         let tags: String?
@@ -78,18 +80,81 @@ struct ArchiveAsset: Codable, Sendable {
         let favoritetime: Int?
         let lastreadtime: Int?
         let assets: ArchiveAsset?
+        let children: [String]?
         let releaseAt: String?
         let createdAt: String?
         let updatedAt: String?
 
         enum CodingKeys: String, CodingKey {
-            case type, arcid, archivetype, filename, title, description, summary
+            case type, arcid, archivetype, filename, title, description, summary, children
             case pagecount, progress, size, tags, isnew, isfavorite, assets
             case favoritetime, lastreadtime
+            case tankoubonId = "tankoubon_id"
+            case archiveCount = "archive_count"
             case releaseAt = "release_at"
             case createdAt = "created_at"
             case updatedAt = "updated_at"
         }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            type = try? c.decode(String.self, forKey: .type)
+            arcid = try? c.decode(String.self, forKey: .arcid)
+            tankoubonId = try? c.decode(String.self, forKey: .tankoubonId)
+            archivetype = try? c.decode(String.self, forKey: .archivetype)
+            filename = try? c.decode(String.self, forKey: .filename)
+            title = try? c.decode(String.self, forKey: .title)
+            description = try? c.decode(String.self, forKey: .description)
+            summary = try? c.decode(String.self, forKey: .summary)
+            pagecount = Self.decodeInt(from: c, forKey: .pagecount)
+            archiveCount = Self.decodeInt(from: c, forKey: .archiveCount)
+            progress = Self.decodeInt(from: c, forKey: .progress)
+            size = Self.decodeInt(from: c, forKey: .size)
+            tags = try? c.decode(String.self, forKey: .tags)
+            isnew = try? c.decode(Bool.self, forKey: .isnew)
+            isfavorite = try? c.decode(Bool.self, forKey: .isfavorite)
+            favoritetime = Self.decodeInt(from: c, forKey: .favoritetime)
+            lastreadtime = Self.decodeInt(from: c, forKey: .lastreadtime)
+            assets = try? c.decode(ArchiveAsset.self, forKey: .assets)
+            children = try? c.decode([String].self, forKey: .children)
+            releaseAt = try? c.decode(String.self, forKey: .releaseAt)
+            createdAt = try? c.decode(String.self, forKey: .createdAt)
+            updatedAt = try? c.decode(String.self, forKey: .updatedAt)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try? c.encode(type, forKey: .type)
+            try? c.encode(arcid, forKey: .arcid)
+            try? c.encode(tankoubonId, forKey: .tankoubonId)
+            try? c.encode(archivetype, forKey: .archivetype)
+            try? c.encode(filename, forKey: .filename)
+            try? c.encode(title, forKey: .title)
+            try? c.encode(description, forKey: .description)
+            try? c.encode(summary, forKey: .summary)
+            try? c.encode(pagecount, forKey: .pagecount)
+            try? c.encode(archiveCount, forKey: .archiveCount)
+            try? c.encode(progress, forKey: .progress)
+            try? c.encode(size, forKey: .size)
+            try? c.encode(tags, forKey: .tags)
+            try? c.encode(isnew, forKey: .isnew)
+            try? c.encode(isfavorite, forKey: .isfavorite)
+            try? c.encode(favoritetime, forKey: .favoritetime)
+            try? c.encode(lastreadtime, forKey: .lastreadtime)
+            try? c.encode(assets, forKey: .assets)
+            try? c.encode(children, forKey: .children)
+            try? c.encode(releaseAt, forKey: .releaseAt)
+            try? c.encode(createdAt, forKey: .createdAt)
+            try? c.encode(updatedAt, forKey: .updatedAt)
+        }
+
+        private static func decodeInt(from container: KeyedDecodingContainer<SearchResultItem.CodingKeys>, forKey key: SearchResultItem.CodingKeys) -> Int? {
+            if let int = try? container.decode(Int.self, forKey: key) { return int }
+            if let str = try? container.decode(String.self, forKey: key), let int = Int(str) { return int }
+            return nil
+        }
+
+        var displayId: String { arcid ?? tankoubonId ?? UUID().uuidString }
     }
 
 struct SearchResponse: Decodable {
@@ -533,24 +598,31 @@ class APIClient {
         return []
     }
 
-    // MARK: - Recommendations
+    // MARK: - Archive Metadata
 
-    struct RecommendationsResponse: Decodable {
-        let scene: String?
-        let data: [SearchResultItem]?
+    struct ArchiveMetadataAsset: Decodable {
+        let key: String?
+        let value: Int?
     }
 
-    func fetchRecommendations(count: Int = 20) async throws -> [SearchResultItem] {
+    struct ArchiveMetadata: Decodable {
+        let arcid: String?
+        let assets: [ArchiveMetadataAsset]?
+        let pagecount: Int?
+        let progress: Int?
+
+        var coverAssetId: Int? {
+            assets?.first(where: { $0.key == "cover" })?.value
+        }
+    }
+
+    func fetchArchiveMetadata(arcid: String) async throws -> ArchiveMetadata {
         var urlString = baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard var components = URLComponents(string: urlString) else {
             throw AuthError.networkError(String(localized: "invalid_url"))
         }
-        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/recommendations"
-        components.queryItems = [
-            URLQueryItem(name: "scene", value: "discover"),
-            URLQueryItem(name: "count", value: "\(count)"),
-        ]
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/archives/\(arcid)/metadata"
         guard let url = components.url else {
             throw AuthError.networkError(String(localized: "invalid_url"))
         }
@@ -563,16 +635,60 @@ class APIClient {
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
+        return try JSONDecoder().decode(ArchiveMetadata.self, from: data)
+    }
 
-        if let result = try? JSONDecoder().decode(RecommendationsResponse.self, from: data),
-           let items = result.data {
-            return items
+    // MARK: - Recommendations
+
+    struct RecommendationsResponse: Decodable {
+        let scene: String?
+        let data: [SearchResultItem]?
+    }
+
+    func fetchRecommendations(count: Int = 20, categoryId: Int? = nil) async throws -> [SearchResultItem] {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var components = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/recommendations"
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "scene", value: "discover"),
+            URLQueryItem(name: "count", value: "\(count)"),
+        ]
+        if let categoryId {
+            items.append(URLQueryItem(name: "category_id", value: "\(categoryId)"))
+        }
+        components.queryItems = items
+        guard let url = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+
+        print("[API] GET \(url.absoluteString)")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let rawBody = String(data: data, encoding: .utf8) ?? "nil"
+        print("[API] recommendations status: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        print("[API] recommendations body: \(rawBody.prefix(500))")
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        do {
+            let result = try JSONDecoder().decode(RecommendationsResponse.self, from: data)
+            if let items = result.data { return items }
+        } catch {
+            print("[API] recommendations decode error: \(error)")
         }
         if let envelope = try? JSONDecoder().decode(ApiEnvelope<[SearchResultItem]>.self, from: data),
            let items = envelope.data {
             return items
         }
-        return []
+        throw AuthError.networkError(String(localized: "connection_failed"))
     }
 
     // MARK: - Helpers

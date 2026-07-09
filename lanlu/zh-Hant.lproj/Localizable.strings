@@ -113,5 +113,9 @@
 "search_filter" = "搜索篩選";
 "sort_desc" = "倒序";
 "sort_asc" = "正序";
+"badge_tankoubon" = "合集";
+"tankoubon_archives" = "包含 %d 個歸檔";
+"home_filter" = "分類";
+"home_filter_all" = "全部";
 "search_go" = "搜尋";
 "filter_date_enable" = "啟用日期範圍";

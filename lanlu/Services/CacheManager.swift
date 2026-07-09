@@ -7,8 +7,9 @@ final class CacheManager {
     private var coverCache = NSCache<NSString, NSData>()
 
     func cacheArchive(_ archive: SearchResultItem) {
+        guard let id = archive.arcid else { return }
         if let data = try? JSONEncoder().encode(archive) {
-            archiveCache.setObject(data as NSData, forKey: archive.arcid as NSString)
+            archiveCache.setObject(data as NSData, forKey: id as NSString)
         }
     }
 

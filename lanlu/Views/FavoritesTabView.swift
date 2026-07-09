@@ -87,31 +87,55 @@ struct ArchiveGridCell: View {
     let server: Server
     @State private var coverData: Data?
 
+    private var isTankoubon: Bool { archive.type == "tankoubon" }
     private var coverAssetId: Int? { archive.assets?.cover }
     private var progressPercent: Int {
-        guard let p = archive.progress, let total = archive.pagecount, total > 0 else { return 0 }
+        guard !isTankoubon, let p = archive.progress, let total = archive.pagecount, total > 0 else { return 0 }
         return min(Int((Double(p) / Double(total)) * 100), 100)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-        coverView
+            coverView
+                .overlay(alignment: .topLeading) {
+                    if isTankoubon {
+                        Text(String(localized: "badge_tankoubon"))
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                            .padding(4)
+                    }
+                }
 
-            MarqueeText(text: archive.filename ?? archive.title ?? "---")
+            MarqueeText(text: isTankoubon ? (archive.title ?? "---") : (archive.filename ?? archive.title ?? "---"))
                 .font(.subheadline)
                 .lineLimit(1)
 
             HStack(spacing: 4) {
-                if let pages = archive.pagecount {
-                    Text("\(pages) \(String(localized: "page_unit"))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                if isTankoubon {
+                    if let count = archive.archiveCount {
+                        Text(String(format: String(localized: "tankoubon_archives"), count))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    if let pages = archive.pagecount {
+                        Text("\(pages) \(String(localized: "page_unit"))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 Spacer()
-                Text("\(progressPercent)%")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.accentColor)
+                if !isTankoubon {
+                    Text("\(progressPercent)%")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.accentColor)
+                }
             }
         }
         .task { await loadCover() }
@@ -138,26 +162,49 @@ struct ArchiveGridCell: View {
     }
 
     private func loadCover() async {
+        if isTankoubon {
+            await loadTankoubonCover()
+        } else {
+            await loadArchiveCover()
+        }
+    }
+
+    private func loadArchiveCover() async {
         guard let assetId = coverAssetId else { return }
         if let cached = CacheManager.shared.getCover(id: "\(assetId)") {
             coverData = cached; return
         }
+        guard let data = await fetchAsset(assetId: assetId) else { return }
+        CacheManager.shared.cacheCover(id: "\(assetId)", data: data)
+        coverData = data
+    }
 
+    private func loadTankoubonCover() async {
+        guard let firstChild = archive.children?.first else { return }
+        do {
+            let meta = try await server.apiClient.fetchArchiveMetadata(arcid: firstChild)
+            guard let assetId = meta.coverAssetId else { return }
+            if let cached = CacheManager.shared.getCover(id: "\(assetId)") {
+                coverData = cached; return
+            }
+            guard let data = await fetchAsset(assetId: assetId) else { return }
+            CacheManager.shared.cacheCover(id: "\(assetId)", data: data)
+            coverData = data
+        } catch {}
+    }
+
+    private func fetchAsset(assetId: Int) async -> Data? {
         var urlString = server.baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
-        guard let url = URL(string: urlString)?.appendingPathComponent("api/assets/\(assetId)") else { return }
-
+        guard let url = URL(string: urlString)?.appendingPathComponent("api/assets/\(assetId)") else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         if let token = server.authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-
         guard let (data, resp) = try? await URLSession.shared.data(for: request),
-              let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 else { return }
-
-        CacheManager.shared.cacheCover(id: "\(assetId)", data: data)
-        coverData = data
+              let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 else { return nil }
+        return data
     }
 }
 

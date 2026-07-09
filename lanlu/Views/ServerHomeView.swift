@@ -24,7 +24,7 @@ struct ServerHomeView: View {
         TabView(selection: $selected) {
             Tab(String(localized: "tab_home"), systemImage: "house.fill", value: 0) {
                 NavigationStack {
-                    HomeTabView()
+                    HomeTabView(server: server)
                         .navigationTitle(String(localized: "tab_home"))
                         .navigationBarTitleDisplayMode(.inline)
                 }

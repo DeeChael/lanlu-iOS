@@ -113,5 +113,9 @@
 "search_filter" = "Search Filter";
 "sort_desc" = "Descending";
 "sort_asc" = "Ascending";
+"badge_tankoubon" = "Collection";
+"tankoubon_archives" = "Contains %d archives";
+"home_filter" = "Category";
+"home_filter_all" = "All";
 "search_go" = "Search";
 "filter_date_enable" = "Enable Date Range";
