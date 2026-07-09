@@ -46,7 +46,11 @@ struct SearchView: View {
         }
         .onChange(of: query) { _, newValue in
             hasSearched = false
-            if !newValue.isEmpty { Task { await loadSuggestions() } }
+            if newValue.hasSuffix(" ") {
+                suggestions = []
+            } else if !newValue.isEmpty {
+                Task { await loadSuggestions() }
+            }
         }
     }
 
@@ -85,13 +89,17 @@ struct SearchView: View {
                 Section(String(localized: "search_suggestions")) {
                     ForEach(suggestions, id: \.value) { sug in
                         Button {
-                            query = sug.label
-                            DispatchQueue.main.async { performSearch() }
+                            if let lastSpace = query.lastIndex(of: " ") {
+                                let prefix = query[..<lastSpace]
+                                query = String(prefix) + " " + sug.value + " "
+                            } else {
+                                query = sug.value + " "
+                            }
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(sug.label).foregroundColor(.primary)
-                                if sug.value != sug.label {
-                                    Text(sug.value).font(.caption).foregroundColor(.secondary)
+                                if let display = sug.display, !display.isEmpty {
+                                    Text(display).font(.caption).foregroundColor(.secondary)
                                 }
                             }
                         }
@@ -172,8 +180,14 @@ struct SearchView: View {
     }
 
     private func loadSuggestions() async {
-        guard !query.isEmpty else { suggestions = []; return }
-        do { suggestions = try await server.apiClient.autocomplete(query: query) }
+        let lastWord: String
+        if let lastSpace = query.lastIndex(of: " ") {
+            lastWord = String(query[query.index(after: lastSpace)...])
+        } else {
+            lastWord = query
+        }
+        guard !lastWord.isEmpty else { suggestions = []; return }
+        do { suggestions = try await server.apiClient.autocomplete(query: lastWord) }
         catch { suggestions = [] }
     }
 
