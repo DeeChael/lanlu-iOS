@@ -140,9 +140,9 @@ struct SettingsTabView: View {
                     NativeSegmentedControl(
                         selection: $themeMode,
                         items: [
-                            ("circle.righthalf.fill", "system"),
-                            ("sun.max.fill", "light"),
-                            ("moon.fill", "dark"),
+                            ("circle.righthalf.fill", nil, "system"),
+                            ("sun.max.fill", nil, "light"),
+                            ("moon.fill", nil, "dark"),
                         ]
                     )
                     .frame(width: 140)

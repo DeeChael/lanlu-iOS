@@ -111,5 +111,7 @@
 "search_no_results" = "未找到结果";
 "search_no_results_desc" = "请调整搜索词或筛选条件";
 "search_filter" = "搜索筛选";
+"sort_desc" = "倒序";
+"sort_asc" = "正序";
 "search_go" = "搜索";
 "filter_date_enable" = "启用日期范围";

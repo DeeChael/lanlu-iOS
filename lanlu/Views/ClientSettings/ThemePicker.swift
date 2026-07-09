@@ -3,12 +3,21 @@ import UIKit
 
 struct NativeSegmentedControl: UIViewRepresentable {
     @Binding var selection: String
-    let items: [(icon: String, tag: String)]
+    let items: [(icon: String?, title: String?, tag: String)]
+
+    init(selection: Binding<String>, items: [(icon: String?, title: String?, tag: String)]) {
+        self._selection = selection
+        self.items = items
+    }
 
     func makeUIView(context: Context) -> UISegmentedControl {
         let control = UISegmentedControl()
         for (i, item) in items.enumerated() {
-            control.insertSegment(with: UIImage(systemName: item.icon), at: i, animated: false)
+            if let icon = item.icon {
+                control.insertSegment(with: UIImage(systemName: icon), at: i, animated: false)
+            } else if let title = item.title {
+                control.insertSegment(withTitle: title, at: i, animated: false)
+            }
         }
         control.selectedSegmentIndex = items.firstIndex(where: { $0.tag == selection }) ?? 0
         control.addTarget(context.coordinator, action: #selector(Coordinator.changed), for: .valueChanged)

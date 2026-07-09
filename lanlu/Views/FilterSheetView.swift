@@ -38,11 +38,11 @@ struct FilterSheetView: View {
                         NativeSegmentedControl(
                             selection: $sortOrder,
                             items: [
-                                ("arrow.down", "desc"),
-                                ("arrow.up", "asc"),
+                                (nil, String(localized: "sort_desc"), "desc"),
+                                (nil, String(localized: "sort_asc"), "asc"),
                             ]
                         )
-                        .frame(width: 80)
+                        .frame(width: 140)
                     }
                 }
 
