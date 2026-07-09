@@ -29,7 +29,7 @@ struct ServerHomeView: View {
 
             Tab(String(localized: "tab_history"), systemImage: "clock.fill") {
                 NavigationStack {
-                    HistoryTabView()
+                    HistoryTabView(server: server)
                         .navigationTitle(String(localized: "tab_history"))
                         .navigationBarTitleDisplayMode(.inline)
                 }

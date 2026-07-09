@@ -11,7 +11,10 @@ struct FavoritesTabView: View {
 
     var body: some View {
         Group {
-            if archives.isEmpty && !isLoading {
+            if isLoading && archives.isEmpty {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if archives.isEmpty {
                 ContentUnavailableView(
                     "favorites_placeholder",
                     systemImage: "heart.fill",

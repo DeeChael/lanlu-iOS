@@ -369,11 +369,7 @@ class APIClient {
 
     // MARK: - Search
 
-    func fetchFavorites(start: Int = 0, count: Int = 40) async throws -> SearchResponse {
-        var components = URLComponents()
-        components.scheme = "https"
-        components.path = "/api/search"
-
+    func search(favoriteOnly: Bool = false, sortby: String = "created_at", order: String = "desc", start: Int = 0, count: Int = 20) async throws -> SearchResponse {
         var urlString = baseURL
         if !urlString.contains("://") {
             urlString = "https://" + urlString
@@ -384,13 +380,16 @@ class APIClient {
         }
 
         baseComponents.path = (baseComponents.path.hasSuffix("/") ? "" : "/") + "api/search"
-        baseComponents.queryItems = [
-            URLQueryItem(name: "favoriteonly", value: "true"),
+        var items: [URLQueryItem] = [
             URLQueryItem(name: "start", value: "\(start)"),
             URLQueryItem(name: "count", value: "\(count)"),
-            URLQueryItem(name: "sortby", value: "updated_at"),
-            URLQueryItem(name: "order", value: "desc"),
+            URLQueryItem(name: "sortby", value: sortby),
+            URLQueryItem(name: "order", value: order),
         ]
+        if favoriteOnly {
+            items.append(URLQueryItem(name: "favoriteonly", value: "true"))
+        }
+        baseComponents.queryItems = items
 
         guard let url = baseComponents.url else {
             throw AuthError.networkError(String(localized: "invalid_url"))
@@ -400,7 +399,7 @@ class APIClient {
         request.httpMethod = "GET"
         applyAuthHeader(&request)
 
-        LogManager.shared.log("GET /api/search?favoriteOnly=true&start=\(start)&count=\(count)")
+        LogManager.shared.log("GET /api/search start=\(start) count=\(count) sortby=\(sortby)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let bodyStr = String(data: data, encoding: .utf8) ?? "nil"
@@ -411,10 +410,17 @@ class APIClient {
         }
 
         if httpResponse.statusCode == 200 {
-            let result = try JSONDecoder().decode(SearchResponse.self, from: data)
-            return result
+            return try JSONDecoder().decode(SearchResponse.self, from: data)
         }
         throw AuthError.networkError(String(localized: "connection_failed"))
+    }
+
+    func fetchFavorites(start: Int = 0, count: Int = 40) async throws -> SearchResponse {
+        try await search(favoriteOnly: true, sortby: "updated_at", order: "desc", start: start, count: count)
+    }
+
+    func fetchHistory(start: Int = 0, count: Int = 40) async throws -> SearchResponse {
+        try await search(favoriteOnly: false, sortby: "lastreadtime", order: "desc", start: start, count: count)
     }
 
     // MARK: - Helpers
