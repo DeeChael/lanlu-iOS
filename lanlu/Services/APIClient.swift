@@ -437,7 +437,7 @@ class APIClient {
 
     // MARK: - Search
 
-    func search(favoriteOnly: Bool = false, untaggedOnly: Bool = false, filter: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, start: Int = 0, count: Int = 20) async throws -> SearchResponse {
+    func search(favoriteOnly: Bool = false, untaggedOnly: Bool = false, filter: String? = nil, tags: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, start: Int = 0, count: Int = 20) async throws -> SearchResponse {
         var urlString = baseURL
         if !urlString.contains("://") {
             urlString = "https://" + urlString
@@ -462,6 +462,9 @@ class APIClient {
         }
         if let filter, !filter.isEmpty {
             items.append(URLQueryItem(name: "filter", value: filter))
+        }
+        if let tags, !tags.isEmpty {
+            items.append(URLQueryItem(name: "tags", value: tags))
         }
         if let dateFrom, !dateFrom.isEmpty {
             items.append(URLQueryItem(name: "date_from", value: dateFrom))

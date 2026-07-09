@@ -15,11 +15,15 @@ struct SearchView: View {
     @State private var suggestions: [AutocompleteSuggestion] = []
     @State private var results: [SearchResultItem] = []
     @State private var isLoading = false
+    @FocusState private var searchFocused: Bool
     @State private var hasMore = true
     @State private var hasSearched = false
     @State private var query = ""
     @State private var currentQuery = ""
+    @State private var currentTags: String? = nil
     @State private var nextStart = 0
+    @State private var tags: [(value: String, display: String)] = []
+    @State private var isAddingTag = false
 
     private let pageSize = 20
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
@@ -31,26 +35,35 @@ struct SearchView: View {
     }
 
     var body: some View {
-        Group {
-            if hasSearched {
-                resultsView
-            } else if query.isEmpty {
-                historyView
-            } else {
-                suggestionsView
+        VStack(spacing: 0) {
+            Group {
+                if hasSearched {
+                    resultsView
+                } else if query.isEmpty && tags.isEmpty {
+                    historyView
+                } else {
+                    suggestionsView
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if !tags.isEmpty {
+                TagFlowView(tags: $tags)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, searchFocused ? 60 : 4)
             }
         }
         .searchable(text: $query, isPresented: $searching, prompt: "search_prompt")
+        .searchFocused($searchFocused)
         .onSubmit(of: .search) {
             performSearch()
         }
         .onChange(of: query) { _, newValue in
             hasSearched = false
-            if newValue.hasSuffix(" ") {
-                suggestions = []
-            } else if !newValue.isEmpty {
-                Task { await loadSuggestions() }
-            }
+            if isAddingTag { isAddingTag = false; return }
+            if newValue.isEmpty { tags = [] }
+            if newValue.hasSuffix(" ") { suggestions = [] }
+            else if !newValue.isEmpty { Task { await loadSuggestions() } }
         }
     }
 
@@ -89,12 +102,9 @@ struct SearchView: View {
                 Section(String(localized: "search_suggestions")) {
                     ForEach(suggestions, id: \.value) { sug in
                         Button {
-                            if let lastSpace = query.lastIndex(of: " ") {
-                                let prefix = query[..<lastSpace]
-                                query = String(prefix) + " " + sug.value + " "
-                            } else {
-                                query = sug.value + " "
-                            }
+                            tags.append((value: sug.value, display: sug.display ?? sug.label))
+                            isAddingTag = true
+                            query = ""
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(sug.label).foregroundColor(.primary)
@@ -142,15 +152,16 @@ struct SearchView: View {
     }
 
     private func performSearch() {
-        guard !query.isEmpty else { return }
+        guard !query.isEmpty || !tags.isEmpty else { return }
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         hasSearched = true
         suggestions = []
         results = []
         hasMore = true
         currentQuery = query
+        currentTags = tags.isEmpty ? nil : tags.map(\.value).joined(separator: ",")
         nextStart = 0
-        saveHistory(query)
+        if !query.isEmpty { saveHistory(query) }
         Task { await doSearch() }
     }
 
@@ -162,6 +173,7 @@ struct SearchView: View {
             let result = try await server.apiClient.search(
                 favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly,
                 filter: currentQuery.isEmpty ? nil : currentQuery,
+                tags: currentTags,
                 sortby: sortField, order: sortOrder,
                 dateFrom: dateEnabled ? df.string(from: dateFrom) : nil,
                 dateTo: dateEnabled ? df.string(from: dateTo) : nil,
@@ -206,6 +218,7 @@ struct SearchView: View {
             let result = try await server.apiClient.search(
                 favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly,
                 filter: currentQuery.isEmpty ? nil : currentQuery,
+                tags: currentTags,
                 sortby: sortField, order: sortOrder,
                 dateFrom: dateEnabled ? df.string(from: dateFrom) : nil,
                 dateTo: dateEnabled ? df.string(from: dateTo) : nil,
@@ -221,5 +234,38 @@ struct SearchView: View {
             hasMore = items.count == pageSize
         } catch { hasMore = false }
         isLoading = false
+    }
+}
+
+struct TagFlowView: View {
+    @Binding var tags: [(value: String, display: String)]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(tags.indices, id: \.self) { i in
+                    HStack(spacing: 4) {
+                        Button {
+                            tags.remove(at: i)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                        }
+                        .buttonStyle(.plain)
+
+                        Text(tags[i].display)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .clipShape(Capsule())
+                    .fixedSize()
+                }
+                .glassEffect(.regular)
+            }
+        }
+        .frame(height: 28)
     }
 }
