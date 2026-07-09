@@ -61,36 +61,36 @@ struct ArchiveAsset: Codable, Sendable {
     let cover: Int?
 }
 
-struct SearchResultItem: Codable, Sendable {
-    let type: String?
-    let arcid: String
-    let archivetype: String?
-    let filename: String?
-    let title: String?
-    let description: String?
-    let summary: String?
-    let pagecount: Int?
-    let progress: Int?
-    let size: Int?
-    let tags: String?
-    let isnew: Bool?
-    let isfavorite: Bool?
-    let favoritetime: Int?
-    let lastreadtime: Int?
-    let assets: ArchiveAsset?
-    let releaseAt: String?
-    let createdAt: String?
-    let updatedAt: String?
+    struct SearchResultItem: Codable, Sendable {
+        let type: String?
+        let arcid: String
+        let archivetype: String?
+        let filename: String?
+        let title: String?
+        let description: String?
+        let summary: String?
+        let pagecount: Int?
+        let progress: Int?
+        let size: Int?
+        let tags: String?
+        let isnew: Bool?
+        let isfavorite: Bool?
+        let favoritetime: Int?
+        let lastreadtime: Int?
+        let assets: ArchiveAsset?
+        let releaseAt: String?
+        let createdAt: String?
+        let updatedAt: String?
 
-    enum CodingKeys: String, CodingKey {
-        case type, arcid, archivetype, filename, title, description, summary
-        case pagecount, progress, size, tags, isnew, isfavorite, assets
-        case favoritetime, lastreadtime
-        case releaseAt = "release_at"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        enum CodingKeys: String, CodingKey {
+            case type, arcid, archivetype, filename, title, description, summary
+            case pagecount, progress, size, tags, isnew, isfavorite, assets
+            case favoritetime, lastreadtime
+            case releaseAt = "release_at"
+            case createdAt = "created_at"
+            case updatedAt = "updated_at"
+        }
     }
-}
 
 struct SearchResponse: Decodable {
     let data: [SearchResultItem]?
@@ -473,6 +473,104 @@ class APIClient {
         if let wrapper = try? JSONDecoder().decode(AutoCompleteEnvelope.self, from: data),
            let list = wrapper.suggestions {
             return list
+        }
+        return []
+    }
+
+    // MARK: - Categories
+
+    struct CategoryItem: Codable, Sendable {
+        let id: Int
+        let catid: String
+        let name: String
+        let scanPath: String?
+        let description: String?
+        let icon: String?
+        let sortOrder: Int?
+        let enabled: Bool?
+        let plugins: [String]?
+        let coverAssetId: Int?
+        let archiveCount: Int?
+        let createdAt: String?
+        let updatedAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, catid, name, icon, enabled, plugins, description
+            case scanPath = "scan_path"
+            case sortOrder = "sort_order"
+            case coverAssetId = "cover_asset_id"
+            case archiveCount = "archive_count"
+            case createdAt = "created_at"
+            case updatedAt = "updated_at"
+        }
+    }
+
+    struct CategoriesResponse: Decodable {
+        let operation: String?
+        let success: Int?
+        let data: [CategoryItem]?
+    }
+
+    func fetchCategories() async throws -> [CategoryItem] {
+        let url = try makeURL("/api/categories")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        if let result = try? JSONDecoder().decode(CategoriesResponse.self, from: data),
+           let items = result.data {
+            return items
+        }
+        if let result = try? JSONDecoder().decode(ApiEnvelope<[CategoryItem]>.self, from: data),
+           let items = result.data {
+            return items
+        }
+        return []
+    }
+
+    // MARK: - Recommendations
+
+    struct RecommendationsResponse: Decodable {
+        let scene: String?
+        let data: [SearchResultItem]?
+    }
+
+    func fetchRecommendations(count: Int = 20) async throws -> [SearchResultItem] {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var components = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/recommendations"
+        components.queryItems = [
+            URLQueryItem(name: "scene", value: "discover"),
+            URLQueryItem(name: "count", value: "\(count)"),
+        ]
+        guard let url = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        if let result = try? JSONDecoder().decode(RecommendationsResponse.self, from: data),
+           let items = result.data {
+            return items
+        }
+        if let envelope = try? JSONDecoder().decode(ApiEnvelope<[SearchResultItem]>.self, from: data),
+           let items = envelope.data {
+            return items
         }
         return []
     }
