@@ -42,6 +42,7 @@ struct ServerHomeView: View {
             server.lastUsedAt = Date()
             try? modelContext.save()
             UserDefaults.standard.set(server.baseURL, forKey: "last_server_url")
+            LogManager.shared.log("Entered server: \(server.name) (\(server.baseURL))")
         }
     }
 }

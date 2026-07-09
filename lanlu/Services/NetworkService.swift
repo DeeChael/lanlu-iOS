@@ -45,6 +45,7 @@ class NetworkService {
     static let shared = NetworkService()
 
     func testConnection(baseURL: String) async throws -> ServerInfo {
+        LogManager.shared.log("GET /api/info")
         var urlString = baseURL
         if !urlString.contains("://") {
             urlString = "https://" + urlString

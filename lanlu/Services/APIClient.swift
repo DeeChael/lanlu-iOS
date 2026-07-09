@@ -109,6 +109,7 @@ class APIClient {
     // MARK: - Auth: Password Login
 
     func login(username: String, password: String) async throws -> LoginSuccessData {
+        LogManager.shared.log("POST /api/auth/login (user: \(username))")
         let url = try makeURL("/api/auth/login")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -128,9 +129,11 @@ class APIClient {
         case 200:
             let envelope = try JSONDecoder().decode(ApiEnvelope<LoginSuccessData>.self, from: data)
             guard let loginData = envelope.data else {
+                LogManager.shared.log("Login failed: empty data")
                 throw AuthError.invalidCredentials
             }
             self.token = loginData.token.token
+            LogManager.shared.log("Login success (user: \(loginData.user.username))")
             return loginData
 
         case 202:
@@ -138,12 +141,15 @@ class APIClient {
             guard let totpData = envelope.data else {
                 throw AuthError.networkError(String(localized: "connection_failed"))
             }
+            LogManager.shared.log("Login requires TOTP")
             throw AuthError.totpRequired(challengeId: totpData.challengeId, methods: totpData.methods)
 
         case 401:
+            LogManager.shared.log("Login failed: invalid credentials")
             throw AuthError.invalidCredentials
 
         default:
+            LogManager.shared.log("Login failed: HTTP \(httpResponse.statusCode)")
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
     }
@@ -151,6 +157,7 @@ class APIClient {
     // MARK: - Auth: TOTP Verify
 
     func verifyTOTP(challengeId: String, code: String) async throws -> LoginSuccessData {
+        LogManager.shared.log("POST /api/auth/login/totp/verify")
         let url = try makeURL("/api/auth/login/totp/verify")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -185,6 +192,7 @@ class APIClient {
     // MARK: - Auth: Verify Token (me)
 
     func verifyToken() async throws -> UserData {
+        LogManager.shared.log("GET /api/auth/me")
         let url = try makeURL("/api/auth/me")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -199,14 +207,18 @@ class APIClient {
         case 200:
             let envelope = try JSONDecoder().decode(ApiEnvelope<UserInfoData>.self, from: data)
             guard let userInfo = envelope.data else {
+                LogManager.shared.log("Token verify: empty data")
                 throw AuthError.invalidCredentials
             }
+            LogManager.shared.log("Token valid (user: \(userInfo.user.username))")
             return userInfo.user
 
         case 401:
+            LogManager.shared.log("Token expired")
             throw AuthError.tokenExpired
 
         default:
+            LogManager.shared.log("Token verify failed: HTTP \(httpResponse.statusCode)")
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
     }
@@ -214,6 +226,7 @@ class APIClient {
     // MARK: - User Stats
 
     func fetchStats() async throws -> UserStatsData {
+        LogManager.shared.log("GET /api/user/stats")
         let url = try makeURL("/api/user/stats")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -251,6 +264,7 @@ class APIClient {
     }
 
     func fetchTrend(days: Int = 30) async throws -> UserTrendData {
+        LogManager.shared.log("GET /api/user/trend?days=\(days)")
         var components = URLComponents()
         components.scheme = "https"
         components.path = "/api/user/trend"

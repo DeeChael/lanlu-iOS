@@ -48,8 +48,10 @@ struct ContentView: View {
     private func navigateToLastServer() {
         guard let url = UserDefaults.standard.string(forKey: "last_server_url"),
               let server = servers.first(where: { $0.baseURL == url }) else {
+            LogManager.shared.log("No last server to navigate to")
             return
         }
+        LogManager.shared.log("Auto-navigating to \(server.name) (\(url))")
         navPath.append(server)
     }
 

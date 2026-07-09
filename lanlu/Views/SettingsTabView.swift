@@ -7,6 +7,9 @@ struct SettingsTabView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
+    @AppStorage("theme_mode") private var themeMode = "system"
+    @AppStorage("language") private var language = "system"
+
     @State private var user: UserData?
     @State private var avatarData: Data?
     @State private var isLoadingUser = true
@@ -15,8 +18,22 @@ struct SettingsTabView: View {
     @State private var statsError: String?
     @State private var trendError: String?
 
+    @State private var showLanguagePicker = false
+    @State private var showDiagnostics = false
+    @State private var showClearCacheAlert = false
+    @State private var showRestartAlert = false
+
     private var client: APIClient { server.apiClient }
     private let gridCols = [GridItem(.flexible()), GridItem(.flexible())]
+
+    private var languageLabel: String {
+        switch language {
+        case "en": "English"
+        case "zh-Hans": "简体中文"
+        case "zh-Hant": "繁體中文"
+        default: String(localized: "lang_system")
+        }
+    }
 
     var body: some View {
         List {
@@ -71,37 +88,18 @@ struct SettingsTabView: View {
                 }
 
                 LazyVGrid(columns: gridCols, spacing: 12) {
-                    StatCell(
-                        icon: "heart.fill",
-                        label: String(localized: "stat_favorites"),
-                        value: "\(stats?.favoriteCount ?? 0)"
-                    )
-                    StatCell(
-                        icon: "checkmark.circle.fill",
-                        label: String(localized: "stat_read_archives"),
-                        value: "\(stats?.readCount ?? 0)"
-                    )
-                    StatCell(
-                        icon: "book.pages.fill",
-                        label: String(localized: "stat_pages_read"),
-                        value: "\(stats?.totalPagesRead ?? 0)"
-                    )
-                    StatCell(
-                        icon: "archivebox.fill",
-                        label: String(localized: "stat_total_archives"),
-                        value: "\(stats?.totalArchives ?? 0)"
-                    )
+                    StatCell(icon: "heart.fill", label: String(localized: "stat_favorites"), value: "\(stats?.favoriteCount ?? 0)")
+                    StatCell(icon: "checkmark.circle.fill", label: String(localized: "stat_read_archives"), value: "\(stats?.readCount ?? 0)")
+                    StatCell(icon: "book.pages.fill", label: String(localized: "stat_pages_read"), value: "\(stats?.totalPagesRead ?? 0)")
+                    StatCell(icon: "archivebox.fill", label: String(localized: "stat_total_archives"), value: "\(stats?.totalArchives ?? 0)")
                 }
 
                 if let trend, !trend.trend.isEmpty {
                     let trendDates = trend.trend.compactMap(\.dateValue)
                     Chart(trend.trend, id: \.date) { point in
                         if let date = point.dateValue {
-                            LineMark(
-                                x: .value("date", date),
-                                y: .value("count", point.count)
-                            )
-                            .interpolationMethod(.catmullRom)
+                            LineMark(x: .value("date", date), y: .value("count", point.count))
+                                .interpolationMethod(.catmullRom)
                         }
                     }
                     .chartXAxis {
@@ -121,6 +119,78 @@ struct SettingsTabView: View {
                         .font(.caption)
                 }
             }
+
+            Section(String(localized: "client_settings")) {
+                HStack {
+                    Label(String(localized: "setting_theme"), systemImage: "paintpalette.fill")
+                    Spacer()
+                    NativeSegmentedControl(
+                        selection: $themeMode,
+                        items: [
+                            ("circle.righthalf.fill", "system"),
+                            ("sun.max.fill", "light"),
+                            ("moon.fill", "dark"),
+                        ]
+                    )
+                    .frame(width: 140)
+                }
+
+                Button {
+                    showLanguagePicker = true
+                } label: {
+                    HStack {
+                        Label(String(localized: "setting_language"), systemImage: "globe")
+                        Spacer()
+                        Text(languageLabel)
+                            .foregroundColor(.secondary)
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showLanguagePicker) {
+                    LanguagePickerView(selected: $language)
+                }
+
+                Button {
+                    showDiagnostics = true
+                } label: {
+                    HStack {
+                        Label(String(localized: "setting_diagnostics"), systemImage: "ant.fill")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showDiagnostics) {
+                    DiagnosticsView()
+                }
+
+                Button(role: .destructive) {
+                    showClearCacheAlert = true
+                } label: {
+                    HStack {
+                        Label(String(localized: "setting_clear_cache"), systemImage: "trash.fill")
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .tint(.red)
+                .buttonStyle(.plain)
+                .alert(String(localized: "clear_cache_title"), isPresented: $showClearCacheAlert) {
+                    Button(String(localized: "cancel"), role: .cancel) {}
+                    Button(String(localized: "confirm"), role: .destructive) {
+                        clearCache()
+                    }
+                } message: {
+                    Text(String(localized: "clear_cache_message"))
+                }
+            }
         }
         .navigationTitle(String(localized: "tab_settings"))
         .task {
@@ -129,6 +199,28 @@ struct SettingsTabView: View {
             async let t = loadTrend()
             _ = await (s, t)
         }
+        .onChange(of: language) { _, newValue in
+            if newValue != "system" {
+                UserDefaults.standard.set([newValue], forKey: "AppleLanguages")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            }
+            UserDefaults.standard.synchronize()
+            showRestartAlert = true
+        }
+        .alert(String(localized: "restart_title"), isPresented: $showRestartAlert) {
+            Button(String(localized: "restart_now")) {
+                exit(0)
+            }
+            Button(String(localized: "later"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "restart_message"))
+        }
+    }
+
+    private func clearCache() {
+        URLCache.shared.removeAllCachedResponses()
+        LogManager.shared.log("Cache cleared (URLCache)")
     }
 
     private func loadUserInfo() async {
