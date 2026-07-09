@@ -68,20 +68,24 @@ struct SearchResultItem: Codable, Sendable {
     let filename: String?
     let title: String?
     let description: String?
+    let summary: String?
     let pagecount: Int?
     let progress: Int?
     let size: Int?
     let tags: String?
     let isnew: Bool?
     let isfavorite: Bool?
+    let favoritetime: Int?
+    let lastreadtime: Int?
     let assets: ArchiveAsset?
     let releaseAt: String?
     let createdAt: String?
     let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
-        case type, arcid, archivetype, filename, title, description
+        case type, arcid, archivetype, filename, title, description, summary
         case pagecount, progress, size, tags, isnew, isfavorite, assets
+        case favoritetime, lastreadtime
         case releaseAt = "release_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -312,10 +316,6 @@ class APIClient {
 
     func fetchTrend(days: Int = 30) async throws -> UserTrendData {
         LogManager.shared.log("GET /api/user/trend?days=\(days)")
-        var components = URLComponents()
-        components.scheme = "https"
-        components.path = "/api/user/trend"
-        components.queryItems = [URLQueryItem(name: "days", value: "\(days)")]
 
         var urlString = baseURL
         if !urlString.contains("://") {
@@ -366,9 +366,6 @@ class APIClient {
                 }
                 return UserTrendData(trend: points)
             }
-        }
-        if let arr = try? JSONDecoder().decode([TrendPoint].self, from: data) {
-            return UserTrendData(trend: arr)
         }
         throw AuthError.networkError(String(localized: "connection_failed"))
     }
@@ -438,7 +435,7 @@ class APIClient {
     }
 
     func fetchHistory(start: Int = 0, count: Int = 40) async throws -> SearchResponse {
-        try await search(favoriteOnly: false, sortby: "lastreadtime", order: "desc", start: start, count: count)
+        try await search(favoriteOnly: false, sortby: "lastread", order: "desc", start: start, count: count)
     }
 
     // MARK: - Autocomplete
