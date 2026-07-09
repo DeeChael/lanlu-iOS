@@ -5,38 +5,39 @@ struct ServerHomeView: View {
     let server: Server
     @Environment(\.modelContext) private var modelContext
     @State private var selectedTab = 0
+    @State private var searching = ""
 
     private var tabTitle: String {
         switch selectedTab {
         case 0: String(localized: "tab_home")
         case 1: String(localized: "tab_favorites")
         case 2: String(localized: "tab_settings")
+        case 3: String(localized: "tab_search")
         default: ""
         }
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeTabView()
-                .tabItem {
-                    Label(String(localized: "tab_home"), systemImage: "house.fill")
+        TabView {
+            Tab(String(localized: "tab_home"), systemImage: "house.fill") {
+                HomeTabView()
+            }
+            Tab(String(localized: "tab_favorites"), systemImage: "heart.fill") {
+                FavoritesTabView()
+            }
+            Tab(String(localized: "tab_settings"), systemImage: "gearshape.fill") {
+                SettingsTabView(server: server)
+            }
+            Tab(String(localized: "tab_search"), systemImage: "magnifyingglass", role: .search) {
+                NavigationStack {
+                    Color.clear
+                    // todo: search view
                 }
-                .tag(0)
-
-            FavoritesTabView()
-                .tabItem {
-                    Label(String(localized: "tab_favorites"), systemImage: "heart.fill")
-                }
-                .tag(1)
-
-            SettingsTabView(server: server)
-                .tabItem {
-                    Label(String(localized: "tab_settings"), systemImage: "gearshape.fill")
-                }
-                .tag(2)
+            }
         }
+        .searchable(text: $searching, prompt: "search_prompt")
+        .tabViewSearchActivation(.searchTabSelection)
         .navigationTitle(tabTitle)
-        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .task {
             server.lastUsedAt = Date()

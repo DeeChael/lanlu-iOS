@@ -77,3 +77,5 @@
 "ss_plugin_management" = "Plugin Management";
 "ss_statistics" = "Statistics";
 "badge_admin" = "Admin";
+"tab_search" = "Search";
+"search_prompt" = "Search archives…";

@@ -77,3 +77,5 @@
 "ss_plugin_management" = "插件管理";
 "ss_statistics" = "統計信息";
 "badge_admin" = "管理員";
+"tab_search" = "搜索";
+"search_prompt" = "搜索檔案…";
