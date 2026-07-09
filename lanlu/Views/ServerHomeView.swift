@@ -5,7 +5,6 @@ struct ServerHomeView: View {
     let server: Server
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @State private var searching = ""
     @State private var showConnectionError = false
     @State private var connectionErrorText = ""
 
@@ -45,13 +44,12 @@ struct ServerHomeView: View {
 
             Tab(String(localized: "tab_search"), systemImage: "magnifyingglass", role: .search) {
                 NavigationStack {
-                    Color.clear
-                    // todo: search view
+                    SearchView(server: server)
+                        .navigationTitle(String(localized: "tab_search"))
+                        .navigationBarTitleDisplayMode(.inline)
                 }
             }
         }
-        .searchable(text: $searching, prompt: "search_prompt")
-        .navigationBarBackButtonHidden(true)
         .task {
             await checkServer()
         }

@@ -96,6 +96,12 @@ struct SearchResponse: Decodable {
     let pageSize: Int?
 }
 
+struct AutocompleteSuggestion: Decodable {
+    let value: String
+    let label: String
+    let display: String?
+}
+
 struct UserTrendData {
     let trend: [TrendPoint]
     let mostActiveDate: String?
@@ -369,7 +375,7 @@ class APIClient {
 
     // MARK: - Search
 
-    func search(favoriteOnly: Bool = false, sortby: String = "created_at", order: String = "desc", start: Int = 0, count: Int = 20) async throws -> SearchResponse {
+    func search(favoriteOnly: Bool = false, untaggedOnly: Bool = false, filter: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, start: Int = 0, count: Int = 20) async throws -> SearchResponse {
         var urlString = baseURL
         if !urlString.contains("://") {
             urlString = "https://" + urlString
@@ -388,6 +394,18 @@ class APIClient {
         ]
         if favoriteOnly {
             items.append(URLQueryItem(name: "favoriteonly", value: "true"))
+        }
+        if untaggedOnly {
+            items.append(URLQueryItem(name: "untaggedonly", value: "true"))
+        }
+        if let filter, !filter.isEmpty {
+            items.append(URLQueryItem(name: "filter", value: filter))
+        }
+        if let dateFrom, !dateFrom.isEmpty {
+            items.append(URLQueryItem(name: "date_from", value: dateFrom))
+        }
+        if let dateTo, !dateTo.isEmpty {
+            items.append(URLQueryItem(name: "date_to", value: dateTo))
         }
         baseComponents.queryItems = items
 
@@ -421,6 +439,45 @@ class APIClient {
 
     func fetchHistory(start: Int = 0, count: Int = 40) async throws -> SearchResponse {
         try await search(favoriteOnly: false, sortby: "lastreadtime", order: "desc", start: start, count: count)
+    }
+
+    // MARK: - Autocomplete
+
+    func autocomplete(query: String, limit: Int = 10) async throws -> [AutocompleteSuggestion] {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var baseComponents = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        baseComponents.path = (baseComponents.path.hasSuffix("/") ? "" : "/") + "api/tags/autocomplete"
+        baseComponents.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+        ]
+        guard let url = baseComponents.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        struct AutoCompleteEnvelope: Decodable { let suggestions: [AutocompleteSuggestion]? }
+        struct AutoCompleteResponse: Decodable { let data: AutoCompleteEnvelope? }
+
+        if let wrapper = try? JSONDecoder().decode(AutoCompleteResponse.self, from: data),
+           let list = wrapper.data?.suggestions {
+            return list
+        }
+        if let wrapper = try? JSONDecoder().decode(AutoCompleteEnvelope.self, from: data),
+           let list = wrapper.suggestions {
+            return list
+        }
+        return []
     }
 
     // MARK: - Helpers

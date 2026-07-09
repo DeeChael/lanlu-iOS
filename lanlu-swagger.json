@@ -1,36 +1,25 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Lanlu API - 漫画/档案管理服务器",
-    "description": "LANLU 是一个漫画/档案管理服务器，支持归档管理、分类、标签、单行本、用户认证（TOTP/WebAuthn）、插件系统（WASM）、搜索推荐等完整功能。\n\n## 认证方式\n\n- **Bearer Token**: 在 Authorization 头中使用 `Bearer <token>`\n- **Cookie**: 使用 `auth_token` cookie\n\n## 响应格式\n\n所有 API 响应均使用统一的 `ApiResponse<T>` 信封：\n\n```json\n{\n  \"code\": 200,\n  \"message\": \"ok\",\n  \"data\": { ... }\n}\n```\n\n## 步进认证 (Step-up Authentication)\n\n敏感操作（修改密码、TOTP 注册、WebAuthn 管理）需要步进认证。先调用 `step-up/options` 获取可用方法，再通过 `step-up/{method}` 验证。",
+    "title": "Lanlu API — 漫画/档案管理服务器",
+    "description": "LANLU 是一个漫画/档案管理服务器，使用仓颉语言和 Ignite 框架开发，支持归档管理、分类、标签、单行本合集、用户认证（TOTP/WebAuthn）、WASM 插件系统、在线源、搜索推荐、后台任务池、Cron 定时任务等功能。\n\n## 认证方式\n- **Bearer Token**: `Authorization: Bearer <token>`\n- **Cookie**: `auth_token=<token>`\n\n## 响应格式\n所有 API 响应使用 `ApiResponse<T>` 信封：\n```json\n{\"code\": 200, \"message\": \"ok\", \"data\": { ... }}\n```\n注意：档案元数据、档案文件列表、搜索等接口直接返回 JSON 对象或数组，不使用 ApiResponse 信封。\n\n## 步进认证 (Step-up Authentication)\n敏感操作（如密码修改、TOTP 注册、WebAuthn 管理）需要先通过 `/api/auth/step-up/options` 获取可用方法，再调用 `/api/auth/step-up/{method}` 验证。",
     "version": "1.0.0",
-    "contact": {
-      "name": "Lanlu"
-    }
+    "contact": { "name": "Lanlu" }
   },
   "servers": [
-    {
-      "url": "http://localhost:8082",
-      "description": "Local development"
-    }
+    { "url": "http://localhost:8082", "description": "Local development" }
   ],
   "paths": {
     "/api/info": {
       "get": {
         "tags": ["服务器信息"],
         "summary": "获取服务器信息",
-        "description": "公开接口，无需认证。返回服务器名称、版本号、档案总数等统计信息。",
+        "description": "公开接口，无需认证。返回服务器名称、版本号、档案总数、数据库扩展状态等。",
         "security": [],
         "responses": {
           "200": {
             "description": "服务器信息",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ServerInfo"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServerInfo" } } }
           }
         }
       }
@@ -39,57 +28,37 @@
       "post": {
         "tags": ["认证"],
         "summary": "用户登录",
-        "description": "使用用户名和密码登录。如果用户启用了 TOTP，返回 202 状态码要求进行两步验证。",
+        "description": "使用用户名和密码登录。如果用户启用了 TOTP，返回 202 + challengeId 要求两步验证。",
         "security": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AuthCredentialsReq"
-              }
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "登录成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginSuccessResponse"
-                }
-              }
-            }
+            "description": "登录成功，返回用户信息和 session token",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_UserTokenPair" } } }
           },
           "202": {
             "description": "需要 TOTP 两步验证",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TotpRequiredResponse"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_TotpChallenge" } } }
           },
           "401": {
             "description": "用户名或密码错误",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_String"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_String" } } }
           }
         }
       }
     },
     "/api/auth/login/totp/verify": {
       "post": {
-        "tags": ["认证"],
+        "tags": ["认证 - TOTP"],
         "summary": "TOTP 两步验证登录",
-        "description": "完成 TOTP 两步验证登录。",
+        "description": "登录时若用户启用了 TOTP，需用此接口完成第二步验证。",
         "security": [],
         "requestBody": {
           "required": true,
@@ -97,29 +66,21 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["challengeId", "code"],
                 "properties": {
-                  "challengeId": { "type": "string", "description": "登录时返回的 challengeId" },
-                  "code": { "type": "string", "description": "TOTP 验证码或恢复码" }
-                },
-                "required": ["challengeId", "code"]
+                  "challengeId": { "type": "string", "description": "登录返回的 challengeId" },
+                  "code": { "type": "string", "description": "TOTP 6 位验证码或恢复码" }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "登录成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginSuccessResponse"
-                }
-              }
-            }
+            "description": "验证成功，返回 token",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_UserTokenPair" } } }
           },
-          "401": {
-            "description": "验证码错误"
-          }
+          "401": { "description": "验证码错误或已过期" }
         }
       }
     },
@@ -127,25 +88,21 @@
       "post": {
         "tags": ["认证"],
         "summary": "注销登录",
-        "description": "注销当前会话或 Token。",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "注销成功"
-          }
-        }
+        "description": "注销当前 session 或 token。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "注销成功" } }
       }
     },
     "/api/auth/webauthn/authenticate/options": {
       "post": {
         "tags": ["认证 - WebAuthn"],
-        "summary": "WebAuthn 登录 - 获取认证选项",
+        "summary": "WebAuthn 登录 — 获取认证选项",
+        "description": "获取 WebAuthn PublicKeyCredentialRequestOptions，前端需使用 navigator.credentials.get() 完成。",
         "security": [],
         "responses": {
           "200": {
-            "description": "WebAuthn 认证选项（PublicKeyCredentialRequestOptions JSON）"
+            "description": "WebAuthn 认证选项 (JSON)",
+            "content": { "application/json": { "schema": { "type": "object" } } }
           }
         }
       }
@@ -153,14 +110,16 @@
     "/api/auth/webauthn/authenticate/verify": {
       "post": {
         "tags": ["认证 - WebAuthn"],
-        "summary": "WebAuthn 登录 - 验证认证结果",
+        "summary": "WebAuthn 登录 — 验证认证结果",
+        "description": "验证前端返回的 WebAuthn 认证结果。",
         "security": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "description": "navigator.credentials.get() 返回的 AuthenticatorAssertionResponse JSON"
               }
             }
           }
@@ -168,13 +127,7 @@
         "responses": {
           "200": {
             "description": "登录成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginSuccessResponse"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_UserTokenPair" } } }
           }
         }
       }
@@ -183,19 +136,11 @@
       "get": {
         "tags": ["认证"],
         "summary": "获取当前用户信息",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
             "description": "当前用户信息",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserDataResponse"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_UserData" } } }
           }
         }
       }
@@ -203,92 +148,63 @@
     "/api/auth/step-up/options": {
       "get": {
         "tags": ["认证 - 步进认证"],
-        "summary": "获取步进认证可用方法",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "summary": "获取可用步进认证方法",
+        "description": "返回当前用户可用的步进认证方法列表。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "可用步进认证方法列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StepUpMethodsResponse"
-                }
-              }
-            }
+            "description": "可用方法列表",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_StepUpMethods" } } }
           }
         }
       }
     },
     "/api/auth/tokens": {
       "get": {
-        "tags": ["认证 - Token 管理"],
+        "tags": ["认证 - Token"],
         "summary": "获取 API Token 列表",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "Token 列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TokensListResponse"
-                }
-              }
-            }
+            "description": "API Token 列表",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_TokenList" } } }
           }
         }
       },
       "post": {
-        "tags": ["认证 - Token 管理"],
+        "tags": ["认证 - Token"],
         "summary": "创建 API Token",
-        "description": "创建一个新的 API Token。需要步进认证。",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "description": "创建一个新的 API Token（需要步进认证）。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TokenNameReq"
+                "type": "object",
+                "required": ["name"],
+                "properties": { "name": { "type": "string", "description": "Token 名称" } }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Token 创建成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TokenCreatedResponse"
-                }
-              }
-            }
+            "description": "Token 创建成功（只在创建时返回完整 token）",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_TokenData" } } }
           }
         }
       }
     },
     "/api/auth/sessions": {
       "get": {
-        "tags": ["认证 - 会话管理"],
+        "tags": ["认证 - 会话"],
         "summary": "获取活跃会话列表",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "会话列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionsListResponse"
-                }
-              }
-            }
+            "description": "活跃会话列表",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_SessionList" } } }
           }
         }
       }
@@ -297,26 +213,18 @@
       "get": {
         "tags": ["认证 - TOTP"],
         "summary": "获取 TOTP 状态",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "TOTP 状态信息"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "TOTP 状态（是否已启用等）" } }
       }
     },
     "/api/auth/webauthn/credentials": {
       "get": {
         "tags": ["认证 - WebAuthn"],
         "summary": "获取 WebAuthn 凭证列表",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "WebAuthn 凭证列表"
+            "description": "WebAuthn 凭证列表（包含 id、创建时间等）"
           }
         }
       }
@@ -324,69 +232,53 @@
     "/api/auth/step-up/password": {
       "post": {
         "tags": ["认证 - 步进认证"],
-        "summary": "步进认证 - 密码验证",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "summary": "步进认证 — 密码验证",
+        "description": "使用当前密码完成步进认证。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "password": { "type": "string", "description": "当前密码" }
-                },
-                "required": ["password"]
+                "required": ["password"],
+                "properties": { "password": { "type": "string" } }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "验证成功"
-          }
-        }
+        "responses": { "200": { "description": "步进认证成功" }, "401": { "description": "密码错误" } }
       }
     },
     "/api/auth/step-up/totp": {
       "post": {
         "tags": ["认证 - 步进认证"],
-        "summary": "步进认证 - TOTP 验证",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "summary": "步进认证 — TOTP 验证",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "code": { "type": "string", "description": "TOTP 验证码" }
-                },
-                "required": ["code"]
+                "required": ["code"],
+                "properties": { "code": { "type": "string", "description": "TOTP 6 位验证码" } }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "验证成功"
-          }
-        }
+        "responses": { "200": { "description": "步进认证成功" } }
       }
     },
     "/api/auth/step-up/webauthn/options": {
       "post": {
         "tags": ["认证 - 步进认证"],
-        "summary": "步进认证 - WebAuthn 获取选项",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "summary": "步进认证 — WebAuthn 获取选项",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "WebAuthn 认证选项"
+            "description": "WebAuthn 认证选项",
+            "content": { "application/json": { "schema": { "type": "object" } } }
           }
         }
       }
@@ -394,38 +286,43 @@
     "/api/auth/step-up/webauthn/verify": {
       "post": {
         "tags": ["认证 - 步进认证"],
-        "summary": "步进认证 - WebAuthn 验证",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "summary": "步进认证 — WebAuthn 验证",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "description": "AuthenticatorAssertionResponse JSON"
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "验证成功"
-          }
-        }
+        "responses": { "200": { "description": "步进认证成功" } }
       }
     },
     "/api/auth/totp/enroll/start": {
       "post": {
         "tags": ["认证 - TOTP"],
         "summary": "开始 TOTP 注册",
-        "description": "开始 TOTP 注册流程。需要步进认证。",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "description": "开始 TOTP 注册流程，返回密钥和二维码 URL（需要步进认证）。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "TOTP 注册信息（密钥、二维码 URL 等）"
+            "description": "TOTP 注册信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secret": { "type": "string" },
+                    "qrUrl": { "type": "string" },
+                    "manualKey": { "type": "string" }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -434,42 +331,42 @@
       "post": {
         "tags": ["认证 - TOTP"],
         "summary": "确认 TOTP 注册",
-        "description": "通过验证码确认 TOTP 注册。需要步进认证。",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "description": "通过验证码确认 TOTP 注册（需要步进认证）。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "code": { "type": "string" }
-                },
-                "required": ["code"]
+                "required": ["code"],
+                "properties": { "code": { "type": "string" } }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "注册成功"
-          }
-        }
+        "responses": { "200": { "description": "TOTP 注册成功" } }
       }
     },
     "/api/auth/totp/recovery-codes/regenerate": {
       "post": {
         "tags": ["认证 - TOTP"],
         "summary": "重新生成 TOTP 恢复码",
-        "description": "重新生成 TOTP 恢复码。需要步进认证。",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "description": "重新生成 TOTP 恢复码（需要步进认证）。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "新的恢复码列表"
+            "description": "新的恢复码列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "codes": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -477,13 +374,13 @@
     "/api/auth/webauthn/register/options": {
       "post": {
         "tags": ["认证 - WebAuthn"],
-        "summary": "开始 WebAuthn 注册 - 获取创建选项",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "summary": "WebAuthn 注册 — 获取创建选项",
+        "description": "获取 WebAuthn PublicKeyCredentialCreationOptions。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "WebAuthn 创建选项（PublicKeyCredentialCreationOptions JSON）"
+            "description": "WebAuthn 创建选项",
+            "content": { "application/json": { "schema": { "type": "object" } } }
           }
         }
       }
@@ -491,40 +388,30 @@
     "/api/auth/webauthn/register/verify": {
       "post": {
         "tags": ["认证 - WebAuthn"],
-        "summary": "完成 WebAuthn 注册 - 验证",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "summary": "WebAuthn 注册 — 验证创建结果",
+        "description": "验证前端返回的 WebAuthn 创建结果并存储凭证。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "description": "navigator.credentials.create() 返回的 AuthenticatorAttestationResponse JSON"
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "注册成功"
-          }
-        }
+        "responses": { "200": { "description": "WebAuthn 凭证注册成功" } }
       }
     },
     "/api/auth/totp": {
       "delete": {
         "tags": ["认证 - TOTP"],
         "summary": "禁用 TOTP",
-        "description": "禁用当前用户的 TOTP 两步验证。需要步进认证。",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "TOTP 已禁用"
-          }
-        }
+        "description": "禁用当前用户的 TOTP 两步验证（需要步进认证）。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "TOTP 已禁用" } }
       }
     },
     "/api/auth/webauthn/credentials/{id}": {
@@ -534,167 +421,127 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "凭证已撤销"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "凭证已撤销" } }
       }
     },
     "/api/auth/sessions/{id}": {
       "delete": {
-        "tags": ["认证 - 会话管理"],
+        "tags": ["认证 - 会话"],
         "summary": "撤销指定会话",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "会话已撤销"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "会话已撤销" } }
       }
     },
     "/api/auth/sessions/revoke-others": {
       "post": {
-        "tags": ["认证 - 会话管理"],
+        "tags": ["认证 - 会话"],
         "summary": "撤销除当前外所有会话",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "其他会话已撤销"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "其他会话已撤销" } }
       }
     },
     "/api/auth/tokens/{id}": {
       "delete": {
-        "tags": ["认证 - Token 管理"],
+        "tags": ["认证 - Token"],
         "summary": "撤销 API Token",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "Token 已撤销"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "Token 已撤销" } }
       }
     },
     "/api/auth/password": {
       "post": {
         "tags": ["认证"],
         "summary": "修改密码",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "description": "修改当前用户密码（需要步进认证）。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPasswordReq"
+                "type": "object",
+                "required": ["currentPassword", "newPassword"],
+                "properties": {
+                  "currentPassword": { "type": "string" },
+                  "newPassword": { "type": "string" }
+                }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "密码修改成功"
-          }
-        }
+        "responses": { "200": { "description": "密码修改成功" } }
       }
     },
     "/api/auth/username": {
       "post": {
         "tags": ["认证"],
         "summary": "修改用户名",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "description": "修改当前用户名（需要步进认证）。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewUsernameReq"
+                "type": "object",
+                "required": ["newUsername"],
+                "properties": { "newUsername": { "type": "string" } }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "用户名修改成功"
-          }
-        }
+        "responses": { "200": { "description": "用户名修改成功" } }
       }
     },
     "/api/auth/admin/users": {
       "get": {
-        "tags": ["管理 - 用户管理"],
+        "tags": ["管理 - 用户"],
         "summary": "获取所有用户列表",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
             "description": "用户列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UsersListResponse"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_UserList" } } }
           }
         }
       },
       "post": {
-        "tags": ["管理 - 用户管理"],
+        "tags": ["管理 - 用户"],
         "summary": "创建新用户",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateUserReq"
+                "type": "object",
+                "required": ["username"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "isAdmin": { "type": "boolean", "default": false }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "用户创建成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserCreatedResponse"
-                }
-              }
-            }
+            "description": "用户创建成功，返回自动生成的密码",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_UserPassword" } } }
           }
         }
       }
     },
     "/api/auth/admin/users/{id}/role": {
       "put": {
-        "tags": ["管理 - 用户管理"],
+        "tags": ["管理 - 用户"],
         "summary": "更新用户角色",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
@@ -705,64 +552,39 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "isAdmin": { "type": "boolean" }
-                },
-                "required": ["isAdmin"]
+                "required": ["isAdmin"],
+                "properties": { "isAdmin": { "type": "boolean" } }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "角色更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "角色更新成功" } }
       }
     },
     "/api/auth/admin/users/{id}": {
       "delete": {
-        "tags": ["管理 - 用户管理"],
+        "tags": ["管理 - 用户"],
         "summary": "删除用户",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "用户已删除"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "用户已删除" } }
       }
     },
     "/api/auth/admin/users/{id}/reset-password": {
       "post": {
-        "tags": ["管理 - 用户管理"],
+        "tags": ["管理 - 用户"],
         "summary": "重置用户密码",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
-            "description": "密码已重置",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserPasswordResetResponse"
-                }
-              }
-            }
+            "description": "密码已重置，返回新密码",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_UserPassword" } } }
           }
         }
       }
@@ -771,32 +593,25 @@
       "get": {
         "tags": ["档案"],
         "summary": "获取档案元数据",
-        "description": "获取单个档案的详细元信息，包括标题、标签、进度、封面等。支持 source: 复合 ID（读取在线源）。",
+        "description": "获取单个档案的详细元信息。支持 source: 复合 ID（读取在线源）。响应 JSON 直接返回对象（无 ApiResponse 信封）。",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "档案 ID 或 source:namespace:remote_id 复合 ID" }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "档案 ID 或 source:namespace:remote_id 复合 ID" },
+          { "name": "lang", "in": "query", "schema": { "type": "string", "default": "zh" }, "description": "标签翻译语言" },
+          { "name": "include_pages", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "是否包含页面列表" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "档案元数据",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ArchiveMetadataResponse"
-                }
-              }
-            }
+            "description": "档案元数据对象",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArchiveMetadata" } } }
           },
-          "404": {
-            "description": "档案不存在"
-          }
+          "404": { "description": "档案不存在" }
         }
       },
       "put": {
         "tags": ["档案"],
         "summary": "更新档案元数据",
+        "description": "更新档案的标题、简介、标签等信息。在线 source 档案为只读。",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -809,38 +624,36 @@
                 "properties": {
                   "title": { "type": "string" },
                   "summary": { "type": "string" },
-                  "tags": { "type": "string", "description": "逗号分隔的 namespace:name 标签" },
+                  "description": { "type": "string" },
+                  "tags": { "type": "string", "description": "逗号分隔的 namespace:name 格式标签" },
                   "release_at": { "type": "string", "format": "date-time" }
                 }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "更新成功，返回 { operation, success }" } }
       }
     },
     "/api/archives/{id}/files": {
       "get": {
         "tags": ["档案"],
         "summary": "获取档案文件/页面列表",
+        "description": "获取档案内的页面列表，返回分组结构。支持偏移/限制、元数据包含、图片过滤。在线 source 复合 ID 返回远程页面列表。",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "path", "in": "query", "schema": { "type": "string" }, "description": "子目录路径（可选）" },
-          { "name": "page", "in": "query", "schema": { "type": "integer" }, "description": "页码（可选）" }
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 }, "description": "偏移量" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" }, "description": "限制数量" },
+          { "name": "include_metadata", "in": "query", "schema": { "type": "boolean", "default": true }, "description": "是否包含页面元数据" },
+          { "name": "images_only", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "只返回图片" },
+          { "name": "tankoubon_id", "in": "query", "schema": { "type": "string" }, "description": "单行本 ID（source 复合 ID 时使用）" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "文件列表"
+            "description": "文件列表，返回 { pages: [...] }",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArchiveFilesResponse" } } }
           }
         }
       }
@@ -848,23 +661,15 @@
     "/api/archives/{id}/tankoubons": {
       "get": {
         "tags": ["档案"],
-        "summary": "获取档案所属的合集列表",
+        "summary": "获取档案所属合集列表",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "合集列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TankoubonsListResponse"
-                }
-              }
-            }
+            "description": "合集列表，返回 { filtered, result: [...], total }",
+            "content": { "application/json": { "schema": { "type": "object" } } }
           }
         }
       }
@@ -873,18 +678,15 @@
       "get": {
         "tags": ["档案"],
         "summary": "下载档案文件",
+        "description": "下载原始档案文件（zip/rar/7z/pdf/epub 等）。",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
             "description": "二进制文件流",
-            "content": {
-              "application/octet-stream": {}
-            }
+            "content": { "application/octet-stream": {} }
           }
         }
       }
@@ -896,12 +698,10 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "下载分片信息"
+            "description": "下载分片信息（用于大文件分片下载）"
           }
         }
       }
@@ -909,28 +709,18 @@
     "/api/archives/{id}/page": {
       "get": {
         "tags": ["档案"],
-        "summary": "获取档案页面/图片",
-        "description": "支持 HTTP Range 头部用于视频/音频流媒体播放。",
+        "summary": "获取档案页面内容",
+        "description": "获取档案内指定页面的内容（图片、视频、音频或 HTML）。支持 HTTP Range 头部用于流媒体。",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "path", "in": "query", "required": true, "schema": { "type": "string" }, "description": "文件路径" }
+          { "name": "path", "in": "query", "required": true, "schema": { "type": "string" }, "description": "文件在档案内的路径" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "文件内容",
-            "content": {
-              "image/*": {},
-              "video/*": {},
-              "audio/*": {},
-              "text/html": {}
-            }
+            "description": "文件内容（根据类型返回 image/*, video/*, audio/* 或 text/html）"
           },
-          "206": {
-            "description": "部分内容（Range 请求）"
-          }
+          "206": { "description": "部分内容（Range 请求）" }
         }
       },
       "head": {
@@ -940,35 +730,22 @@
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "path", "in": "query", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "头部信息"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "Content-Type、Content-Length 等响应头" } }
       }
     },
     "/api/archives/{id}/cover": {
       "get": {
         "tags": ["档案"],
         "summary": "获取档案封面",
-        "description": "获取档案封面图片。如果封面尚未生成，返回占位图片。",
+        "description": "获取档案封面图片。若有 cover_asset_id 则 302 重定向到 /api/assets/{id}，否则返回占位图片。",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
-          "200": {
-            "description": "封面图片流",
-            "content": { "image/*": {} }
-          },
-          "302": {
-            "description": "重定向到 cover_asset_id"
-          }
+          "200": { "description": "封面图片", "content": { "image/*": {} } },
+          "302": { "description": "重定向到封面资源" }
         }
       }
     },
@@ -976,19 +753,12 @@
       "delete": {
         "tags": ["档案"],
         "summary": "删除档案",
-        "description": "删除档案及关联的封面图片。",
+        "description": "删除档案及关联数据（收藏、阅读状态、标签、封面等）。在线 source 档案不可删除。",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "档案已删除"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "档案已删除" } }
       }
     },
     "/api/archives/{id}/isnew": {
@@ -998,14 +768,8 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标记成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "标记成功" } }
       },
       "delete": {
         "tags": ["档案"],
@@ -1013,103 +777,76 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标记已清除"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "已清除标记" } }
       }
     },
     "/api/archives/{id}/progress/{page}": {
       "put": {
         "tags": ["档案"],
         "summary": "更新阅读进度",
-        "description": "更新当前用户在该档案的阅读进度并自动标记为已读。",
+        "description": "更新当前用户的阅读进度页码并自动标记为已读。",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "page", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "当前页码" }
+          { "name": "page", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "当前阅读到的页码" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "进度更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "进度更新成功" } }
       }
     },
     "/api/archives/{id}/favorite": {
       "put": {
         "tags": ["档案"],
-        "summary": "添加档案到收藏",
+        "summary": "收藏档案",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "收藏成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "收藏成功" } }
       },
       "delete": {
         "tags": ["档案"],
-        "summary": "取消档案收藏",
+        "summary": "取消收藏档案",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "已取消收藏"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "已取消收藏" } }
       }
     },
     "/api/search": {
       "get": {
         "tags": ["搜索"],
         "summary": "搜索档案",
-        "description": "搜索档案，支持过滤、分类筛选、分页、排序。支持 groupByTankoubons 聚合模式。",
+        "description": "高级搜索档案，支持关键词过滤、多分类筛选、标签过滤、日期范围、分页排序、合集合聚合、按分类聚合等。",
         "parameters": [
           { "name": "filter", "in": "query", "schema": { "type": "string" }, "description": "搜索关键词" },
-          { "name": "category", "in": "query", "schema": { "type": "string" }, "description": "分类 ID 或名称（逗号分隔）" },
-          { "name": "start", "in": "query", "schema": { "type": "integer", "default": 0 }, "description": "起始位置" },
-          { "name": "count", "in": "query", "schema": { "type": "integer", "default": 40 }, "description": "每页数量" },
-          { "name": "sortby", "in": "query", "schema": { "type": "string", "default": "created_at", "enum": ["title", "created_at", "updated_at", "release_at", "file_size", "pagecount"] } },
-          { "name": "order", "in": "query", "schema": { "type": "string", "default": "desc", "enum": ["asc", "desc"] } },
-          { "name": "newOnly", "in": "query", "schema": { "type": "boolean", "default": false } },
-          { "name": "untaggedOnly", "in": "query", "schema": { "type": "boolean", "default": false } },
-          { "name": "favoriteOnly", "in": "query", "schema": { "type": "boolean", "default": false } },
-          { "name": "groupByTankoubons", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "按合集分组" },
-          { "name": "dateFrom", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "日期范围起始" },
-          { "name": "dateTo", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "日期范围结束" },
-          { "name": "tankoubonId", "in": "query", "schema": { "type": "string" }, "description": "筛选指定合集中的档案" },
-          { "name": "tags", "in": "query", "schema": { "type": "string" }, "description": "标签过滤（逗号分隔）" },
-          { "name": "tagMode", "in": "query", "schema": { "type": "string", "enum": ["AND", "OR"], "default": "AND" }, "description": "标签匹配模式" },
-          { "name": "lang", "in": "query", "schema": { "type": "string", "default": "zh" }, "description": "标签翻译语言" }
+          { "name": "category", "in": "query", "schema": { "type": "string" }, "description": "分类 ID（内部 ID）" },
+          { "name": "category_ids", "in": "query", "schema": { "type": "string" }, "description": "多分类 ID 列表（逗号分隔），配合 aggregate_by=category 使用" },
+          { "name": "aggregate_by", "in": "query", "schema": { "type": "string", "enum": ["category"] }, "description": "聚合方式" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 200 } },
+          { "name": "start", "in": "query", "schema": { "type": "integer", "default": 0 }, "description": "传统起始偏移（与 page/pageSize 二选一）" },
+          { "name": "count", "in": "query", "schema": { "type": "integer", "default": 40 }, "description": "传统每页数量" },
+          { "name": "sortby", "in": "query", "schema": { "type": "string", "default": "title", "enum": ["title", "created_at", "updated_at", "release_at", "file_size", "pagecount"] } },
+          { "name": "order", "in": "query", "schema": { "type": "string", "default": "asc", "enum": ["asc", "desc"] } },
+          { "name": "newonly", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "只显示新档案" },
+          { "name": "untaggedonly", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "只显示未标记标签的档案" },
+          { "name": "favoriteonly", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "只显示收藏档案" },
+          { "name": "groupby_tanks", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "按合集分组（合集中的档案只显示合集）" },
+          { "name": "favorite_tankoubons_only", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "只显示收藏的合集" },
+          { "name": "date_from", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "创建日期始" },
+          { "name": "date_to", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "创建日期止" },
+          { "name": "tankoubon_id", "in": "query", "schema": { "type": "string" }, "description": "筛选指定合集中的档案（支持 source: 复合 ID）" },
+          { "name": "tags", "in": "query", "schema": { "type": "string" }, "description": "逗号分隔的标签名（namespace:name）" },
+          { "name": "tagMode", "in": "query", "schema": { "type": "string", "enum": ["AND", "OR"], "default": "AND" } },
+          { "name": "lang", "in": "query", "schema": { "type": "string" }, "description": "标签翻译语言（如 zh、en 等）" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "搜索结果",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SearchResponse"
-                }
-              }
-            }
+            "description": "搜索结果，按需返回 items 数组",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchResponse" } } }
           }
         }
       }
@@ -1118,19 +855,22 @@
       "get": {
         "tags": ["推荐"],
         "summary": "获取推荐内容",
-        "description": "获取推荐内容列表，支持发现模式和关联推荐。",
+        "description": "获取个性化推荐内容。支持发现模式（discover）、档案关联（archive_related）、合集关联（tankoubon_related）。",
         "parameters": [
-          { "name": "mode", "in": "query", "schema": { "type": "string", "enum": ["discover", "related"], "default": "discover" } },
-          { "name": "itemId", "in": "query", "schema": { "type": "string" }, "description": "关联模式下需要查找关联的档案 ID" },
-          { "name": "count", "in": "query", "schema": { "type": "integer", "default": 20 } },
-          { "name": "lang", "in": "query", "schema": { "type": "string", "default": "zh" } }
+          { "name": "scene", "in": "query", "schema": { "type": "string", "enum": ["discover", "archive_related", "tankoubon_related"], "default": "discover" } },
+          { "name": "archive_id", "in": "query", "schema": { "type": "string" }, "description": "scene=archive_related 时的源档案 ID" },
+          { "name": "tankoubon_id", "in": "query", "schema": { "type": "string" }, "description": "scene=tankoubon_related 时的源合集 ID" },
+          { "name": "category_id", "in": "query", "schema": { "type": "integer" }, "description": "scene=discover 时限定分类" },
+          { "name": "category", "in": "query", "schema": { "type": "integer" }, "description": "分类 ID（别名）" },
+          { "name": "count", "in": "query", "schema": { "type": "integer", "default": 12 } },
+          { "name": "lang", "in": "query", "schema": { "type": "string" }, "description": "标签翻译语言" },
+          { "name": "session_key", "in": "query", "schema": { "type": "string" }, "description": "推荐会话 key（也支持 X-Recommendation-Session 头部）" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "推荐列表"
+            "description": "推荐列表",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecommendationResponse" } } }
           }
         }
       }
@@ -1139,50 +879,39 @@
       "post": {
         "tags": ["推荐"],
         "summary": "记录推荐交互",
-        "description": "记录用户对推荐内容的交互行为。",
+        "description": "记录用户对推荐内容的交互行为（点击、阅读、收藏等）。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["scene", "item_type", "item_id", "interaction_type"],
                 "properties": {
-                  "itemType": { "type": "string", "enum": ["archive", "tankoubon"] },
-                  "itemId": { "type": "string" },
-                  "action": { "type": "string", "enum": ["view", "click", "read", "favorite", "dismiss"] }
-                },
-                "required": ["itemType", "itemId", "action"]
+                  "scene": { "type": "string", "description": "推荐场景" },
+                  "seed_entity_type": { "type": "string", "enum": ["archive", "tankoubon"] },
+                  "seed_entity_id": { "type": "string" },
+                  "item_type": { "type": "string", "enum": ["archive", "tankoubon"] },
+                  "item_id": { "type": "string" },
+                  "interaction_type": { "type": "string", "enum": ["view", "click", "read", "favorite", "dismiss"] },
+                  "session_key": { "type": "string" }
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "交互已记录"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "交互已记录" } }
       }
     },
     "/api/categories": {
       "get": {
         "tags": ["分类"],
         "summary": "获取所有分类",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "分类列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CategoriesListResponse"
-                }
-              }
-            }
+            "description": "分类列表"
           }
         }
       },
@@ -1194,36 +923,31 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CategoryCreateReq"
+                "type": "object",
+                "required": ["name", "scanPath"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "scanPath": { "type": "string" },
+                  "description": { "type": "string" },
+                  "icon": { "type": "string" },
+                  "sortOrder": { "type": "integer" },
+                  "plugins": { "type": "string", "description": "启用元数据插件列表 JSON" }
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "分类创建成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "分类创建成功" } }
       }
     },
     "/api/categories/scan": {
       "post": {
         "tags": ["分类"],
-        "summary": "扫描所有分类目录",
-        "description": "触发所有分类的媒体库扫描。",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "扫描任务已创建"
-          }
-        }
+        "summary": "扫描所有分类",
+        "description": "触发所有分类的媒体库重扫描（后台任务）。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "扫描任务已创建" } }
       }
     },
     "/api/categories/{id}": {
@@ -1238,20 +962,22 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CategoryUpdateReq"
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "scanPath": { "type": "string" },
+                  "description": { "type": "string" },
+                  "icon": { "type": "string" },
+                  "sortOrder": { "type": "integer" },
+                  "enabled": { "type": "boolean" },
+                  "plugins": { "type": "string" }
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "更新成功" } }
       },
       "delete": {
         "tags": ["分类"],
@@ -1259,53 +985,34 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "分类已删除"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "分类已删除" } }
       }
     },
     "/api/categories/{id}/scan": {
       "post": {
         "tags": ["分类"],
-        "summary": "扫描单个分类目录",
+        "summary": "扫描单个分类",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "扫描任务已创建"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "扫描任务已创建" } }
       }
     },
     "/api/tags": {
       "get": {
         "tags": ["标签"],
         "summary": "获取标签列表",
+        "description": "分页获取标签列表，支持搜索和命名空间过滤。",
         "parameters": [
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 50 } },
           { "name": "search", "in": "query", "schema": { "type": "string" } },
-          { "name": "namespace", "in": "query", "schema": { "type": "string" } }
+          { "name": "namespace", "in": "query", "schema": { "type": "string" }, "description": "按命名空间过滤" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标签列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "标签列表（分页）" } }
       }
     },
     "/api/tags/translations": {
@@ -1313,49 +1020,32 @@
         "tags": ["标签"],
         "summary": "获取标签翻译映射",
         "parameters": [
-          { "name": "lang", "in": "query", "schema": { "type": "string", "default": "zh" } }
+          { "name": "lang", "in": "query", "schema": { "type": "string", "default": "zh" }, "description": "目标语言" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标签翻译映射"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "标签翻译映射（namespace:name -> 翻译文本）" } }
       }
     },
     "/api/tags/namespaces": {
       "get": {
         "tags": ["标签"],
         "summary": "获取所有命名空间",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "命名空间列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "命名空间字符串列表" } }
       }
     },
     "/api/tags/autocomplete": {
       "get": {
         "tags": ["标签"],
         "summary": "标签自动补全",
+        "description": "根据前缀搜索自动补全标签。",
         "parameters": [
           { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } },
           { "name": "namespace", "in": "query", "schema": { "type": "string" } },
           { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "自动补全建议列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "自动补全建议列表" } }
       }
     },
     "/api/tags/cloud": {
@@ -1367,14 +1057,8 @@
           { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
           { "name": "namespace", "in": "query", "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标签词云"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "标签词云（按 count 降序）" } }
       }
     },
     "/api/tags/by-name": {
@@ -1384,14 +1068,8 @@
         "parameters": [
           { "name": "name", "in": "query", "required": true, "schema": { "type": "string" }, "description": "格式: namespace:name" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标签详情"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "标签详情" } }
       }
     },
     "/api/tags/{id}": {
@@ -1401,34 +1079,21 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标签详情"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "标签详情" } }
       }
     },
     "/api/admin/tags/names": {
       "get": {
-        "tags": ["管理 - 标签管理"],
+        "tags": ["管理 - 标签"],
         "summary": "获取所有标签名",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标签名列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "所有标签名列表" } }
       }
     },
     "/api/admin/tags": {
       "post": {
-        "tags": ["管理 - 标签管理"],
+        "tags": ["管理 - 标签"],
         "summary": "创建标签",
         "requestBody": {
           "required": true,
@@ -1436,29 +1101,22 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["namespace", "name"],
                 "properties": {
                   "namespace": { "type": "string" },
                   "name": { "type": "string" }
-                },
-                "required": ["namespace", "name"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标签创建成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "标签创建成功" } }
       }
     },
     "/api/admin/tags/{id}": {
       "put": {
-        "tags": ["管理 - 标签管理"],
+        "tags": ["管理 - 标签"],
         "summary": "更新标签",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
@@ -1477,51 +1135,31 @@
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "更新成功" } }
       },
       "delete": {
-        "tags": ["管理 - 标签管理"],
+        "tags": ["管理 - 标签"],
         "summary": "删除标签",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "标签已删除"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "标签已删除" } }
       }
     },
     "/api/admin/tags/export": {
       "get": {
-        "tags": ["管理 - 标签管理"],
+        "tags": ["管理 - 标签"],
         "summary": "导出标签",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "导出的标签 JSON"
-          }
-        }
+        "description": "导出所有标签为 JSON 格式。",
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "导出的标签 JSON" } }
       }
     },
     "/api/admin/tags/import/init": {
       "post": {
-        "tags": ["管理 - 标签管理"],
+        "tags": ["管理 - 标签"],
         "summary": "初始化标签导入",
         "description": "开始分片导入标签流程。",
         "requestBody": {
@@ -1530,30 +1168,23 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["fileName", "fileSize", "totalChunks"],
                 "properties": {
                   "fileName": { "type": "string" },
                   "fileSize": { "type": "integer" },
                   "totalChunks": { "type": "integer" }
-                },
-                "required": ["fileName", "fileSize", "totalChunks"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "导入会话已创建"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "导入会话已创建" } }
       }
     },
     "/api/admin/tags/import/chunk": {
       "put": {
-        "tags": ["管理 - 标签管理"],
+        "tags": ["管理 - 标签"],
         "summary": "上传标签导入分片",
         "requestBody": {
           "required": true,
@@ -1561,108 +1192,77 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["uploadId", "chunkIndex", "data"],
                 "properties": {
                   "uploadId": { "type": "string" },
                   "chunkIndex": { "type": "integer" },
                   "data": { "type": "string", "description": "Base64 编码的分片数据" }
-                },
-                "required": ["uploadId", "chunkIndex", "data"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "分片上传成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "分片上传成功" } }
       }
     },
     "/api/admin/tags/import/complete": {
       "post": {
-        "tags": ["管理 - 标签管理"],
+        "tags": ["管理 - 标签"],
         "summary": "完成标签导入",
-        "description": "完成分片标签导入流程。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "uploadId": { "type": "string" }
-                },
-                "required": ["uploadId"]
+                "required": ["uploadId"],
+                "properties": { "uploadId": { "type": "string" } }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "导入完成"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "导入完成" } }
       }
     },
     "/api/tankoubons": {
       "get": {
         "tags": ["单行本"],
         "summary": "获取所有单行本",
+        "description": "获取所有单行本（合集/卷）列表。",
         "parameters": [
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 50 } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "单行本列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TankoubonsListResponse"
-                }
-              }
-            }
+            "description": "单行本列表"
           }
         }
       },
       "put": {
         "tags": ["单行本"],
-        "summary": "创建新单行本",
+        "summary": "创建单行本",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["name"],
                 "properties": {
                   "name": { "type": "string" },
                   "summary": { "type": "string" },
                   "archives": { "type": "array", "items": { "type": "string" } }
-                },
-                "required": ["name"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "单行本创建成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "单行本创建成功" } }
       }
     },
     "/api/tankoubons/{id}/metadata": {
@@ -1672,19 +1272,11 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
-            "description": "单行本元数据",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TankoubonMetadataResponse"
-                }
-              }
-            }
+            "description": "单行本元数据（直接返回 Tankoubon JSON，无 ApiResponse 信封）",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Tankoubon" } } }
           }
         }
       },
@@ -1703,6 +1295,7 @@
                 "properties": {
                   "title": { "type": "string" },
                   "summary": { "type": "string" },
+                  "description": { "type": "string" },
                   "tags": { "type": "string" },
                   "archives": { "type": "array", "items": { "type": "string" } }
                 }
@@ -1710,14 +1303,8 @@
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "更新成功" } }
       }
     },
     "/api/tankoubons/{id}": {
@@ -1727,14 +1314,8 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "单行本已删除"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "单行本已删除" } }
       }
     },
     "/api/tankoubons/{id}/{archive}": {
@@ -1745,14 +1326,8 @@
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "archive", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "添加成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "添加成功" } }
       },
       "delete": {
         "tags": ["单行本"],
@@ -1761,14 +1336,8 @@
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "archive", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "移除成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "移除成功" } }
       }
     },
     "/api/tankoubons/{id}/favorite": {
@@ -1778,14 +1347,8 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "收藏成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "收藏成功" } }
       },
       "delete": {
         "tags": ["单行本"],
@@ -1793,91 +1356,54 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "已取消收藏"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "已取消收藏" } }
       }
     },
     "/api/smart_filters": {
       "get": {
         "tags": ["智能分类"],
         "summary": "获取启用的智能分类列表",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "智能分类列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "启用的智能分类列表" } }
       }
     },
     "/api/admin/smart_filters": {
       "get": {
         "tags": ["管理 - 智能分类"],
         "summary": "获取所有智能分类",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "所有智能分类列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "所有智能分类列表" } }
       },
       "post": {
         "tags": ["管理 - 智能分类"],
         "summary": "创建智能分类",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["name", "rules"],
                 "properties": {
                   "name": { "type": "string" },
                   "description": { "type": "string" },
-                  "rules": { "type": "object" },
-                  "sortOrder": { "type": "integer" }
-                },
-                "required": ["name", "rules"]
+                  "rules": { "type": "object", "description": "筛选规则" },
+                  "sortOrder": { "type": "integer" },
+                  "icon": { "type": "string" }
+                }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "创建成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "创建成功" } }
       }
     },
     "/api/admin/smart_filters/{id}": {
       "get": {
         "tags": ["管理 - 智能分类"],
-        "summary": "获取单个智能分类",
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
-        ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "智能分类详情"
-          }
-        }
+        "summary": "获取单个智能分类"
       },
       "put": {
         "tags": ["管理 - 智能分类"],
@@ -1885,15 +1411,8 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "更新成功" } }
       },
       "delete": {
         "tags": ["管理 - 智能分类"],
@@ -1901,31 +1420,21 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "删除成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "删除成功" } }
       }
     },
     "/api/admin/smart_filters/reorder": {
       "post": {
         "tags": ["管理 - 智能分类"],
-        "summary": "批量更新智能分类排序",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "summary": "重排智能分类顺序",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["order"],
                 "properties": {
                   "order": {
                     "type": "array",
@@ -1937,17 +1446,13 @@
                       }
                     }
                   }
-                },
-                "required": ["order"]
+                }
               }
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "排序更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "排序已更新" } }
       }
     },
     "/api/admin/smart_filters/{id}/toggle": {
@@ -1957,68 +1462,49 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "状态已切换"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "状态已切换" } }
       }
     },
     "/api/assets/{id}": {
       "get": {
-        "tags": ["资源文件"],
+        "tags": ["资源"],
         "summary": "获取资源文件",
-        "description": "获取资源文件（缩略图、头像等）。支持 ETag 和 If-None-Match 条件请求。",
+        "description": "获取资源文件（封面缩略图、头像、附件等）。支持 ETag / If-None-Match 条件请求。",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
-          "200": {
-            "description": "文件流",
-            "content": { "image/*": {} }
-          },
-          "304": {
-            "description": "Not Modified"
-          },
-          "404": {
-            "description": "资源不存在"
-          }
+          "200": { "description": "文件流", "content": { "image/*": {} } },
+          "304": { "description": "Not Modified" },
+          "404": { "description": "资源不存在" }
         }
       }
     },
     "/api/assets/upload/init": {
       "post": {
-        "tags": ["资源文件 - 上传"],
+        "tags": ["资源 - 上传"],
         "summary": "初始化分片上传",
-        "description": "开始一个分片文件上传任务。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["fileName", "fileSize", "totalChunks"],
                 "properties": {
                   "fileName": { "type": "string" },
                   "fileSize": { "type": "integer" },
                   "mimeType": { "type": "string" },
                   "totalChunks": { "type": "integer" },
                   "assetKind": { "type": "string", "enum": ["archive_cover", "avatar", "attachment", "other"] }
-                },
-                "required": ["fileName", "fileSize", "totalChunks"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
             "description": "上传会话已创建",
@@ -2039,64 +1525,45 @@
     },
     "/api/assets/upload/chunk": {
       "put": {
-        "tags": ["资源文件 - 上传"],
+        "tags": ["资源 - 上传"],
         "summary": "上传文件分片",
-        "description": "上传一个文件分片。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["taskId", "chunkIndex", "data"],
                 "properties": {
                   "taskId": { "type": "string" },
                   "chunkIndex": { "type": "integer" },
                   "data": { "type": "string", "description": "Base64 编码的分片数据" }
-                },
-                "required": ["taskId", "chunkIndex", "data"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "分片上传成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "分片上传成功" } }
       }
     },
     "/api/assets/upload/{taskId}": {
       "delete": {
-        "tags": ["资源文件 - 上传"],
+        "tags": ["资源 - 上传"],
         "summary": "取消上传任务",
         "parameters": [
           { "name": "taskId", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "上传已取消"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "上传已取消" } }
       }
     },
     "/api/user/stats": {
       "get": {
         "tags": ["用户统计"],
         "summary": "获取用户统计数据",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "用户统计数据"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "用户统计数据（阅读量、收藏数等）" } }
       }
     },
     "/api/user/trend": {
@@ -2104,41 +1571,33 @@
         "tags": ["用户统计"],
         "summary": "获取阅读趋势",
         "parameters": [
-          { "name": "days", "in": "query", "schema": { "type": "integer", "default": 30 } }
+          { "name": "days", "in": "query", "schema": { "type": "integer", "default": 30 }, "description": "统计天数" }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "阅读趋势数据"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
+        "responses": { "200": { "description": "阅读趋势数据（每日阅读量）" } }
       }
     },
     "/api/download_url": {
       "post": {
         "tags": ["档案"],
         "summary": "从 URL 下载档案",
-        "description": "从指定 URL 下载档案文件（作为后台任务）。",
+        "description": "从指定 URL 下载档案文件到媒体库（后台任务执行）。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["url"],
                 "properties": {
                   "url": { "type": "string", "format": "uri" },
                   "category": { "type": "string" }
-                },
-                "required": ["url"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
             "description": "下载任务已创建",
@@ -2146,9 +1605,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {
-                    "taskId": { "type": "integer" }
-                  }
+                  "properties": { "taskId": { "type": "integer" } }
                 }
               }
             }
@@ -2167,18 +1624,16 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["archiveId", "plugin"],
                 "properties": {
                   "archiveId": { "type": "string" },
-                  "plugin": { "type": "string" }
-                },
-                "required": ["archiveId", "plugin"]
+                  "plugin": { "type": "string", "description": "插件 namespace" }
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [] }],
         "responses": {
           "200": {
             "description": "任务已创建",
@@ -2186,9 +1641,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {
-                    "taskId": { "type": "integer" }
-                  }
+                  "properties": { "taskId": { "type": "integer" } }
                 }
               }
             }
@@ -2198,45 +1651,29 @@
     },
     "/api/admin/plugins": {
       "get": {
-        "tags": ["管理 - 插件管理"],
+        "tags": ["管理 - 插件"],
         "summary": "获取所有插件详情",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
-            "description": "插件列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginsListResponse"
-                }
-              }
-            }
+            "description": "插件列表（包含元数据、启用状态、配置等）",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_PluginList" } } }
           }
         }
       }
     },
     "/api/admin/plugins/{namespace}/config": {
       "get": {
-        "tags": ["管理 - 插件管理"],
+        "tags": ["管理 - 插件"],
         "summary": "获取插件配置",
         "parameters": [
           { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "插件配置"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "插件配置 JSON" } }
       },
       "put": {
-        "tags": ["管理 - 插件管理"],
+        "tags": ["管理 - 插件"],
         "summary": "更新插件配置",
         "parameters": [
           { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
@@ -2246,26 +1683,20 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "description": "任意 JSON 配置对象"
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "配置已更新"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "配置已更新" } }
       }
     },
     "/api/admin/plugins/{namespace}/enabled": {
       "put": {
-        "tags": ["管理 - 插件管理"],
-        "summary": "启用或禁用插件",
+        "tags": ["管理 - 插件"],
+        "summary": "启用/禁用插件",
         "parameters": [
           { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -2275,28 +1706,19 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "enabled": { "type": "boolean" }
-                },
-                "required": ["enabled"]
+                "required": ["enabled"],
+                "properties": { "enabled": { "type": "boolean" } }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "状态已更新"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "状态已更新" } }
       }
     },
     "/api/admin/plugins/install": {
       "post": {
-        "tags": ["管理 - 插件管理"],
+        "tags": ["管理 - 插件"],
         "summary": "安装插件",
         "description": "从 URL 安装 WASM 插件。",
         "requestBody": {
@@ -2305,99 +1727,64 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "url": { "type": "string", "format": "uri" }
-                },
-                "required": ["url"]
+                "required": ["url"],
+                "properties": { "url": { "type": "string", "format": "uri" } }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "插件安装成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "插件安装成功" } }
       }
     },
     "/api/admin/plugins/{namespace}": {
       "delete": {
-        "tags": ["管理 - 插件管理"],
+        "tags": ["管理 - 插件"],
         "summary": "删除插件",
         "parameters": [
           { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "插件已删除"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "插件已删除" } }
       }
     },
     "/api/admin/plugins/{namespace}/update": {
       "post": {
-        "tags": ["管理 - 插件管理"],
+        "tags": ["管理 - 插件"],
         "summary": "更新插件",
+        "description": "使用插件声明的 update_url 进行更新。",
         "parameters": [
           { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "插件已更新"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "插件已更新" } }
       }
     },
     "/api/admin/plugins/{namespace}/check_update": {
       "post": {
-        "tags": ["管理 - 插件管理"],
+        "tags": ["管理 - 插件"],
         "summary": "检查插件更新",
+        "description": "检查插件是否有新版本（优先走 ETag 条件请求）。",
         "parameters": [
           { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "检查完成"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "检查完成" } }
       }
     },
     "/api/admin/source-plugins": {
       "get": {
-        "tags": ["管理 - 在线源插件"],
+        "tags": ["管理 - 在线源"],
         "summary": "列出所有在线源插件",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "在线源插件列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "在线源插件列表" } }
       }
     },
     "/api/admin/source-plugins/{namespace}/action/{action}": {
       "post": {
-        "tags": ["管理 - 在线源插件"],
+        "tags": ["管理 - 在线源"],
         "summary": "执行在线源插件操作",
-        "description": "执行在线源插件的自定义操作。",
+        "description": "执行在线源插件的自定义操作（搜索、浏览等）。",
         "parameters": [
           { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } },
           { "name": "action", "in": "path", "required": true, "schema": { "type": "string" } }
@@ -2406,32 +1793,25 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "description": "操作参数（因 action 而异）"
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "操作结果"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "操作结果" } }
       }
     },
     "/api/admin/source-plugins/{namespace}/download": {
       "post": {
-        "tags": ["管理 - 在线源插件"],
+        "tags": ["管理 - 在线源"],
         "summary": "从在线源下载",
-        "description": "通过在线源插件下载内容。",
+        "description": "通过在线源插件下载内容到媒体库。",
         "parameters": [
           { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -2445,35 +1825,26 @@
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "下载任务已创建"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "下载任务已创建" } }
       }
     },
     "/api/admin/taskpool/tasks": {
       "get": {
         "tags": ["管理 - 任务池"],
-        "summary": "获取任务列表（SSE 流）",
-        "description": "以 SSE (Server-Sent Events) 流形式返回任务列表。",
+        "summary": "获取任务列表（SSE 事件流）",
+        "description": "以 SSE (Server-Sent Events) 流形式返回任务列表。支持分页和筛选。",
         "parameters": [
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } },
           { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "running", "completed", "failed", "cancelled", "waiting"] } },
           { "name": "taskType", "in": "query", "schema": { "type": "string" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
-            "description": "SSE 事件流"
+            "description": "SSE 事件流（data: JSON）",
+            "content": { "text/event-stream": {} }
           }
         }
       }
@@ -2485,20 +1856,11 @@
         "parameters": [
           { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
             "description": "任务详情",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskResponse"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_Task" } } }
           }
         }
       }
@@ -2507,17 +1869,15 @@
       "get": {
         "tags": ["管理 - 任务池"],
         "summary": "任务详情 SSE 流",
-        "description": "以 SSE 流形式返回任务实时状态更新。",
+        "description": "以 SSE 流形式返回任务的实时状态更新。",
         "parameters": [
           { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
-            "description": "SSE 事件流"
+            "description": "SSE 事件流",
+            "content": { "text/event-stream": {} }
           }
         }
       }
@@ -2529,15 +1889,8 @@
         "parameters": [
           { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "任务已取消"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "任务已取消" } }
       }
     },
     "/api/admin/taskpool/{taskId}/retry": {
@@ -2547,21 +1900,14 @@
         "parameters": [
           { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "任务已重新加入队列"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "任务已重新加入队列" } }
       }
     },
     "/api/admin/taskpool/{taskId}/rpc/select": {
       "post": {
         "tags": ["管理 - 任务池"],
-        "summary": "响应 RPC 选择请求",
+        "summary": "响应 RPC 选择",
         "description": "响应运行中任务的 RPC 选择请求（用于元数据预览的人工选择）。",
         "parameters": [
           { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
@@ -2572,23 +1918,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "selected": { "type": "string" }
-                },
-                "required": ["selected"]
+                "required": ["selected"],
+                "properties": { "selected": { "type": "string" } }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "选择已提交"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "选择已提交" } }
       }
     },
     "/api/admin/taskpool/{taskId}/progress": {
@@ -2604,69 +1941,41 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["progress"],
                 "properties": {
                   "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
                   "message": { "type": "string" }
-                },
-                "required": ["progress"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "进度已更新"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "进度已更新" } }
       }
     },
     "/api/admin/cron/status": {
       "get": {
         "tags": ["管理 - 定时任务"],
         "summary": "获取 Cron 服务状态",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "Cron 服务状态"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "Cron 服务状态（运行中/已停止）" } }
       }
     },
     "/api/admin/cron/start": {
       "post": {
         "tags": ["管理 - 定时任务"],
         "summary": "启动 Cron 服务",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "Cron 服务已启动"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "Cron 服务已启动" } }
       }
     },
     "/api/admin/cron/stop": {
       "post": {
         "tags": ["管理 - 定时任务"],
         "summary": "停止 Cron 服务",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "Cron 服务已停止"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "Cron 服务已停止" } }
       }
     },
     "/api/admin/cron/validate": {
@@ -2679,18 +1988,13 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "expression": { "type": "string" }
-                },
-                "required": ["expression"]
+                "required": ["expression"],
+                "properties": { "expression": { "type": "string", "example": "0 */6 * * *" } }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
             "description": "验证结果",
@@ -2713,40 +2017,24 @@
     "/api/admin/cron/task-types": {
       "get": {
         "tags": ["管理 - 定时任务"],
-        "summary": "获取可用任务类型列表",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "任务类型列表"
-          }
-        }
+        "summary": "获取可用任务类型",
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "任务类型字符串数组" } }
       }
     },
     "/api/admin/cron/tasks": {
       "get": {
         "tags": ["管理 - 定时任务"],
-        "summary": "获取定时任务列表",
+        "summary": "获取定时任务列表（分页）",
         "parameters": [
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
             "description": "定时任务列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduledTaskListResponse"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_ScheduledTaskList" } } }
           }
         }
       },
@@ -2758,20 +2046,23 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ScheduledTaskCreateReq"
+                "type": "object",
+                "required": ["name", "cronExpression", "taskType"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "cronExpression": { "type": "string", "example": "0 */6 * * *" },
+                  "taskType": { "type": "string" },
+                  "taskParameters": { "type": "string" },
+                  "enabled": { "type": "boolean", "default": true },
+                  "priority": { "type": "integer", "default": 50 },
+                  "timeoutSeconds": { "type": "integer", "default": 3600 }
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "定时任务创建成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "定时任务创建成功" } }
       }
     },
     "/api/admin/cron/tasks/{id}": {
@@ -2781,20 +2072,11 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
         "responses": {
           "200": {
             "description": "定时任务详情",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScheduledTaskResponse"
-                }
-              }
-            }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse_ScheduledTask" } } }
           }
         }
       },
@@ -2809,20 +2091,22 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ScheduledTaskCreateReq"
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "cronExpression": { "type": "string" },
+                  "taskType": { "type": "string" },
+                  "taskParameters": { "type": "string" },
+                  "enabled": { "type": "boolean" },
+                  "priority": { "type": "integer" },
+                  "timeoutSeconds": { "type": "integer" }
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "更新成功"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "更新成功" } }
       },
       "delete": {
         "tags": ["管理 - 定时任务"],
@@ -2830,15 +2114,8 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "定时任务已删除"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "定时任务已删除" } }
       }
     },
     "/api/admin/cron/tasks/{id}/trigger": {
@@ -2848,15 +2125,8 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "任务已触发"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "任务已触发" } }
       }
     },
     "/api/admin/cron/tasks/{id}/enable": {
@@ -2866,15 +2136,8 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "定时任务已启用"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "定时任务已启用" } }
       }
     },
     "/api/admin/cron/tasks/{id}/disable": {
@@ -2884,30 +2147,16 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "定时任务已禁用"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "定时任务已禁用" } }
       }
     },
     "/api/admin/system/settings": {
       "get": {
         "tags": ["管理 - 系统设置"],
         "summary": "获取所有系统设置",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "系统设置列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "系统设置列表（键值对）" } }
       },
       "put": {
         "tags": ["管理 - 系统设置"],
@@ -2918,24 +2167,17 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["key", "value"],
                 "properties": {
                   "key": { "type": "string" },
                   "value": { "type": "string" }
-                },
-                "required": ["key", "value"]
+                }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "设置已更新"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "设置已更新" } }
       }
     },
     "/api/admin/system/settings/batch": {
@@ -2948,50 +2190,30 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": { "type": "string" }
+                "additionalProperties": { "type": "string" },
+                "example": { "SERVER_NAME": "My Server", "ASSET_PATH": "/data/assets" }
               }
             }
           }
         },
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "设置已批量更新"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "设置已批量更新" } }
       }
     },
     "/api/admin/system/settings/categories": {
       "get": {
         "tags": ["管理 - 系统设置"],
         "summary": "获取设置分类",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "设置分类列表"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "设置分类列表" } }
       }
     },
     "/api/admin/system/settings/reload": {
       "post": {
         "tags": ["管理 - 系统设置"],
         "summary": "重新加载设置缓存",
-        "security": [
-          { "bearerAuth": [], "cookieAuth": [] },
-          { "adminAuth": [] }
-        ],
-        "responses": {
-          "200": {
-            "description": "缓存已重新加载"
-          }
-        }
+        "security": [{ "bearerAuth": [], "cookieAuth": [], "adminAuth": [] }],
+        "responses": { "200": { "description": "缓存已重新加载" } }
       }
     }
   },
@@ -3018,50 +2240,19 @@
       "ApiResponse_String": {
         "type": "object",
         "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
           "data": { "type": "string", "nullable": true }
-        },
-        "description": "标准 API 响应信封（字符串数据）"
+        }
       },
-      "AuthCredentialsReq": {
+      "LoginRequest": {
         "type": "object",
-        "properties": {
-          "username": { "type": "string", "description": "用户名" },
-          "password": { "type": "string", "description": "密码" },
-          "tokenName": { "type": "string", "description": "Token 名称（可选，默认 'login'）" }
-        },
-        "required": ["username", "password"]
-      },
-      "TokenNameReq": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string", "description": "Token 名称" }
-        },
-        "required": ["name"]
-      },
-      "NewPasswordReq": {
-        "type": "object",
-        "properties": {
-          "currentPassword": { "type": "string", "description": "当前密码" },
-          "newPassword": { "type": "string", "description": "新密码" }
-        },
-        "required": ["currentPassword", "newPassword"]
-      },
-      "NewUsernameReq": {
-        "type": "object",
-        "properties": {
-          "newUsername": { "type": "string", "description": "新用户名" }
-        },
-        "required": ["newUsername"]
-      },
-      "CreateUserReq": {
-        "type": "object",
+        "required": ["username", "password"],
         "properties": {
           "username": { "type": "string" },
-          "isAdmin": { "type": "boolean", "default": false }
-        },
-        "required": ["username"]
+          "password": { "type": "string" },
+          "tokenName": { "type": "string", "default": "login" }
+        }
       },
       "UserView": {
         "type": "object",
@@ -3089,31 +2280,73 @@
           "expiresAt": { "type": "string", "format": "date-time", "nullable": true }
         }
       },
-      "UserTokenPairView": {
+      "UserTokenPair": {
         "type": "object",
         "properties": {
           "user": { "$ref": "#/components/schemas/UserView" },
           "token": { "$ref": "#/components/schemas/TokenView" }
         }
       },
-      "LoginPendingTotpDataView": {
+      "ApiResponse_UserTokenPair": {
         "type": "object",
         "properties": {
-          "requiresTotp": { "type": "boolean" },
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "$ref": "#/components/schemas/UserTokenPair" }
+        }
+      },
+      "TotpChallenge": {
+        "type": "object",
+        "properties": {
+          "requiresTotp": { "type": "boolean", "example": true },
           "challengeId": { "type": "string" },
-          "methods": { "type": "array", "items": { "type": "string" } }
+          "methods": { "type": "array", "items": { "type": "string" }, "example": ["totp", "recovery_code"] }
+        }
+      },
+      "ApiResponse_TotpChallenge": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 202 },
+          "message": { "type": "string", "example": "totp required" },
+          "data": { "$ref": "#/components/schemas/TotpChallenge" }
         }
       },
       "UserDataView": {
         "type": "object",
+        "properties": { "user": { "$ref": "#/components/schemas/UserView" } }
+      },
+      "ApiResponse_UserData": {
+        "type": "object",
         "properties": {
-          "user": { "$ref": "#/components/schemas/UserView" }
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/UserDataView" }
+        }
+      },
+      "StepUpMethodsView": {
+        "type": "object",
+        "properties": {
+          "methods": { "type": "array", "items": { "type": "string" }, "example": ["password", "totp", "passkey"] }
+        }
+      },
+      "ApiResponse_StepUpMethods": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "$ref": "#/components/schemas/StepUpMethodsView" }
         }
       },
       "TokenDataView": {
         "type": "object",
+        "properties": { "token": { "$ref": "#/components/schemas/TokenView" } }
+      },
+      "ApiResponse_TokenData": {
+        "type": "object",
         "properties": {
-          "token": { "$ref": "#/components/schemas/TokenView" }
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "$ref": "#/components/schemas/TokenDataView" }
         }
       },
       "TokensDataView": {
@@ -3122,10 +2355,26 @@
           "tokens": { "type": "array", "items": { "$ref": "#/components/schemas/TokenView" } }
         }
       },
+      "ApiResponse_TokenList": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "$ref": "#/components/schemas/TokensDataView" }
+        }
+      },
       "SessionsDataView": {
         "type": "object",
         "properties": {
           "sessions": { "type": "array", "items": { "$ref": "#/components/schemas/TokenView" } }
+        }
+      },
+      "ApiResponse_SessionList": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "$ref": "#/components/schemas/SessionsDataView" }
         }
       },
       "UsersDataView": {
@@ -3134,44 +2383,7 @@
           "users": { "type": "array", "items": { "$ref": "#/components/schemas/UserView" } }
         }
       },
-      "UserAndPasswordView": {
-        "type": "object",
-        "properties": {
-          "user": { "$ref": "#/components/schemas/UserView" },
-          "generatedPassword": { "type": "string" }
-        }
-      },
-      "StepUpMethodsDataView": {
-        "type": "object",
-        "properties": {
-          "methods": { "type": "array", "items": { "type": "string" }, "description": "可选方法: password, totp, passkey" }
-        }
-      },
-      "LoginSuccessResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer", "example": 200 },
-          "message": { "type": "string", "example": "ok" },
-          "data": { "$ref": "#/components/schemas/UserTokenPairView" }
-        }
-      },
-      "TotpRequiredResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer", "example": 202 },
-          "message": { "type": "string", "example": "totp required" },
-          "data": { "$ref": "#/components/schemas/LoginPendingTotpDataView" }
-        }
-      },
-      "UserDataResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer", "example": 200 },
-          "message": { "type": "string", "example": "ok" },
-          "data": { "$ref": "#/components/schemas/UserDataView" }
-        }
-      },
-      "UsersListResponse": {
+      "ApiResponse_UserList": {
         "type": "object",
         "properties": {
           "code": { "type": "integer" },
@@ -3179,70 +2391,31 @@
           "data": { "$ref": "#/components/schemas/UsersDataView" }
         }
       },
-      "TokensListResponse": {
+      "UserPasswordView": {
+        "type": "object",
+        "properties": {
+          "user": { "$ref": "#/components/schemas/UserView" },
+          "generatedPassword": { "type": "string" }
+        }
+      },
+      "ApiResponse_UserPassword": {
         "type": "object",
         "properties": {
           "code": { "type": "integer" },
           "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/TokensDataView" }
-        }
-      },
-      "SessionsListResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/SessionsDataView" }
-        }
-      },
-      "TokenCreatedResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer", "example": 200 },
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/TokenDataView" }
-        }
-      },
-      "UserCreatedResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/UserAndPasswordView" }
-        }
-      },
-      "UserPasswordResetResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
-          "data": {
-            "type": "object",
-            "properties": {
-              "user": { "$ref": "#/components/schemas/UserView" },
-              "generatedPassword": { "type": "string" }
-            }
-          }
-        }
-      },
-      "StepUpMethodsResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/StepUpMethodsDataView" }
+          "data": { "$ref": "#/components/schemas/UserPasswordView" }
         }
       },
       "ServerInfo": {
         "type": "object",
         "properties": {
-          "motd": { "type": "string", "description": "服务器欢迎消息" },
+          "motd": { "type": "string", "description": "欢迎消息" },
           "name": { "type": "string", "description": "服务器名称" },
           "total_archives": { "type": "integer", "description": "档案总数" },
           "total_pages_read": { "type": "integer", "description": "全局总阅读页数" },
-          "version": { "type": "string", "description": "应用版本" },
+          "version": { "type": "string" },
           "version_desc": { "type": "string", "description": "详细版本信息" },
-          "version_name": { "type": "string", "description": "编程语言版本名称" },
+          "version_name": { "type": "string", "example": "Cangjie" },
           "db_extensions": {
             "type": "array",
             "items": {
@@ -3252,39 +2425,221 @@
                 "enabled": { "type": "boolean" },
                 "version": { "type": "string" }
               }
-            },
-            "description": "数据库扩展状态"
+            }
           }
         }
       },
-      "Archive": {
+      "ArchiveFileSource": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "description": "档案唯一标识符 (arcid)" },
+          "id": { "type": "string" },
+          "path": { "type": "string" },
+          "type": { "type": "string", "enum": ["image", "video", "audio", "html"] },
           "title": { "type": "string" },
-          "filename": { "type": "string" },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "description": { "type": "string" },
+              "thumb_asset_id": { "type": "integer" },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "slot": { "type": "string" },
+                    "asset_id": { "type": "integer" },
+                    "name": { "type": "string" },
+                    "mime_type": { "type": "string" },
+                    "kind": { "type": "string" },
+                    "language": { "type": "string" },
+                    "order_index": { "type": "integer" }
+                  }
+                }
+              },
+              "release_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      },
+      "ArchiveFilePage": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "title": { "type": "string" },
+          "group_key": { "type": "string" },
+          "default_source_index": { "type": "integer" },
+          "source_count": { "type": "integer" },
+          "default_source": { "$ref": "#/components/schemas/ArchiveFileSource" },
+          "sources": { "type": "array", "items": { "$ref": "#/components/schemas/ArchiveFileSource" } },
+          "metadata": { "$ref": "#/components/schemas/ArchiveFileSource/properties/metadata" }
+        }
+      },
+      "ArchiveFilesResponse": {
+        "type": "object",
+        "properties": {
+          "pages": { "type": "array", "items": { "$ref": "#/components/schemas/ArchiveFilePage" } }
+        }
+      },
+      "ArchiveMetadata": {
+        "type": "object",
+        "description": "档案元数据（直接返回，无 ApiResponse 信封）",
+        "properties": {
+          "arcid": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
           "summary": { "type": "string" },
-          "thumbhash": { "type": "string" },
-          "cover_asset_id": { "type": "integer" },
+          "tags": { "oneOf": [
+            { "type": "string", "description": "逗号分隔的 namespace:name 格式" },
+            { "type": "array", "items": { "type": "string" }, "description": "source 档案返回数组" }
+          ] },
+          "pagecount": { "type": "integer" },
+          "page_count": { "type": "integer" },
+          "progress": { "type": "integer" },
+          "isnew": { "type": "boolean" },
+          "isfavorite": { "type": "boolean" },
+          "archivetype": { "type": "string", "enum": ["archive", "folder", "pdf", "epub", "image"] },
+          "lastreadtime": { "type": "integer" },
+          "size": { "type": "integer" },
+          "assets": { "type": "object", "description": "资源映射 { cover: assetId, ... }" },
+          "filename": { "type": "string" },
+          "relative_path": { "type": "string" },
+          "thumbnail_hash": { "type": "string" },
+          "release_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "capabilities": { "type": "array", "items": { "type": "string" }, "example": ["read", "download", "progress", "favorite", "isnew"] },
+          "children": {
+            "type": "array",
+            "description": "source 档案的子项列表",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entity_type": { "type": "string", "enum": ["archive", "page"] },
+                "entity_id": { "type": "string" },
+                "title": { "type": "string" },
+                "path": { "type": "string" },
+                "media_type": { "type": "string" },
+                "description": { "type": "string" },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "sort_order": { "type": "integer" }
+              }
+            }
+          }
+        }
+      },
+      "SearchItemArchive": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["archive"] },
+          "arcid": { "type": "string" },
+          "archivetype": { "type": "string", "enum": ["archive", "folder", "pdf", "epub"] },
+          "filename": { "type": "string" },
+          "isnew": { "type": "boolean" },
+          "isfavorite": { "type": "boolean" },
+          "favoritetime": { "type": "integer" },
+          "lastreadtime": { "type": "integer" },
+          "pagecount": { "type": "integer" },
+          "progress": { "type": "integer" },
+          "size": { "type": "integer" },
+          "assets": { "type": "object" },
+          "description": { "type": "string" },
+          "summary": { "type": "string" },
+          "tags": { "type": "string" },
+          "title": { "type": "string" },
+          "release_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SearchItemTankoubon": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["tankoubon"] },
+          "tankoubon_id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "assets": { "type": "object" },
+          "tags": { "type": "string" },
+          "children": { "type": "array", "items": { "type": "string" } },
+          "pagecount": { "type": "integer" },
+          "progress": { "type": "integer" },
+          "lastreadtime": { "type": "string", "format": "date-time" },
           "release_at": { "type": "string", "format": "date-time" },
           "created_at": { "type": "string", "format": "date-time" },
           "updated_at": { "type": "string", "format": "date-time" },
-          "relative_path": { "type": "string" },
-          "file_size": { "type": "integer", "description": "文件大小（字节）" },
-          "pagecount": { "type": "integer", "description": "页数" },
-          "archive_type": { "type": "string", "enum": ["archive", "folder", "pdf", "epub"] },
-          "tags": { "type": "string", "description": "逗号分隔的 namespace:name 标签" },
-          "progress": { "type": "integer", "description": "当前用户阅读进度" },
-          "last_read_time": { "type": "string", "format": "date-time" },
           "isnew": { "type": "boolean" },
+          "archive_count": { "type": "integer" },
           "isfavorite": { "type": "boolean" },
-          "assets": { "type": "object", "description": "档案资源资产映射" },
-          "children": { "type": "array", "items": { "type": "string" }, "description": "子档案 ID 列表（用于聚合模式）" }
+          "favoritetime": { "type": "integer" }
         }
       },
-      "ArchiveMetadataResponse": {
+      "SearchResponse": {
         "type": "object",
-        "description": "档案元数据响应（直接返回 Archive 对象，不经过 ApiResponse 信封）"
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/SearchItemArchive" },
+                { "$ref": "#/components/schemas/SearchItemTankoubon" }
+              ]
+            }
+          },
+          "draw": { "type": "integer", "example": 0 },
+          "page": { "type": "integer" },
+          "pageSize": { "type": "integer" },
+          "recordsFiltered": { "type": "integer" },
+          "recordsTotal": { "type": "integer" },
+          "groups": {
+            "type": "array",
+            "description": "aggregate_by=category 时返回此字段",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category_id": { "type": "string" },
+                "data": { "type": "array", "items": { "type": "object" } },
+                "recordsFiltered": { "type": "integer" },
+                "recordsTotal": { "type": "integer" }
+              }
+            }
+          }
+        }
+      },
+      "RecommendationItem": {
+        "type": "object",
+        "description": "推荐项，根据 type 不同包含对应字段",
+        "properties": {
+          "type": { "type": "string", "enum": ["archive", "tankoubon"] },
+          "arcid": { "type": "string" },
+          "tankoubon_id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "archivetype": { "type": "string" },
+          "filename": { "type": "string" },
+          "isnew": { "type": "boolean" },
+          "isfavorite": { "type": "boolean" },
+          "favoritetime": { "type": "integer" },
+          "lastreadtime": { "type": "integer" },
+          "pagecount": { "type": "integer" },
+          "progress": { "type": "integer" },
+          "size": { "type": "integer" },
+          "assets": { "type": "object" },
+          "tags": { "type": "string" },
+          "children": { "type": "array", "items": { "type": "string" } },
+          "release_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "score": { "type": "number", "description": "推荐得分" }
+        }
+      },
+      "RecommendationResponse": {
+        "type": "object",
+        "properties": {
+          "scene": { "type": "string" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/RecommendationItem" } }
+        }
       },
       "Tankoubon": {
         "type": "object",
@@ -3294,7 +2649,7 @@
           "description": { "type": "string" },
           "tags": { "type": "string" },
           "assets": { "type": "object" },
-          "children": { "type": "array", "items": { "type": "string" } },
+          "children": { "type": "array", "items": { "type": "string" }, "description": "包含的档案 ID 列表" },
           "archive_count": { "type": "integer" },
           "pagecount": { "type": "integer" },
           "progress": { "type": "integer" },
@@ -3306,84 +2661,20 @@
           "isfavorite": { "type": "boolean" }
         }
       },
-      "TankoubonMetadataResponse": {
-        "type": "object",
-        "description": "单行本元数据响应（直接返回 Tankoubon JSON）"
-      },
-      "TankoubonsListResponse": {
-        "type": "object",
-        "description": "单行本列表响应"
-      },
       "Category": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "description": "分类唯一标识符 (catid)" },
+          "id": { "type": "string" },
           "name": { "type": "string" },
-          "scanPath": { "type": "string", "description": "扫描目录路径" },
+          "scanPath": { "type": "string" },
           "description": { "type": "string" },
           "icon": { "type": "string" },
           "sortOrder": { "type": "integer" },
           "enabled": { "type": "boolean" },
-          "plugins": { "type": "string", "description": "启用的元数据插件列表 (JSON 数组)" },
+          "plugins": { "type": "string" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" },
           "archiveCount": { "type": "integer" }
-        }
-      },
-      "CategoriesListResponse": {
-        "type": "object",
-        "description": "分类列表响应"
-      },
-      "CategoryCreateReq": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string" },
-          "scanPath": { "type": "string" },
-          "description": { "type": "string" },
-          "icon": { "type": "string" },
-          "sortOrder": { "type": "integer" },
-          "plugins": { "type": "string" }
-        },
-        "required": ["name", "scanPath"]
-      },
-      "CategoryUpdateReq": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string" },
-          "scanPath": { "type": "string" },
-          "description": { "type": "string" },
-          "icon": { "type": "string" },
-          "sortOrder": { "type": "integer" },
-          "enabled": { "type": "boolean" },
-          "plugins": { "type": "string" }
-        }
-      },
-      "SearchResponse": {
-        "type": "object",
-        "description": "搜索结果响应",
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "item_type": { "type": "string", "enum": ["archive", "tankoubon"] },
-                "item_id": { "type": "string" }
-              }
-            }
-          },
-          "total": { "type": "integer" },
-          "archives": {
-            "type": "object",
-            "additionalProperties:": { "$ref": "#/components/schemas/Archive" },
-            "description": "档案 ID 到 Archive 对象的映射"
-          },
-          "tankoubons": {
-            "type": "object",
-            "additionalProperties:": { "$ref": "#/components/schemas/Tankoubon" },
-            "description": "单行本 ID 到 Tankoubon 对象的映射"
-          },
-          "tag_translations": { "type": "object" }
         }
       },
       "Task": {
@@ -3410,11 +2701,11 @@
           "activeKey": { "type": "string" }
         }
       },
-      "TaskResponse": {
+      "ApiResponse_Task": {
         "type": "object",
         "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
           "data": { "$ref": "#/components/schemas/Task" }
         }
       },
@@ -3452,20 +2743,12 @@
           "updatedBy": { "type": "string" }
         }
       },
-      "ScheduledTaskResponse": {
+      "ApiResponse_ScheduledTask": {
         "type": "object",
         "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
           "data": { "$ref": "#/components/schemas/ScheduledTask" }
-        }
-      },
-      "ScheduledTaskListResponse": {
-        "type": "object",
-        "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/ScheduledTaskPageResult" }
         }
       },
       "ScheduledTaskPageResult": {
@@ -3478,18 +2761,13 @@
           "totalPages": { "type": "integer" }
         }
       },
-      "ScheduledTaskCreateReq": {
+      "ApiResponse_ScheduledTaskList": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "cronExpression": { "type": "string" },
-          "taskType": { "type": "string" },
-          "taskParameters": { "type": "string" },
-          "enabled": { "type": "boolean", "default": true },
-          "priority": { "type": "integer", "default": 50 },
-          "timeoutSeconds": { "type": "integer", "default": 3600 }
-        },
-        "required": ["name", "cronExpression", "taskType"]
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "$ref": "#/components/schemas/ScheduledTaskPageResult" }
+        }
       },
       "PluginMetadata": {
         "type": "object",
@@ -3519,44 +2797,41 @@
           "config": { "type": "object" }
         }
       },
-      "PluginsListResponse": {
+      "ApiResponse_PluginList": {
         "type": "object",
         "properties": {
-          "code": { "type": "integer" },
-          "message": { "type": "string" },
-          "data": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/PluginMetadata" }
-          }
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/PluginMetadata" } }
         }
       }
     }
   },
   "tags": [
-    { "name": "服务器信息", "description": "服务器信息和状态接口" },
-    { "name": "认证", "description": "用户认证相关接口（登录、登出、修改密码等）" },
-    { "name": "认证 - TOTP", "description": "TOTP 两步验证相关接口" },
-    { "name": "认证 - WebAuthn", "description": "WebAuthn 密码密钥相关接口" },
-    { "name": "认证 - 步进认证", "description": "步进认证（Step-up Authentication）相关接口" },
-    { "name": "认证 - Token 管理", "description": "API Token 创建、查看、撤销" },
-    { "name": "认证 - 会话管理", "description": "用户会话查看和撤销" },
-    { "name": "管理 - 用户管理", "description": "管理员用户管理接口" },
-    { "name": "档案", "description": "档案/漫画的浏览、阅读、下载和元数据管理" },
-    { "name": "搜索", "description": "搜索接口，支持高级过滤和聚合" },
-    { "name": "推荐", "description": "推荐系统接口" },
-    { "name": "分类", "description": "媒体库分类管理" },
-    { "name": "标签", "description": "标签浏览和查询" },
-    { "name": "管理 - 标签管理", "description": "管理员标签管理（CRUD、导入导出）" },
-    { "name": "单行本", "description": "单行本（合集/卷）管理" },
-    { "name": "智能分类", "description": "智能分类（用户可看）" },
-    { "name": "管理 - 智能分类", "description": "智能分类管理（管理员）" },
-    { "name": "资源文件", "description": "静态资源文件服务" },
-    { "name": "资源文件 - 上传", "description": "分片文件上传" },
-    { "name": "用户统计", "description": "用户阅读统计和趋势" },
-    { "name": "管理 - 插件管理", "description": "WASM 插件管理" },
-    { "name": "管理 - 在线源插件", "description": "在线源插件管理" },
-    { "name": "管理 - 任务池", "description": "后台任务池管理" },
-    { "name": "管理 - 定时任务", "description": "Cron 定时任务管理" },
+    { "name": "服务器信息", "description": "服务器信息" },
+    { "name": "认证", "description": "登录、登出、密码修改" },
+    { "name": "认证 - TOTP", "description": "TOTP 两步验证" },
+    { "name": "认证 - WebAuthn", "description": "WebAuthn 密码密钥" },
+    { "name": "认证 - 步进认证", "description": "步进认证（敏感操作需二次验证）" },
+    { "name": "认证 - Token", "description": "API Token 管理" },
+    { "name": "认证 - 会话", "description": "会话管理" },
+    { "name": "管理 - 用户", "description": "管理员用户管理" },
+    { "name": "档案", "description": "档案/漫画浏览、阅读、下载、元数据管理" },
+    { "name": "搜索", "description": "高级搜索与过滤" },
+    { "name": "推荐", "description": "基于标签的智能推荐" },
+    { "name": "分类", "description": "媒体库分类目录管理" },
+    { "name": "标签", "description": "标签浏览与查询" },
+    { "name": "管理 - 标签", "description": "管理员标签管理" },
+    { "name": "单行本", "description": "单行本/合集管理" },
+    { "name": "智能分类", "description": "智能筛选分类" },
+    { "name": "管理 - 智能分类", "description": "智能分类管理" },
+    { "name": "资源", "description": "静态文件服务" },
+    { "name": "资源 - 上传", "description": "分片文件上传" },
+    { "name": "用户统计", "description": "阅读统计和趋势" },
+    { "name": "管理 - 插件", "description": "WASM 插件管理" },
+    { "name": "管理 - 在线源", "description": "在线源插件（搜索/下载）" },
+    { "name": "管理 - 任务池", "description": "后台任务管理" },
+    { "name": "管理 - 定时任务", "description": "Cron 定时任务" },
     { "name": "管理 - 系统设置", "description": "系统设置管理" }
   ]
 }
