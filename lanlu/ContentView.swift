@@ -6,10 +6,10 @@ struct ContentView: View {
     @Query(sort: \Server.lastUsedAt, order: .reverse) private var servers: [Server]
     @State private var showAddServer = false
     @State private var serverToEdit: Server?
-    @State private var navPath = NavigationPath()
+    @State private var activeServer: Server?
 
     var body: some View {
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             Group {
                 if servers.isEmpty {
                     emptyState
@@ -35,7 +35,7 @@ struct ContentView: View {
             .onChange(of: showAddServer) { _, isShowing in
                 if !isShowing { serverToEdit = nil }
             }
-            .navigationDestination(for: Server.self) { server in
+            .fullScreenCover(item: $activeServer) { server in
                 ServerHomeView(server: server)
             }
             .task {
@@ -52,7 +52,7 @@ struct ContentView: View {
             return
         }
         LogManager.shared.log("Auto-navigating to \(server.name) (\(url))")
-        navPath.append(server)
+        activeServer = server
     }
 
     private var emptyState: some View {
@@ -73,9 +73,12 @@ struct ContentView: View {
     private var serverList: some View {
         List {
             ForEach(servers) { server in
-                NavigationLink(value: server) {
+                Button {
+                    activeServer = server
+                } label: {
                     ServerRow(server: server)
                 }
+                .buttonStyle(.plain)
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
                         modelContext.delete(server)

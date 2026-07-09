@@ -79,3 +79,6 @@
 "badge_admin" = "Admin";
 "tab_search" = "Search";
 "search_prompt" = "Search archives…";
+"tab_history" = "History";
+"history_placeholder" = "History";
+"history_placeholder_desc" = "Your reading history will appear here";

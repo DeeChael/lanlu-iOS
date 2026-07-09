@@ -100,7 +100,7 @@ struct SettingsTabView: View {
                         .font(.caption)
                 }
 
-                LazyVGrid(columns: gridCols, spacing: 12) {
+                LazyVGrid(columns: gridCols, spacing: 4) {
                     StatCell(icon: "heart.fill", label: String(localized: "stat_favorites"), value: "\(stats?.favoriteCount ?? 0)")
                     StatCell(icon: "checkmark.circle.fill", label: String(localized: "stat_read_archives"), value: "\(stats?.readCount ?? 0)")
                     StatCell(icon: "book.pages.fill", label: String(localized: "stat_pages_read"), value: "\(stats?.totalPagesRead ?? 0)")
@@ -326,7 +326,6 @@ struct SettingsTabView: View {
                 }
             }
         }
-        .navigationTitle(String(localized: "tab_settings"))
         .task {
             await loadUserInfo()
             async let s = loadStats()
@@ -449,7 +448,7 @@ struct StatCell: View {
                 .fontWeight(.bold)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 12)
         .padding(.vertical, 12)
         .frame(maxHeight: .infinity)
         .background(Color(.systemGray6))

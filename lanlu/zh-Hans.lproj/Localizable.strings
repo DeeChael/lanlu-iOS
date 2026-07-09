@@ -79,3 +79,6 @@
 "badge_admin" = "管理员";
 "tab_search" = "搜索";
 "search_prompt" = "搜索档案…";
+"tab_history" = "历史";
+"history_placeholder" = "历史";
+"history_placeholder_desc" = "您的阅读历史将出现在这里";
