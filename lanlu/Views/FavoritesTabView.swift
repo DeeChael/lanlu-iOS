@@ -92,10 +92,7 @@ struct ArchiveGridCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            coverView
-                .aspectRatio(3.0 / 4.0, contentMode: .fill)
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+        coverView
 
             MarqueeText(text: archive.filename ?? archive.title ?? "---")
                 .font(.subheadline)
@@ -119,14 +116,22 @@ struct ArchiveGridCell: View {
 
     @ViewBuilder
     private var coverView: some View {
-        if let data = coverData, let uiImage = UIImage(data: data) {
-            Image(uiImage: uiImage)
-                .resizable()
-        } else {
-            Rectangle()
-                .fill(Color(.systemGray5))
-                .overlay { Image(systemName: "photo").foregroundColor(.secondary) }
-        }
+        Rectangle()
+            .fill(.clear)
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .overlay {
+                if let data = coverData, let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Rectangle()
+                        .fill(Color(.systemGray5))
+                        .overlay { Image(systemName: "photo").foregroundColor(.secondary) }
+                }
+            }
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private func loadCover() async {
