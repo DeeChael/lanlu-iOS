@@ -121,4 +121,5 @@
 "filter_date_enable" = "啟用日期範圍";
 "search_tag_count" = "個標籤";
 "clear_history_confirm" = "確認清除所有搜索記錄？此操作不可撤銷。";
-"clear_history_confirm" = "確認清除所有搜索記錄？此操作不可撤銷。";
+"delete" = "刪除";
+"search_clear_history" = "清除所有記錄";
