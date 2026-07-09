@@ -37,3 +37,13 @@
 "home_placeholder_desc" = "瀏覽和閱讀您的檔案";
 "favorites_placeholder" = "收藏";
 "favorites_placeholder_desc" = "您收藏的檔案將出現在這裡";
+"stats_title" = "統計數據";
+"stat_favorites" = "收藏";
+"stat_read_archives" = "已讀歸檔";
+"stat_pages_read" = "閱讀頁數";
+"stat_total_archives" = "總歸檔";
+"trend_title" = "閱讀趨勢";
+"trend_most_active" = "最活躍";
+"trend_active_days" = "有閱讀天數";
+"trend_max_count" = "閱讀量";
+"trend_empty" = "暫無閱讀趨勢數據。";

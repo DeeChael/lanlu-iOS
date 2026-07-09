@@ -37,3 +37,13 @@
 "home_placeholder_desc" = "浏览和阅读您的档案";
 "favorites_placeholder" = "收藏";
 "favorites_placeholder_desc" = "您收藏的档案将出现在这里";
+"stats_title" = "统计数据";
+"stat_favorites" = "收藏";
+"stat_read_archives" = "已读归档";
+"stat_pages_read" = "阅读页数";
+"stat_total_archives" = "总归档";
+"trend_title" = "阅读趋势";
+"trend_most_active" = "最活跃";
+"trend_active_days" = "有阅读天数";
+"trend_max_count" = "阅读量";
+"trend_empty" = "暂无阅读趋势数据。";

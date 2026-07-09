@@ -37,3 +37,13 @@
 "home_placeholder_desc" = "Browse and read your archives";
 "favorites_placeholder" = "Favorites";
 "favorites_placeholder_desc" = "Your favorite archives will appear here";
+"stats_title" = "Statistics";
+"stat_favorites" = "Favorites";
+"stat_read_archives" = "Read";
+"stat_pages_read" = "Pages Read";
+"stat_total_archives" = "Total Archives";
+"trend_title" = "Reading Trend";
+"trend_most_active" = "Most Active";
+"trend_active_days" = "Active Days";
+"trend_max_count" = "Peak Reads";
+"trend_empty" = "No reading trend data available yet.";

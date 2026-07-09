@@ -37,6 +37,38 @@ struct UserInfoData: Decodable {
     let user: UserData
 }
 
+struct UserStatsData: Decodable {
+    let favoriteCount: Int?
+    let readCount: Int?
+    let totalPagesRead: Int?
+    let totalArchives: Int?
+}
+
+struct TrendPoint: Decodable {
+    let date: String
+    let count: Int
+}
+
+struct UserTrendData {
+    let trend: [TrendPoint]
+    let mostActiveDate: String?
+    let activeDays: Int?
+    let maxCount: Int?
+
+    init(trend: [TrendPoint]) {
+        self.trend = trend
+        self.activeDays = trend.filter { $0.count > 0 }.count
+        let maxPoint = trend.max(by: { $0.count < $1.count })
+        if let mp = maxPoint, mp.count > 0 {
+            mostActiveDate = mp.date
+            maxCount = mp.count
+        } else {
+            mostActiveDate = nil
+            maxCount = 0
+        }
+    }
+}
+
 // MARK: - Auth Errors
 
 enum AuthError: LocalizedError, Equatable {
@@ -171,6 +203,107 @@ class APIClient {
         default:
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
+    }
+
+    // MARK: - User Stats
+
+    func fetchStats() async throws -> UserStatsData {
+        let url = try makeURL("/api/user/stats")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        print("[API] /api/user/stats status: \(httpResponse.statusCode)")
+        print("[API] /api/user/stats body: \(String(data: data, encoding: .utf8) ?? "nil")")
+
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        if let envelope = try? JSONDecoder().decode(ApiEnvelope<UserStatsData>.self, from: data),
+           let stats = envelope.data {
+            return stats
+        }
+        if let stats = try? JSONDecoder().decode(UserStatsData.self, from: data) {
+            return stats
+        }
+        if let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let inner = (raw["data"] as? [String: Any]) ?? raw
+            return UserStatsData(
+                favoriteCount: inner["favoriteCount"] as? Int,
+                readCount: inner["readCount"] as? Int,
+                totalPagesRead: inner["totalPagesRead"] as? Int ?? inner["total_pages_read"] as? Int,
+                totalArchives: inner["totalArchives"] as? Int ?? inner["total_archives"] as? Int
+            )
+        }
+        throw AuthError.networkError(String(localized: "connection_failed"))
+    }
+
+    func fetchTrend(days: Int = 30) async throws -> UserTrendData {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.path = "/api/user/trend"
+        components.queryItems = [URLQueryItem(name: "days", value: "\(days)")]
+
+        var urlString = baseURL
+        if !urlString.contains("://") {
+            urlString = "https://" + urlString
+        }
+
+        guard var baseComponents = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+
+        baseComponents.path = (baseComponents.path.hasSuffix("/") ? "" : "/") + "api/user/trend"
+        baseComponents.queryItems = [URLQueryItem(name: "days", value: "\(days)")]
+
+        guard let url = baseComponents.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        print("[API] /api/user/trend status: \(httpResponse.statusCode)")
+        print("[API] /api/user/trend body: \(String(data: data, encoding: .utf8) ?? "nil")")
+
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        if let envelope = try? JSONDecoder().decode(ApiEnvelope<[TrendPoint]>.self, from: data),
+           let points = envelope.data {
+            return UserTrendData(trend: points)
+        }
+        if let points = try? JSONDecoder().decode([TrendPoint].self, from: data) {
+            return UserTrendData(trend: points)
+        }
+        if let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let arr = raw["data"] as? [[String: Any]] {
+                let points = arr.compactMap { item -> TrendPoint? in
+                    guard let date = item["date"] as? String, let count = item["count"] as? Int else {
+                        return nil
+                    }
+                    return TrendPoint(date: date, count: count)
+                }
+                return UserTrendData(trend: points)
+            }
+        }
+        if let arr = try? JSONDecoder().decode([TrendPoint].self, from: data) {
+            return UserTrendData(trend: arr)
+        }
+        throw AuthError.networkError(String(localized: "connection_failed"))
     }
 
     // MARK: - Helpers
