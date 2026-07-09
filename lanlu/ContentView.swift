@@ -1,61 +1,139 @@
-//
-//  ContentView.swift
-//  lanlu
-//
-//  Created by Deerio on 2026/7/8.
-//
-
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query(sort: \Server.lastUsedAt, order: .reverse) private var servers: [Server]
+    @State private var showAddServer = false
+    @State private var serverToEdit: Server?
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        NavigationStack {
+            Group {
+                if servers.isEmpty {
+                    emptyState
+                } else {
+                    serverList
                 }
-                .onDelete(perform: deleteItems)
             }
+            .navigationTitle(String(localized: "app_name"))
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                    Button {
+                        serverToEdit = nil
+                        showAddServer = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .fontWeight(.semibold)
                     }
                 }
             }
-        } detail: {
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+            .sheet(isPresented: $showAddServer) {
+                AddServerView(existingServer: serverToEdit)
             }
+            .onChange(of: showAddServer) { _, isShowing in
+                if !isShowing { serverToEdit = nil }
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Text(String(localized: "no_servers_yet"))
+                .foregroundColor(.secondary)
+
+            Button {
+                serverToEdit = nil
+                showAddServer = true
+            } label: {
+                Text(String(localized: "add_server"))
+                    .fontWeight(.semibold)
+            }
+        }
+    }
+
+    private var serverList: some View {
+        List {
+            ForEach(servers) { server in
+                NavigationLink {
+                    ServerHomeView(server: server)
+                } label: {
+                    ServerRow(server: server)
+                }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        modelContext.delete(server)
+                    } label: {
+                        Image(systemName: "trash.fill")
+                    }
+
+                    Button {
+                        serverToEdit = server
+                        showAddServer = true
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .tint(.blue)
+                }
+            }
+        }
+    }
+
+    private func deleteServers(at offsets: IndexSet) {
+        for index in offsets {
+            modelContext.delete(servers[index])
         }
     }
 }
 
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+func lastUsedFormatted(_ date: Date) -> String {
+    let now = Date()
+    let interval = now.timeIntervalSince(date)
+
+    if interval < 60 {
+        return String(localized: "just_now")
+    }
+
+    let calendar = Calendar.current
+    if interval < 7 * 24 * 60 * 60 {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: now)
+    }
+
+    let isThisYear = calendar.isDate(date, equalTo: now, toGranularity: .year)
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = isThisYear ? "M/d" : "y/M/d"
+    return dateFormatter.string(from: date)
+}
+
+struct ServerRow: View {
+    let server: Server
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(server.name)
+                .font(.headline)
+
+            Text(server.baseURL)
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 4) {
+                if let lastUsed = server.lastUsedAt {
+                    Text(String(localized: "last_used"))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text(lastUsedFormatted(lastUsed))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text(String(localized: "never_used"))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
 }

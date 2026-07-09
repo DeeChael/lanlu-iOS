@@ -1,26 +1,12 @@
-//
-//  lanluApp.swift
-//  lanlu
-//
-//  Created by Deerio on 2026/7/8.
-//
-
 import SwiftUI
 import SwiftData
 
 @main
 struct lanluApp: App {
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
+        let schema = Schema([Server.self])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
+        return try! ModelContainer(for: schema, configurations: [modelConfiguration])
     }()
 
     var body: some Scene {

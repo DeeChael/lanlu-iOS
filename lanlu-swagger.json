@@ -1,0 +1,3562 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Lanlu API - 漫画/档案管理服务器",
+    "description": "LANLU 是一个漫画/档案管理服务器，支持归档管理、分类、标签、单行本、用户认证（TOTP/WebAuthn）、插件系统（WASM）、搜索推荐等完整功能。\n\n## 认证方式\n\n- **Bearer Token**: 在 Authorization 头中使用 `Bearer <token>`\n- **Cookie**: 使用 `auth_token` cookie\n\n## 响应格式\n\n所有 API 响应均使用统一的 `ApiResponse<T>` 信封：\n\n```json\n{\n  \"code\": 200,\n  \"message\": \"ok\",\n  \"data\": { ... }\n}\n```\n\n## 步进认证 (Step-up Authentication)\n\n敏感操作（修改密码、TOTP 注册、WebAuthn 管理）需要步进认证。先调用 `step-up/options` 获取可用方法，再通过 `step-up/{method}` 验证。",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Lanlu"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8082",
+      "description": "Local development"
+    }
+  ],
+  "paths": {
+    "/api/info": {
+      "get": {
+        "tags": ["服务器信息"],
+        "summary": "获取服务器信息",
+        "description": "公开接口，无需认证。返回服务器名称、版本号、档案总数等统计信息。",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "服务器信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "用户登录",
+        "description": "使用用户名和密码登录。如果用户启用了 TOTP，返回 202 状态码要求进行两步验证。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthCredentialsReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginSuccessResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "需要 TOTP 两步验证",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpRequiredResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "用户名或密码错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login/totp/verify": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "TOTP 两步验证登录",
+        "description": "完成 TOTP 两步验证登录。",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "challengeId": { "type": "string", "description": "登录时返回的 challengeId" },
+                  "code": { "type": "string", "description": "TOTP 验证码或恢复码" }
+                },
+                "required": ["challengeId", "code"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginSuccessResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "验证码错误"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "注销登录",
+        "description": "注销当前会话或 Token。",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "注销成功"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/authenticate/options": {
+      "post": {
+        "tags": ["认证 - WebAuthn"],
+        "summary": "WebAuthn 登录 - 获取认证选项",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "WebAuthn 认证选项（PublicKeyCredentialRequestOptions JSON）"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/authenticate/verify": {
+      "post": {
+        "tags": ["认证 - WebAuthn"],
+        "summary": "WebAuthn 登录 - 验证认证结果",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginSuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["认证"],
+        "summary": "获取当前用户信息",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前用户信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDataResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/step-up/options": {
+      "get": {
+        "tags": ["认证 - 步进认证"],
+        "summary": "获取步进认证可用方法",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "可用步进认证方法列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepUpMethodsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/tokens": {
+      "get": {
+        "tags": ["认证 - Token 管理"],
+        "summary": "获取 API Token 列表",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token 列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["认证 - Token 管理"],
+        "summary": "创建 API Token",
+        "description": "创建一个新的 API Token。需要步进认证。",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenNameReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token 创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCreatedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/sessions": {
+      "get": {
+        "tags": ["认证 - 会话管理"],
+        "summary": "获取活跃会话列表",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "会话列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/totp/status": {
+      "get": {
+        "tags": ["认证 - TOTP"],
+        "summary": "获取 TOTP 状态",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "TOTP 状态信息"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/credentials": {
+      "get": {
+        "tags": ["认证 - WebAuthn"],
+        "summary": "获取 WebAuthn 凭证列表",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "WebAuthn 凭证列表"
+          }
+        }
+      }
+    },
+    "/api/auth/step-up/password": {
+      "post": {
+        "tags": ["认证 - 步进认证"],
+        "summary": "步进认证 - 密码验证",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "password": { "type": "string", "description": "当前密码" }
+                },
+                "required": ["password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "验证成功"
+          }
+        }
+      }
+    },
+    "/api/auth/step-up/totp": {
+      "post": {
+        "tags": ["认证 - 步进认证"],
+        "summary": "步进认证 - TOTP 验证",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": { "type": "string", "description": "TOTP 验证码" }
+                },
+                "required": ["code"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "验证成功"
+          }
+        }
+      }
+    },
+    "/api/auth/step-up/webauthn/options": {
+      "post": {
+        "tags": ["认证 - 步进认证"],
+        "summary": "步进认证 - WebAuthn 获取选项",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "WebAuthn 认证选项"
+          }
+        }
+      }
+    },
+    "/api/auth/step-up/webauthn/verify": {
+      "post": {
+        "tags": ["认证 - 步进认证"],
+        "summary": "步进认证 - WebAuthn 验证",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "验证成功"
+          }
+        }
+      }
+    },
+    "/api/auth/totp/enroll/start": {
+      "post": {
+        "tags": ["认证 - TOTP"],
+        "summary": "开始 TOTP 注册",
+        "description": "开始 TOTP 注册流程。需要步进认证。",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "TOTP 注册信息（密钥、二维码 URL 等）"
+          }
+        }
+      }
+    },
+    "/api/auth/totp/enroll/confirm": {
+      "post": {
+        "tags": ["认证 - TOTP"],
+        "summary": "确认 TOTP 注册",
+        "description": "通过验证码确认 TOTP 注册。需要步进认证。",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": { "type": "string" }
+                },
+                "required": ["code"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功"
+          }
+        }
+      }
+    },
+    "/api/auth/totp/recovery-codes/regenerate": {
+      "post": {
+        "tags": ["认证 - TOTP"],
+        "summary": "重新生成 TOTP 恢复码",
+        "description": "重新生成 TOTP 恢复码。需要步进认证。",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "新的恢复码列表"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/register/options": {
+      "post": {
+        "tags": ["认证 - WebAuthn"],
+        "summary": "开始 WebAuthn 注册 - 获取创建选项",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "WebAuthn 创建选项（PublicKeyCredentialCreationOptions JSON）"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/register/verify": {
+      "post": {
+        "tags": ["认证 - WebAuthn"],
+        "summary": "完成 WebAuthn 注册 - 验证",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功"
+          }
+        }
+      }
+    },
+    "/api/auth/totp": {
+      "delete": {
+        "tags": ["认证 - TOTP"],
+        "summary": "禁用 TOTP",
+        "description": "禁用当前用户的 TOTP 两步验证。需要步进认证。",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "TOTP 已禁用"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/credentials/{id}": {
+      "delete": {
+        "tags": ["认证 - WebAuthn"],
+        "summary": "撤销 WebAuthn 凭证",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "凭证已撤销"
+          }
+        }
+      }
+    },
+    "/api/auth/sessions/{id}": {
+      "delete": {
+        "tags": ["认证 - 会话管理"],
+        "summary": "撤销指定会话",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "会话已撤销"
+          }
+        }
+      }
+    },
+    "/api/auth/sessions/revoke-others": {
+      "post": {
+        "tags": ["认证 - 会话管理"],
+        "summary": "撤销除当前外所有会话",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "其他会话已撤销"
+          }
+        }
+      }
+    },
+    "/api/auth/tokens/{id}": {
+      "delete": {
+        "tags": ["认证 - Token 管理"],
+        "summary": "撤销 API Token",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token 已撤销"
+          }
+        }
+      }
+    },
+    "/api/auth/password": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "修改密码",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPasswordReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "密码修改成功"
+          }
+        }
+      }
+    },
+    "/api/auth/username": {
+      "post": {
+        "tags": ["认证"],
+        "summary": "修改用户名",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewUsernameReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "用户名修改成功"
+          }
+        }
+      }
+    },
+    "/api/auth/admin/users": {
+      "get": {
+        "tags": ["管理 - 用户管理"],
+        "summary": "获取所有用户列表",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "用户列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsersListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["管理 - 用户管理"],
+        "summary": "创建新用户",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "用户创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserCreatedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/admin/users/{id}/role": {
+      "put": {
+        "tags": ["管理 - 用户管理"],
+        "summary": "更新用户角色",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "isAdmin": { "type": "boolean" }
+                },
+                "required": ["isAdmin"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "角色更新成功"
+          }
+        }
+      }
+    },
+    "/api/auth/admin/users/{id}": {
+      "delete": {
+        "tags": ["管理 - 用户管理"],
+        "summary": "删除用户",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "用户已删除"
+          }
+        }
+      }
+    },
+    "/api/auth/admin/users/{id}/reset-password": {
+      "post": {
+        "tags": ["管理 - 用户管理"],
+        "summary": "重置用户密码",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "密码已重置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPasswordResetResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/metadata": {
+      "get": {
+        "tags": ["档案"],
+        "summary": "获取档案元数据",
+        "description": "获取单个档案的详细元信息，包括标题、标签、进度、封面等。支持 source: 复合 ID（读取在线源）。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "档案 ID 或 source:namespace:remote_id 复合 ID" }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "档案元数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveMetadataResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "档案不存在"
+          }
+        }
+      },
+      "put": {
+        "tags": ["档案"],
+        "summary": "更新档案元数据",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "summary": { "type": "string" },
+                  "tags": { "type": "string", "description": "逗号分隔的 namespace:name 标签" },
+                  "release_at": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/files": {
+      "get": {
+        "tags": ["档案"],
+        "summary": "获取档案文件/页面列表",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "path", "in": "query", "schema": { "type": "string" }, "description": "子目录路径（可选）" },
+          { "name": "page", "in": "query", "schema": { "type": "integer" }, "description": "页码（可选）" }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "文件列表"
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/tankoubons": {
+      "get": {
+        "tags": ["档案"],
+        "summary": "获取档案所属的合集列表",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "合集列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TankoubonsListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/download": {
+      "get": {
+        "tags": ["档案"],
+        "summary": "下载档案文件",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "二进制文件流",
+            "content": {
+              "application/octet-stream": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/download/parts": {
+      "get": {
+        "tags": ["档案"],
+        "summary": "获取下载分片信息",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "下载分片信息"
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/page": {
+      "get": {
+        "tags": ["档案"],
+        "summary": "获取档案页面/图片",
+        "description": "支持 HTTP Range 头部用于视频/音频流媒体播放。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "path", "in": "query", "required": true, "schema": { "type": "string" }, "description": "文件路径" }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "文件内容",
+            "content": {
+              "image/*": {},
+              "video/*": {},
+              "audio/*": {},
+              "text/html": {}
+            }
+          },
+          "206": {
+            "description": "部分内容（Range 请求）"
+          }
+        }
+      },
+      "head": {
+        "tags": ["档案"],
+        "summary": "获取档案页面头部信息",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "path", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "头部信息"
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/cover": {
+      "get": {
+        "tags": ["档案"],
+        "summary": "获取档案封面",
+        "description": "获取档案封面图片。如果封面尚未生成，返回占位图片。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "封面图片流",
+            "content": { "image/*": {} }
+          },
+          "302": {
+            "description": "重定向到 cover_asset_id"
+          }
+        }
+      }
+    },
+    "/api/archives/{id}": {
+      "delete": {
+        "tags": ["档案"],
+        "summary": "删除档案",
+        "description": "删除档案及关联的封面图片。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "档案已删除"
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/isnew": {
+      "put": {
+        "tags": ["档案"],
+        "summary": "标记档案为最新",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标记成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["档案"],
+        "summary": "清除最新标记",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标记已清除"
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/progress/{page}": {
+      "put": {
+        "tags": ["档案"],
+        "summary": "更新阅读进度",
+        "description": "更新当前用户在该档案的阅读进度并自动标记为已读。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "page", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "当前页码" }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "进度更新成功"
+          }
+        }
+      }
+    },
+    "/api/archives/{id}/favorite": {
+      "put": {
+        "tags": ["档案"],
+        "summary": "添加档案到收藏",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "收藏成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["档案"],
+        "summary": "取消档案收藏",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "已取消收藏"
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "tags": ["搜索"],
+        "summary": "搜索档案",
+        "description": "搜索档案，支持过滤、分类筛选、分页、排序。支持 groupByTankoubons 聚合模式。",
+        "parameters": [
+          { "name": "filter", "in": "query", "schema": { "type": "string" }, "description": "搜索关键词" },
+          { "name": "category", "in": "query", "schema": { "type": "string" }, "description": "分类 ID 或名称（逗号分隔）" },
+          { "name": "start", "in": "query", "schema": { "type": "integer", "default": 0 }, "description": "起始位置" },
+          { "name": "count", "in": "query", "schema": { "type": "integer", "default": 40 }, "description": "每页数量" },
+          { "name": "sortby", "in": "query", "schema": { "type": "string", "default": "created_at", "enum": ["title", "created_at", "updated_at", "release_at", "file_size", "pagecount"] } },
+          { "name": "order", "in": "query", "schema": { "type": "string", "default": "desc", "enum": ["asc", "desc"] } },
+          { "name": "newOnly", "in": "query", "schema": { "type": "boolean", "default": false } },
+          { "name": "untaggedOnly", "in": "query", "schema": { "type": "boolean", "default": false } },
+          { "name": "favoriteOnly", "in": "query", "schema": { "type": "boolean", "default": false } },
+          { "name": "groupByTankoubons", "in": "query", "schema": { "type": "boolean", "default": false }, "description": "按合集分组" },
+          { "name": "dateFrom", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "日期范围起始" },
+          { "name": "dateTo", "in": "query", "schema": { "type": "string", "format": "date" }, "description": "日期范围结束" },
+          { "name": "tankoubonId", "in": "query", "schema": { "type": "string" }, "description": "筛选指定合集中的档案" },
+          { "name": "tags", "in": "query", "schema": { "type": "string" }, "description": "标签过滤（逗号分隔）" },
+          { "name": "tagMode", "in": "query", "schema": { "type": "string", "enum": ["AND", "OR"], "default": "AND" }, "description": "标签匹配模式" },
+          { "name": "lang", "in": "query", "schema": { "type": "string", "default": "zh" }, "description": "标签翻译语言" }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "搜索结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recommendations": {
+      "get": {
+        "tags": ["推荐"],
+        "summary": "获取推荐内容",
+        "description": "获取推荐内容列表，支持发现模式和关联推荐。",
+        "parameters": [
+          { "name": "mode", "in": "query", "schema": { "type": "string", "enum": ["discover", "related"], "default": "discover" } },
+          { "name": "itemId", "in": "query", "schema": { "type": "string" }, "description": "关联模式下需要查找关联的档案 ID" },
+          { "name": "count", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "lang", "in": "query", "schema": { "type": "string", "default": "zh" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "推荐列表"
+          }
+        }
+      }
+    },
+    "/api/recommendations/interactions": {
+      "post": {
+        "tags": ["推荐"],
+        "summary": "记录推荐交互",
+        "description": "记录用户对推荐内容的交互行为。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "itemType": { "type": "string", "enum": ["archive", "tankoubon"] },
+                  "itemId": { "type": "string" },
+                  "action": { "type": "string", "enum": ["view", "click", "read", "favorite", "dismiss"] }
+                },
+                "required": ["itemType", "itemId", "action"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "交互已记录"
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": ["分类"],
+        "summary": "获取所有分类",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "分类列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriesListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["分类"],
+        "summary": "创建新分类",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryCreateReq"
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "分类创建成功"
+          }
+        }
+      }
+    },
+    "/api/categories/scan": {
+      "post": {
+        "tags": ["分类"],
+        "summary": "扫描所有分类目录",
+        "description": "触发所有分类的媒体库扫描。",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "扫描任务已创建"
+          }
+        }
+      }
+    },
+    "/api/categories/{id}": {
+      "put": {
+        "tags": ["分类"],
+        "summary": "更新分类",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryUpdateReq"
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["分类"],
+        "summary": "删除分类",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "分类已删除"
+          }
+        }
+      }
+    },
+    "/api/categories/{id}/scan": {
+      "post": {
+        "tags": ["分类"],
+        "summary": "扫描单个分类目录",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "扫描任务已创建"
+          }
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "tags": ["标签"],
+        "summary": "获取标签列表",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "namespace", "in": "query", "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标签列表"
+          }
+        }
+      }
+    },
+    "/api/tags/translations": {
+      "get": {
+        "tags": ["标签"],
+        "summary": "获取标签翻译映射",
+        "parameters": [
+          { "name": "lang", "in": "query", "schema": { "type": "string", "default": "zh" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标签翻译映射"
+          }
+        }
+      }
+    },
+    "/api/tags/namespaces": {
+      "get": {
+        "tags": ["标签"],
+        "summary": "获取所有命名空间",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "命名空间列表"
+          }
+        }
+      }
+    },
+    "/api/tags/autocomplete": {
+      "get": {
+        "tags": ["标签"],
+        "summary": "标签自动补全",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "namespace", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "自动补全建议列表"
+          }
+        }
+      }
+    },
+    "/api/tags/cloud": {
+      "get": {
+        "tags": ["标签"],
+        "summary": "标签词云",
+        "description": "按使用次数统计返回标签词云。",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
+          { "name": "namespace", "in": "query", "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标签词云"
+          }
+        }
+      }
+    },
+    "/api/tags/by-name": {
+      "get": {
+        "tags": ["标签"],
+        "summary": "按名称获取标签",
+        "parameters": [
+          { "name": "name", "in": "query", "required": true, "schema": { "type": "string" }, "description": "格式: namespace:name" }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标签详情"
+          }
+        }
+      }
+    },
+    "/api/tags/{id}": {
+      "get": {
+        "tags": ["标签"],
+        "summary": "按 ID 获取标签",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标签详情"
+          }
+        }
+      }
+    },
+    "/api/admin/tags/names": {
+      "get": {
+        "tags": ["管理 - 标签管理"],
+        "summary": "获取所有标签名",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标签名列表"
+          }
+        }
+      }
+    },
+    "/api/admin/tags": {
+      "post": {
+        "tags": ["管理 - 标签管理"],
+        "summary": "创建标签",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "namespace": { "type": "string" },
+                  "name": { "type": "string" }
+                },
+                "required": ["namespace", "name"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标签创建成功"
+          }
+        }
+      }
+    },
+    "/api/admin/tags/{id}": {
+      "put": {
+        "tags": ["管理 - 标签管理"],
+        "summary": "更新标签",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "namespace": { "type": "string" },
+                  "name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["管理 - 标签管理"],
+        "summary": "删除标签",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "标签已删除"
+          }
+        }
+      }
+    },
+    "/api/admin/tags/export": {
+      "get": {
+        "tags": ["管理 - 标签管理"],
+        "summary": "导出标签",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "导出的标签 JSON"
+          }
+        }
+      }
+    },
+    "/api/admin/tags/import/init": {
+      "post": {
+        "tags": ["管理 - 标签管理"],
+        "summary": "初始化标签导入",
+        "description": "开始分片导入标签流程。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fileName": { "type": "string" },
+                  "fileSize": { "type": "integer" },
+                  "totalChunks": { "type": "integer" }
+                },
+                "required": ["fileName", "fileSize", "totalChunks"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "导入会话已创建"
+          }
+        }
+      }
+    },
+    "/api/admin/tags/import/chunk": {
+      "put": {
+        "tags": ["管理 - 标签管理"],
+        "summary": "上传标签导入分片",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uploadId": { "type": "string" },
+                  "chunkIndex": { "type": "integer" },
+                  "data": { "type": "string", "description": "Base64 编码的分片数据" }
+                },
+                "required": ["uploadId", "chunkIndex", "data"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "分片上传成功"
+          }
+        }
+      }
+    },
+    "/api/admin/tags/import/complete": {
+      "post": {
+        "tags": ["管理 - 标签管理"],
+        "summary": "完成标签导入",
+        "description": "完成分片标签导入流程。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uploadId": { "type": "string" }
+                },
+                "required": ["uploadId"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "导入完成"
+          }
+        }
+      }
+    },
+    "/api/tankoubons": {
+      "get": {
+        "tags": ["单行本"],
+        "summary": "获取所有单行本",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "单行本列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TankoubonsListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["单行本"],
+        "summary": "创建新单行本",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "summary": { "type": "string" },
+                  "archives": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "单行本创建成功"
+          }
+        }
+      }
+    },
+    "/api/tankoubons/{id}/metadata": {
+      "get": {
+        "tags": ["单行本"],
+        "summary": "获取单行本元数据",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "单行本元数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TankoubonMetadataResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["单行本"],
+        "summary": "更新单行本元数据",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "summary": { "type": "string" },
+                  "tags": { "type": "string" },
+                  "archives": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      }
+    },
+    "/api/tankoubons/{id}": {
+      "delete": {
+        "tags": ["单行本"],
+        "summary": "删除单行本",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "单行本已删除"
+          }
+        }
+      }
+    },
+    "/api/tankoubons/{id}/{archive}": {
+      "put": {
+        "tags": ["单行本"],
+        "summary": "向单行本添加档案",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "archive", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "添加成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["单行本"],
+        "summary": "从单行本移除档案",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "archive", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "移除成功"
+          }
+        }
+      }
+    },
+    "/api/tankoubons/{id}/favorite": {
+      "put": {
+        "tags": ["单行本"],
+        "summary": "收藏单行本",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "收藏成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["单行本"],
+        "summary": "取消收藏单行本",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "已取消收藏"
+          }
+        }
+      }
+    },
+    "/api/smart_filters": {
+      "get": {
+        "tags": ["智能分类"],
+        "summary": "获取启用的智能分类列表",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "智能分类列表"
+          }
+        }
+      }
+    },
+    "/api/admin/smart_filters": {
+      "get": {
+        "tags": ["管理 - 智能分类"],
+        "summary": "获取所有智能分类",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "所有智能分类列表"
+          }
+        }
+      },
+      "post": {
+        "tags": ["管理 - 智能分类"],
+        "summary": "创建智能分类",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "rules": { "type": "object" },
+                  "sortOrder": { "type": "integer" }
+                },
+                "required": ["name", "rules"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/admin/smart_filters/{id}": {
+      "get": {
+        "tags": ["管理 - 智能分类"],
+        "summary": "获取单个智能分类",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "智能分类详情"
+          }
+        }
+      },
+      "put": {
+        "tags": ["管理 - 智能分类"],
+        "summary": "更新智能分类",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["管理 - 智能分类"],
+        "summary": "删除智能分类",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/admin/smart_filters/reorder": {
+      "post": {
+        "tags": ["管理 - 智能分类"],
+        "summary": "批量更新智能分类排序",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "order": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string" },
+                        "sortOrder": { "type": "integer" }
+                      }
+                    }
+                  }
+                },
+                "required": ["order"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "排序更新成功"
+          }
+        }
+      }
+    },
+    "/api/admin/smart_filters/{id}/toggle": {
+      "post": {
+        "tags": ["管理 - 智能分类"],
+        "summary": "切换智能分类启用状态",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "状态已切换"
+          }
+        }
+      }
+    },
+    "/api/assets/{id}": {
+      "get": {
+        "tags": ["资源文件"],
+        "summary": "获取资源文件",
+        "description": "获取资源文件（缩略图、头像等）。支持 ETag 和 If-None-Match 条件请求。",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "文件流",
+            "content": { "image/*": {} }
+          },
+          "304": {
+            "description": "Not Modified"
+          },
+          "404": {
+            "description": "资源不存在"
+          }
+        }
+      }
+    },
+    "/api/assets/upload/init": {
+      "post": {
+        "tags": ["资源文件 - 上传"],
+        "summary": "初始化分片上传",
+        "description": "开始一个分片文件上传任务。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fileName": { "type": "string" },
+                  "fileSize": { "type": "integer" },
+                  "mimeType": { "type": "string" },
+                  "totalChunks": { "type": "integer" },
+                  "assetKind": { "type": "string", "enum": ["archive_cover", "avatar", "attachment", "other"] }
+                },
+                "required": ["fileName", "fileSize", "totalChunks"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "上传会话已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": { "type": "string" },
+                    "chunkSize": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assets/upload/chunk": {
+      "put": {
+        "tags": ["资源文件 - 上传"],
+        "summary": "上传文件分片",
+        "description": "上传一个文件分片。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "taskId": { "type": "string" },
+                  "chunkIndex": { "type": "integer" },
+                  "data": { "type": "string", "description": "Base64 编码的分片数据" }
+                },
+                "required": ["taskId", "chunkIndex", "data"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "分片上传成功"
+          }
+        }
+      }
+    },
+    "/api/assets/upload/{taskId}": {
+      "delete": {
+        "tags": ["资源文件 - 上传"],
+        "summary": "取消上传任务",
+        "parameters": [
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "上传已取消"
+          }
+        }
+      }
+    },
+    "/api/user/stats": {
+      "get": {
+        "tags": ["用户统计"],
+        "summary": "获取用户统计数据",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "用户统计数据"
+          }
+        }
+      }
+    },
+    "/api/user/trend": {
+      "get": {
+        "tags": ["用户统计"],
+        "summary": "获取阅读趋势",
+        "parameters": [
+          { "name": "days", "in": "query", "schema": { "type": "integer", "default": 30 } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "阅读趋势数据"
+          }
+        }
+      }
+    },
+    "/api/download_url": {
+      "post": {
+        "tags": ["档案"],
+        "summary": "从 URL 下载档案",
+        "description": "从指定 URL 下载档案文件（作为后台任务）。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string", "format": "uri" },
+                  "category": { "type": "string" }
+                },
+                "required": ["url"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "下载任务已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/metadata_plugin": {
+      "post": {
+        "tags": ["档案"],
+        "summary": "运行元数据插件",
+        "description": "对指定档案执行元数据插件（后台任务）。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "archiveId": { "type": "string" },
+                  "plugin": { "type": "string" }
+                },
+                "required": ["archiveId", "plugin"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/plugins": {
+      "get": {
+        "tags": ["管理 - 插件管理"],
+        "summary": "获取所有插件详情",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "插件列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginsListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/plugins/{namespace}/config": {
+      "get": {
+        "tags": ["管理 - 插件管理"],
+        "summary": "获取插件配置",
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "插件配置"
+          }
+        }
+      },
+      "put": {
+        "tags": ["管理 - 插件管理"],
+        "summary": "更新插件配置",
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "配置已更新"
+          }
+        }
+      }
+    },
+    "/api/admin/plugins/{namespace}/enabled": {
+      "put": {
+        "tags": ["管理 - 插件管理"],
+        "summary": "启用或禁用插件",
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": { "type": "boolean" }
+                },
+                "required": ["enabled"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "状态已更新"
+          }
+        }
+      }
+    },
+    "/api/admin/plugins/install": {
+      "post": {
+        "tags": ["管理 - 插件管理"],
+        "summary": "安装插件",
+        "description": "从 URL 安装 WASM 插件。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string", "format": "uri" }
+                },
+                "required": ["url"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "插件安装成功"
+          }
+        }
+      }
+    },
+    "/api/admin/plugins/{namespace}": {
+      "delete": {
+        "tags": ["管理 - 插件管理"],
+        "summary": "删除插件",
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "插件已删除"
+          }
+        }
+      }
+    },
+    "/api/admin/plugins/{namespace}/update": {
+      "post": {
+        "tags": ["管理 - 插件管理"],
+        "summary": "更新插件",
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "插件已更新"
+          }
+        }
+      }
+    },
+    "/api/admin/plugins/{namespace}/check_update": {
+      "post": {
+        "tags": ["管理 - 插件管理"],
+        "summary": "检查插件更新",
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "检查完成"
+          }
+        }
+      }
+    },
+    "/api/admin/source-plugins": {
+      "get": {
+        "tags": ["管理 - 在线源插件"],
+        "summary": "列出所有在线源插件",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "在线源插件列表"
+          }
+        }
+      }
+    },
+    "/api/admin/source-plugins/{namespace}/action/{action}": {
+      "post": {
+        "tags": ["管理 - 在线源插件"],
+        "summary": "执行在线源插件操作",
+        "description": "执行在线源插件的自定义操作。",
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "action", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作结果"
+          }
+        }
+      }
+    },
+    "/api/admin/source-plugins/{namespace}/download": {
+      "post": {
+        "tags": ["管理 - 在线源插件"],
+        "summary": "从在线源下载",
+        "description": "通过在线源插件下载内容。",
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string" },
+                  "remoteId": { "type": "string" },
+                  "category": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "下载任务已创建"
+          }
+        }
+      }
+    },
+    "/api/admin/taskpool/tasks": {
+      "get": {
+        "tags": ["管理 - 任务池"],
+        "summary": "获取任务列表（SSE 流）",
+        "description": "以 SSE (Server-Sent Events) 流形式返回任务列表。",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "running", "completed", "failed", "cancelled", "waiting"] } },
+          { "name": "taskType", "in": "query", "schema": { "type": "string" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE 事件流"
+          }
+        }
+      }
+    },
+    "/api/admin/taskpool/{taskId}": {
+      "get": {
+        "tags": ["管理 - 任务池"],
+        "summary": "获取任务详情",
+        "parameters": [
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/taskpool/{taskId}/stream": {
+      "get": {
+        "tags": ["管理 - 任务池"],
+        "summary": "任务详情 SSE 流",
+        "description": "以 SSE 流形式返回任务实时状态更新。",
+        "parameters": [
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE 事件流"
+          }
+        }
+      }
+    },
+    "/api/admin/taskpool/{taskId}/cancel": {
+      "post": {
+        "tags": ["管理 - 任务池"],
+        "summary": "取消任务",
+        "parameters": [
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务已取消"
+          }
+        }
+      }
+    },
+    "/api/admin/taskpool/{taskId}/retry": {
+      "post": {
+        "tags": ["管理 - 任务池"],
+        "summary": "重试失败任务",
+        "parameters": [
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务已重新加入队列"
+          }
+        }
+      }
+    },
+    "/api/admin/taskpool/{taskId}/rpc/select": {
+      "post": {
+        "tags": ["管理 - 任务池"],
+        "summary": "响应 RPC 选择请求",
+        "description": "响应运行中任务的 RPC 选择请求（用于元数据预览的人工选择）。",
+        "parameters": [
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "selected": { "type": "string" }
+                },
+                "required": ["selected"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "选择已提交"
+          }
+        }
+      }
+    },
+    "/api/admin/taskpool/{taskId}/progress": {
+      "put": {
+        "tags": ["管理 - 任务池"],
+        "summary": "更新任务进度",
+        "parameters": [
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
+                  "message": { "type": "string" }
+                },
+                "required": ["progress"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "进度已更新"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/status": {
+      "get": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "获取 Cron 服务状态",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cron 服务状态"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/start": {
+      "post": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "启动 Cron 服务",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cron 服务已启动"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/stop": {
+      "post": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "停止 Cron 服务",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cron 服务已停止"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/validate": {
+      "post": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "验证 Cron 表达式",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expression": { "type": "string" }
+                },
+                "required": ["expression"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "验证结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "nextRuns": { "type": "array", "items": { "type": "string", "format": "date-time" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/cron/task-types": {
+      "get": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "获取可用任务类型列表",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务类型列表"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/tasks": {
+      "get": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "获取定时任务列表",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "定时任务列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledTaskListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "创建定时任务",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduledTaskCreateReq"
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "定时任务创建成功"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/tasks/{id}": {
+      "get": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "获取单个定时任务",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "定时任务详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledTaskResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "更新定时任务",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduledTaskCreateReq"
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "删除定时任务",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "定时任务已删除"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/tasks/{id}/trigger": {
+      "post": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "手动触发定时任务",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务已触发"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/tasks/{id}/enable": {
+      "post": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "启用定时任务",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "定时任务已启用"
+          }
+        }
+      }
+    },
+    "/api/admin/cron/tasks/{id}/disable": {
+      "post": {
+        "tags": ["管理 - 定时任务"],
+        "summary": "禁用定时任务",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "定时任务已禁用"
+          }
+        }
+      }
+    },
+    "/api/admin/system/settings": {
+      "get": {
+        "tags": ["管理 - 系统设置"],
+        "summary": "获取所有系统设置",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "系统设置列表"
+          }
+        }
+      },
+      "put": {
+        "tags": ["管理 - 系统设置"],
+        "summary": "更新单个设置",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": { "type": "string" },
+                  "value": { "type": "string" }
+                },
+                "required": ["key", "value"]
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "设置已更新"
+          }
+        }
+      }
+    },
+    "/api/admin/system/settings/batch": {
+      "put": {
+        "tags": ["管理 - 系统设置"],
+        "summary": "批量更新设置",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              }
+            }
+          }
+        },
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "设置已批量更新"
+          }
+        }
+      }
+    },
+    "/api/admin/system/settings/categories": {
+      "get": {
+        "tags": ["管理 - 系统设置"],
+        "summary": "获取设置分类",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "设置分类列表"
+          }
+        }
+      }
+    },
+    "/api/admin/system/settings/reload": {
+      "post": {
+        "tags": ["管理 - 系统设置"],
+        "summary": "重新加载设置缓存",
+        "security": [
+          { "bearerAuth": [], "cookieAuth": [] },
+          { "adminAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "缓存已重新加载"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "在 Authorization 头部使用 Bearer Token。从 /api/auth/login 获取。"
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "auth_token",
+        "description": "登录后自动设置的 auth_token cookie。"
+      },
+      "adminAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "需要管理员角色的 Bearer Token。"
+      }
+    },
+    "schemas": {
+      "ApiResponse_String": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "type": "string", "nullable": true }
+        },
+        "description": "标准 API 响应信封（字符串数据）"
+      },
+      "AuthCredentialsReq": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string", "description": "用户名" },
+          "password": { "type": "string", "description": "密码" },
+          "tokenName": { "type": "string", "description": "Token 名称（可选，默认 'login'）" }
+        },
+        "required": ["username", "password"]
+      },
+      "TokenNameReq": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Token 名称" }
+        },
+        "required": ["name"]
+      },
+      "NewPasswordReq": {
+        "type": "object",
+        "properties": {
+          "currentPassword": { "type": "string", "description": "当前密码" },
+          "newPassword": { "type": "string", "description": "新密码" }
+        },
+        "required": ["currentPassword", "newPassword"]
+      },
+      "NewUsernameReq": {
+        "type": "object",
+        "properties": {
+          "newUsername": { "type": "string", "description": "新用户名" }
+        },
+        "required": ["newUsername"]
+      },
+      "CreateUserReq": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "isAdmin": { "type": "boolean", "default": false }
+        },
+        "required": ["username"]
+      },
+      "UserView": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "username": { "type": "string" },
+          "isAdmin": { "type": "boolean" },
+          "avatarAssetId": { "type": "integer", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "TokenView": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "prefix": { "type": "string" },
+          "token": { "type": "string", "description": "完整 token（仅在创建时返回）" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "lastUsedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "revokedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "current": { "type": "boolean" },
+          "lastUsedIp": { "type": "string" },
+          "userAgent": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "UserTokenPairView": {
+        "type": "object",
+        "properties": {
+          "user": { "$ref": "#/components/schemas/UserView" },
+          "token": { "$ref": "#/components/schemas/TokenView" }
+        }
+      },
+      "LoginPendingTotpDataView": {
+        "type": "object",
+        "properties": {
+          "requiresTotp": { "type": "boolean" },
+          "challengeId": { "type": "string" },
+          "methods": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "UserDataView": {
+        "type": "object",
+        "properties": {
+          "user": { "$ref": "#/components/schemas/UserView" }
+        }
+      },
+      "TokenDataView": {
+        "type": "object",
+        "properties": {
+          "token": { "$ref": "#/components/schemas/TokenView" }
+        }
+      },
+      "TokensDataView": {
+        "type": "object",
+        "properties": {
+          "tokens": { "type": "array", "items": { "$ref": "#/components/schemas/TokenView" } }
+        }
+      },
+      "SessionsDataView": {
+        "type": "object",
+        "properties": {
+          "sessions": { "type": "array", "items": { "$ref": "#/components/schemas/TokenView" } }
+        }
+      },
+      "UsersDataView": {
+        "type": "object",
+        "properties": {
+          "users": { "type": "array", "items": { "$ref": "#/components/schemas/UserView" } }
+        }
+      },
+      "UserAndPasswordView": {
+        "type": "object",
+        "properties": {
+          "user": { "$ref": "#/components/schemas/UserView" },
+          "generatedPassword": { "type": "string" }
+        }
+      },
+      "StepUpMethodsDataView": {
+        "type": "object",
+        "properties": {
+          "methods": { "type": "array", "items": { "type": "string" }, "description": "可选方法: password, totp, passkey" }
+        }
+      },
+      "LoginSuccessResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "$ref": "#/components/schemas/UserTokenPairView" }
+        }
+      },
+      "TotpRequiredResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 202 },
+          "message": { "type": "string", "example": "totp required" },
+          "data": { "$ref": "#/components/schemas/LoginPendingTotpDataView" }
+        }
+      },
+      "UserDataResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string", "example": "ok" },
+          "data": { "$ref": "#/components/schemas/UserDataView" }
+        }
+      },
+      "UsersListResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/UsersDataView" }
+        }
+      },
+      "TokensListResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/TokensDataView" }
+        }
+      },
+      "SessionsListResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/SessionsDataView" }
+        }
+      },
+      "TokenCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 200 },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/TokenDataView" }
+        }
+      },
+      "UserCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/UserAndPasswordView" }
+        }
+      },
+      "UserPasswordResetResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "user": { "$ref": "#/components/schemas/UserView" },
+              "generatedPassword": { "type": "string" }
+            }
+          }
+        }
+      },
+      "StepUpMethodsResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/StepUpMethodsDataView" }
+        }
+      },
+      "ServerInfo": {
+        "type": "object",
+        "properties": {
+          "motd": { "type": "string", "description": "服务器欢迎消息" },
+          "name": { "type": "string", "description": "服务器名称" },
+          "total_archives": { "type": "integer", "description": "档案总数" },
+          "total_pages_read": { "type": "integer", "description": "全局总阅读页数" },
+          "version": { "type": "string", "description": "应用版本" },
+          "version_desc": { "type": "string", "description": "详细版本信息" },
+          "version_name": { "type": "string", "description": "编程语言版本名称" },
+          "db_extensions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "enabled": { "type": "boolean" },
+                "version": { "type": "string" }
+              }
+            },
+            "description": "数据库扩展状态"
+          }
+        }
+      },
+      "Archive": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "档案唯一标识符 (arcid)" },
+          "title": { "type": "string" },
+          "filename": { "type": "string" },
+          "summary": { "type": "string" },
+          "thumbhash": { "type": "string" },
+          "cover_asset_id": { "type": "integer" },
+          "release_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "relative_path": { "type": "string" },
+          "file_size": { "type": "integer", "description": "文件大小（字节）" },
+          "pagecount": { "type": "integer", "description": "页数" },
+          "archive_type": { "type": "string", "enum": ["archive", "folder", "pdf", "epub"] },
+          "tags": { "type": "string", "description": "逗号分隔的 namespace:name 标签" },
+          "progress": { "type": "integer", "description": "当前用户阅读进度" },
+          "last_read_time": { "type": "string", "format": "date-time" },
+          "isnew": { "type": "boolean" },
+          "isfavorite": { "type": "boolean" },
+          "assets": { "type": "object", "description": "档案资源资产映射" },
+          "children": { "type": "array", "items": { "type": "string" }, "description": "子档案 ID 列表（用于聚合模式）" }
+        }
+      },
+      "ArchiveMetadataResponse": {
+        "type": "object",
+        "description": "档案元数据响应（直接返回 Archive 对象，不经过 ApiResponse 信封）"
+      },
+      "Tankoubon": {
+        "type": "object",
+        "properties": {
+          "tankoubon_id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "tags": { "type": "string" },
+          "assets": { "type": "object" },
+          "children": { "type": "array", "items": { "type": "string" } },
+          "archive_count": { "type": "integer" },
+          "pagecount": { "type": "integer" },
+          "progress": { "type": "integer" },
+          "lastreadtime": { "type": "string", "format": "date-time" },
+          "release_at": { "type": "string", "format": "date-time" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "isnew": { "type": "boolean" },
+          "isfavorite": { "type": "boolean" }
+        }
+      },
+      "TankoubonMetadataResponse": {
+        "type": "object",
+        "description": "单行本元数据响应（直接返回 Tankoubon JSON）"
+      },
+      "TankoubonsListResponse": {
+        "type": "object",
+        "description": "单行本列表响应"
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "分类唯一标识符 (catid)" },
+          "name": { "type": "string" },
+          "scanPath": { "type": "string", "description": "扫描目录路径" },
+          "description": { "type": "string" },
+          "icon": { "type": "string" },
+          "sortOrder": { "type": "integer" },
+          "enabled": { "type": "boolean" },
+          "plugins": { "type": "string", "description": "启用的元数据插件列表 (JSON 数组)" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "archiveCount": { "type": "integer" }
+        }
+      },
+      "CategoriesListResponse": {
+        "type": "object",
+        "description": "分类列表响应"
+      },
+      "CategoryCreateReq": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "scanPath": { "type": "string" },
+          "description": { "type": "string" },
+          "icon": { "type": "string" },
+          "sortOrder": { "type": "integer" },
+          "plugins": { "type": "string" }
+        },
+        "required": ["name", "scanPath"]
+      },
+      "CategoryUpdateReq": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "scanPath": { "type": "string" },
+          "description": { "type": "string" },
+          "icon": { "type": "string" },
+          "sortOrder": { "type": "integer" },
+          "enabled": { "type": "boolean" },
+          "plugins": { "type": "string" }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "description": "搜索结果响应",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item_type": { "type": "string", "enum": ["archive", "tankoubon"] },
+                "item_id": { "type": "string" }
+              }
+            }
+          },
+          "total": { "type": "integer" },
+          "archives": {
+            "type": "object",
+            "additionalProperties:": { "$ref": "#/components/schemas/Archive" },
+            "description": "档案 ID 到 Archive 对象的映射"
+          },
+          "tankoubons": {
+            "type": "object",
+            "additionalProperties:": { "$ref": "#/components/schemas/Tankoubon" },
+            "description": "单行本 ID 到 Tankoubon 对象的映射"
+          },
+          "tag_translations": { "type": "object" }
+        }
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "running", "completed", "failed", "cancelled", "waiting"] },
+          "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "message": { "type": "string" },
+          "taskType": { "type": "string" },
+          "pluginNamespace": { "type": "string" },
+          "parameters": { "type": "object" },
+          "result": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": "string", "format": "date-time" },
+          "priority": { "type": "integer" },
+          "groupId": { "type": "string" },
+          "timeoutAt": { "type": "string", "format": "date-time" },
+          "triggerSource": { "type": "string" },
+          "phase": { "type": "string" },
+          "waitingReason": { "type": "string" },
+          "activeKey": { "type": "string" }
+        }
+      },
+      "TaskResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/Task" }
+        }
+      },
+      "TaskPageResult": {
+        "type": "object",
+        "properties": {
+          "tasks": { "type": "array", "items": { "$ref": "#/components/schemas/Task" } },
+          "total": { "type": "integer" },
+          "page": { "type": "integer" },
+          "pageSize": { "type": "integer" },
+          "totalPages": { "type": "integer" }
+        }
+      },
+      "ScheduledTask": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "cronExpression": { "type": "string" },
+          "taskType": { "type": "string" },
+          "taskParameters": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "priority": { "type": "integer" },
+          "timeoutSeconds": { "type": "integer" },
+          "lastRunAt": { "type": "string", "format": "date-time" },
+          "lastRunStatus": { "type": "string" },
+          "lastError": { "type": "string" },
+          "nextRunAt": { "type": "string", "format": "date-time" },
+          "runCount": { "type": "integer" },
+          "successCount": { "type": "integer" },
+          "failureCount": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "createdBy": { "type": "string" },
+          "updatedBy": { "type": "string" }
+        }
+      },
+      "ScheduledTaskResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/ScheduledTask" }
+        }
+      },
+      "ScheduledTaskListResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/ScheduledTaskPageResult" }
+        }
+      },
+      "ScheduledTaskPageResult": {
+        "type": "object",
+        "properties": {
+          "tasks": { "type": "array", "items": { "$ref": "#/components/schemas/ScheduledTask" } },
+          "total": { "type": "integer" },
+          "page": { "type": "integer" },
+          "pageSize": { "type": "integer" },
+          "totalPages": { "type": "integer" }
+        }
+      },
+      "ScheduledTaskCreateReq": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "cronExpression": { "type": "string" },
+          "taskType": { "type": "string" },
+          "taskParameters": { "type": "string" },
+          "enabled": { "type": "boolean", "default": true },
+          "priority": { "type": "integer", "default": 50 },
+          "timeoutSeconds": { "type": "integer", "default": 3600 }
+        },
+        "required": ["name", "cronExpression", "taskType"]
+      },
+      "PluginMetadata": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "namespace": { "type": "string" },
+          "version": { "type": "string" },
+          "description": { "type": "string" },
+          "author": { "type": "string" },
+          "tags": { "type": "string" },
+          "permissions": { "type": "string" },
+          "parameters": { "type": "string" },
+          "update_url": { "type": "string", "format": "uri" },
+          "url_regex": { "type": "string" },
+          "source_id_regex": { "type": "string" },
+          "pre_hooks": { "type": "string" },
+          "after_hooks": { "type": "string" },
+          "icon": { "type": "string" },
+          "has_schema": { "type": "boolean" },
+          "plugin_type": { "type": "string", "enum": ["Script", "Metadata", "Download", "Source"] },
+          "metadata_error": { "type": "string" },
+          "cron_expression": { "type": "string" },
+          "cron_enabled": { "type": "boolean" },
+          "cron_priority": { "type": "integer" },
+          "cron_timeout_seconds": { "type": "integer" },
+          "enabled": { "type": "boolean" },
+          "config": { "type": "object" }
+        }
+      },
+      "PluginsListResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "message": { "type": "string" },
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PluginMetadata" }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "服务器信息", "description": "服务器信息和状态接口" },
+    { "name": "认证", "description": "用户认证相关接口（登录、登出、修改密码等）" },
+    { "name": "认证 - TOTP", "description": "TOTP 两步验证相关接口" },
+    { "name": "认证 - WebAuthn", "description": "WebAuthn 密码密钥相关接口" },
+    { "name": "认证 - 步进认证", "description": "步进认证（Step-up Authentication）相关接口" },
+    { "name": "认证 - Token 管理", "description": "API Token 创建、查看、撤销" },
+    { "name": "认证 - 会话管理", "description": "用户会话查看和撤销" },
+    { "name": "管理 - 用户管理", "description": "管理员用户管理接口" },
+    { "name": "档案", "description": "档案/漫画的浏览、阅读、下载和元数据管理" },
+    { "name": "搜索", "description": "搜索接口，支持高级过滤和聚合" },
+    { "name": "推荐", "description": "推荐系统接口" },
+    { "name": "分类", "description": "媒体库分类管理" },
+    { "name": "标签", "description": "标签浏览和查询" },
+    { "name": "管理 - 标签管理", "description": "管理员标签管理（CRUD、导入导出）" },
+    { "name": "单行本", "description": "单行本（合集/卷）管理" },
+    { "name": "智能分类", "description": "智能分类（用户可看）" },
+    { "name": "管理 - 智能分类", "description": "智能分类管理（管理员）" },
+    { "name": "资源文件", "description": "静态资源文件服务" },
+    { "name": "资源文件 - 上传", "description": "分片文件上传" },
+    { "name": "用户统计", "description": "用户阅读统计和趋势" },
+    { "name": "管理 - 插件管理", "description": "WASM 插件管理" },
+    { "name": "管理 - 在线源插件", "description": "在线源插件管理" },
+    { "name": "管理 - 任务池", "description": "后台任务池管理" },
+    { "name": "管理 - 定时任务", "description": "Cron 定时任务管理" },
+    { "name": "管理 - 系统设置", "description": "系统设置管理" }
+  ]
+}
