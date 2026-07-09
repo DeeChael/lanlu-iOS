@@ -353,7 +353,8 @@ struct SettingsTabView: View {
 
     private func clearCache() {
         URLCache.shared.removeAllCachedResponses()
-        LogManager.shared.log("Cache cleared (URLCache)")
+        CacheManager.shared.clearAll()
+        LogManager.shared.log("Cache cleared (URLCache + ArchiveCache)")
     }
 
     private func loadUserInfo() async {

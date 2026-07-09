@@ -21,7 +21,7 @@ struct ServerHomeView: View {
 
             Tab(String(localized: "tab_favorites"), systemImage: "heart.fill") {
                 NavigationStack {
-                    FavoritesTabView()
+                    FavoritesTabView(server: server)
                         .navigationTitle(String(localized: "tab_favorites"))
                         .navigationBarTitleDisplayMode(.inline)
                 }
