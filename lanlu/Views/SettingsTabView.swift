@@ -94,28 +94,24 @@ struct SettingsTabView: View {
                 }
 
                 if let trend, !trend.trend.isEmpty {
+                    let trendDates = trend.trend.compactMap(\.dateValue)
                     Chart(trend.trend, id: \.date) { point in
-                        LineMark(
-                            x: .value("date", point.date),
-                            y: .value("count", point.count)
-                        )
-                        .interpolationMethod(.catmullRom)
+                        if let date = point.dateValue {
+                            LineMark(
+                                x: .value("date", date),
+                                y: .value("count", point.count)
+                            )
+                            .interpolationMethod(.catmullRom)
+                        }
+                    }
+                    .chartXAxis {
+                        AxisMarks(values: trendDates) { value in
+                            if let date = value.as(Date.self) {
+                                AxisValueLabel(format: .dateTime.month(.twoDigits).day(.twoDigits))
+                            }
+                        }
                     }
                     .frame(height: 200)
-                    .padding(.vertical, 4)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        LabeledContent(String(localized: "trend_most_active")) {
-                            Text(trend.mostActiveDate ?? "---")
-                        }
-                        LabeledContent(String(localized: "trend_active_days")) {
-                            Text("\(trend.activeDays ?? 0)")
-                        }
-                        LabeledContent(String(localized: "trend_max_count")) {
-                            Text("\(trend.maxCount ?? 0)")
-                        }
-                    }
-                    .font(.caption)
                     .padding(.vertical, 4)
                 }
 
@@ -173,7 +169,7 @@ struct SettingsTabView: View {
 
     private func loadTrend() async {
         do {
-            let result = try await client.fetchTrend()
+            let result = try await client.fetchTrend(days: 7)
             if !result.trend.isEmpty {
                 trend = result
                 trendError = nil

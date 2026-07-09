@@ -1,7 +1,9 @@
 import SwiftUI
+import SwiftData
 
 struct ServerHomeView: View {
     let server: Server
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedTab = 0
 
     private var tabTitle: String {
@@ -36,11 +38,10 @@ struct ServerHomeView: View {
         .navigationTitle(tabTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-    }
-}
-
-#Preview {
-    NavigationStack {
-        Text("Preview")
+        .task {
+            server.lastUsedAt = Date()
+            try? modelContext.save()
+            UserDefaults.standard.set(server.baseURL, forKey: "last_server_url")
+        }
     }
 }

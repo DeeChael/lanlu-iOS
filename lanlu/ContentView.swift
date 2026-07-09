@@ -6,9 +6,10 @@ struct ContentView: View {
     @Query(sort: \Server.lastUsedAt, order: .reverse) private var servers: [Server]
     @State private var showAddServer = false
     @State private var serverToEdit: Server?
+    @State private var navPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             Group {
                 if servers.isEmpty {
                     emptyState
@@ -34,7 +35,22 @@ struct ContentView: View {
             .onChange(of: showAddServer) { _, isShowing in
                 if !isShowing { serverToEdit = nil }
             }
+            .navigationDestination(for: Server.self) { server in
+                ServerHomeView(server: server)
+            }
+            .task {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                navigateToLastServer()
+            }
         }
+    }
+
+    private func navigateToLastServer() {
+        guard let url = UserDefaults.standard.string(forKey: "last_server_url"),
+              let server = servers.first(where: { $0.baseURL == url }) else {
+            return
+        }
+        navPath.append(server)
     }
 
     private var emptyState: some View {
@@ -55,9 +71,7 @@ struct ContentView: View {
     private var serverList: some View {
         List {
             ForEach(servers) { server in
-                NavigationLink {
-                    ServerHomeView(server: server)
-                } label: {
+                NavigationLink(value: server) {
                     ServerRow(server: server)
                 }
                 .swipeActions(edge: .trailing) {
