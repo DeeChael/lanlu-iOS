@@ -175,7 +175,8 @@ struct ArchiveDetailView: View {
                 if let descText, !descText.isEmpty {
                     Text(descText).font(.subheadline)
                         .lineLimit(isDescriptionExpanded ? nil : 4)
-                    if descText.count > 100 {
+
+                    if descText.count > 80 {
                         Button(isDescriptionExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
                             withAnimation { isDescriptionExpanded.toggle() }
                         }
@@ -191,25 +192,24 @@ struct ArchiveDetailView: View {
             }
             .padding(.horizontal, 16)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(String(localized: "detail_related"))
-                    .font(.headline)
-                    .padding(.top, 8)
-                if isLoading {
-                    HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
-                } else if related.isEmpty {
-                    HStack { Spacer(); Text("---").foregroundColor(.secondary); Spacer() }.padding(.vertical, 8)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(related, id: \.arcid) { item in
-                                ArchiveGridCell(archive: item, server: server).frame(width: 120)
+            if isLoading || !related.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(String(localized: "detail_related"))
+                        .font(.headline)
+                    if isLoading {
+                        HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(related, id: \.arcid) { item in
+                                    ArchiveGridCell(archive: item, server: server).frame(width: 120)
+                                }
                             }
                         }
                     }
                 }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
         }
         .padding(.top, 8)
     }
@@ -309,11 +309,13 @@ struct ArchiveDetailView: View {
     }
 
     private func processRelated(_ items: [SearchResultItem]) -> [SearchResultItem] {
-        var seen = Set<String>()
+        var seenArcid = Set<String>()
+        var seenTankoubon = Set<String>()
         return items.filter { item in
-            let id = item.arcid ?? item.tankoubonId ?? ""
-            guard id != archive.arcid && id != archive.tankoubonId && !seen.contains(id) else { return false }
-            seen.insert(id)
+            if let aid = archive.arcid, item.arcid == aid { return false }
+            if let tid = archive.tankoubonId, item.tankoubonId == tid { return false }
+            if let id = item.arcid { guard !seenArcid.contains(id) else { return false }; seenArcid.insert(id) }
+            if let id = item.tankoubonId { guard !seenTankoubon.contains(id) else { return false }; seenTankoubon.insert(id) }
             return true
         }.prefix(10).map { $0 }
     }

@@ -144,6 +144,7 @@ struct ArchiveGridCell: View {
             }
             }
             .task { await loadCover() }
+            .tint(.primary)
     }
 
     @ViewBuilder
