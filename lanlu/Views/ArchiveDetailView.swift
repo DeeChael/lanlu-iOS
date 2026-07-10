@@ -239,6 +239,7 @@ struct ArchiveDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(String(localized: "detail_related"))
                         .font(.headline)
+                        .padding(.top, 4)
                     if !relatedLoaded {
                         HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
                     } else {
@@ -253,9 +254,10 @@ struct ArchiveDetailView: View {
                 }
                 .padding(.horizontal, 16)
             }
+
+            Spacer(minLength: 0)
         }
         .padding(.top, 8)
-        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Content Tab
