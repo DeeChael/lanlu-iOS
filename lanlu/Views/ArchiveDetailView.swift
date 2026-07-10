@@ -116,9 +116,9 @@ struct ArchiveDetailView: View {
                         }
                     }
                 }
+                .frame(height: 140 * 4 / 3)
             }
             .padding(16)
-            .frame(minHeight: 140 * 4 / 3 + 16)
 
             // Segmented tabs
             Picker("", selection: $selectedTab) {
@@ -137,6 +137,7 @@ struct ArchiveDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .animation(.easeInOut(duration: 0.3), value: selectedTab)
         .task { await loadData() }
     }
 
@@ -174,10 +175,7 @@ struct ArchiveDetailView: View {
                 if let descText, !descText.isEmpty {
                     Text(descText).font(.subheadline)
                         .lineLimit(isDescriptionExpanded ? nil : 4)
-                    let approxLines = descText.count / 40
-                    let screenH = UIScreen.main.bounds.height
-                    let overflows = CGFloat(approxLines) * 20 > screenH / 4
-                    if overflows {
+                    if descText.count > 150 {
                         Button(isDescriptionExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
                             withAnimation { isDescriptionExpanded.toggle() }
                         }

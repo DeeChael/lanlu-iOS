@@ -138,7 +138,7 @@ struct ArchiveGridCell: View {
                     Text("\(progressPercent)%")
                         .font(.caption)
                         .fontWeight(.semibold)
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.primary)
                 }
             }
             }
