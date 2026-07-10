@@ -60,86 +60,77 @@ struct ArchiveDetailView: View {
     @State private var isLoading = true
     @State private var selectedTab = 0
     @State private var previewMode = 0
-    @State private var isDescriptionExpanded = false
-    @State private var coverHeight: CGFloat = 0
+    @State private var isDescriptionExpanded = true
 
     private var isTankoubon: Bool { archive.type == "tankoubon" }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 12) {
-                    coverView
-                        .frame(width: 140)
-                        .aspectRatio(3.0 / 4.0, contentMode: .fill)
+        VStack(spacing: 0) {
+            // Fixed header
+            HStack(alignment: .top, spacing: 12) {
+                coverView
+                    .frame(width: 140)
+                    .aspectRatio(3.0 / 4.0, contentMode: .fill)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        MarqueeText(text: archive.filename ?? archive.title ?? "---")
-                            .font(.title3)
-                            .fontWeight(.bold)
-                            .padding(.vertical, 2)
+                VStack(alignment: .leading, spacing: 6) {
+                    MarqueeText(text: archive.filename ?? archive.title ?? "---")
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .padding(.vertical, 2)
 
-                        if isTankoubon {
-                            if let ac = archive.archiveCount ?? tankoubonMeta?.archiveCount {
-                                Text(String(format: String(localized: "tankoubon_archives"), ac))
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                            Text(String(format: String(localized: "detail_total_pages"), tankoubonMeta?.pagecount ?? 0))
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        } else {
-                            if let pages = archive.pagecount ?? meta?.pagecount {
-                                Text(String(format: String(localized: "detail_total_pages"), pages))
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
+                    if isTankoubon {
+                        if let ac = archive.archiveCount ?? tankoubonMeta?.archiveCount {
+                            Text(String(format: String(localized: "tankoubon_archives"), ac))
+                                .font(.subheadline).foregroundColor(.secondary)
                         }
+                        Text(String(format: String(localized: "detail_total_pages"), tankoubonMeta?.pagecount ?? 0))
+                            .font(.subheadline).foregroundColor(.secondary)
+                    } else {
+                        if let pages = archive.pagecount ?? meta?.pagecount {
+                            Text(String(format: String(localized: "detail_total_pages"), pages))
+                                .font(.subheadline).foregroundColor(.secondary)
+                        }
+                    }
 
-                        Spacer()
+                    Spacer()
 
-                        HStack(spacing: 8) {
-                            Button {
-                                toggleFavorite()
-                            } label: {
-                                Image(systemName: isFavorite ? "heart.fill" : "heart")
-                                    .font(.body)
+                    HStack(spacing: 8) {
+                        Button { toggleFavorite() } label: {
+                            Image(systemName: isFavorite ? "heart.fill" : "heart").font(.body)
+                        }
+                        .frame(width: 36, height: 36)
+                        .background(Color(.systemGray5))
+                        .clipShape(Circle())
+
+                        if !isTankoubon {
+                            Button {} label: {
+                                Label(String(localized: "detail_start_read"), systemImage: "book.fill")
+                                    .font(.subheadline).fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity).frame(height: 36)
+                                    .background(Color.accentColor).foregroundColor(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
-                            .frame(width: 36, height: 36)
-                            .background(Color(.systemGray5))
-                            .clipShape(Circle())
-
-                            if !isTankoubon {
-                                Button {
-                                    // placeholder
-                                } label: {
-                                    Label(String(localized: "detail_start_read"), systemImage: "book.fill")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 36)
-                                        .background(Color.accentColor)
-                                        .foregroundColor(.white)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                }
-                                .disabled(true)
-                            }
+                            .disabled(true)
                         }
                     }
                 }
-                .padding(16)
-                .frame(minHeight: 140 * 4 / 3 + 16)
+            }
+            .padding(16)
+            .frame(minHeight: 140 * 4 / 3 + 16)
 
-                Picker("", selection: $selectedTab) {
-                    Text(String(localized: "detail_info")).tag(0)
-                    Text(String(localized: "detail_content")).tag(1)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+            // Segmented tabs
+            Picker("", selection: $selectedTab) {
+                Text(String(localized: "detail_info")).tag(0)
+                Text(String(localized: "detail_content")).tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
 
+            // Scrollable content
+            ScrollView {
                 if selectedTab == 0 { infoTab } else { contentTab }
             }
         }
@@ -148,8 +139,6 @@ struct ArchiveDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .task { await loadData() }
     }
-
-    // MARK: - Cover
 
     @ViewBuilder
     private var coverView: some View {
@@ -180,22 +169,15 @@ struct ArchiveDetailView: View {
 
     private var infoTab: some View {
         VStack(alignment: .leading, spacing: 12) {
+            let descText = archive.description ?? meta?.description
             VStack(alignment: .leading, spacing: 8) {
-                let desc = archive.description ?? meta?.description
-                if let desc, !desc.isEmpty {
-                    Text(desc).font(.subheadline)
+                if let descText, !descText.isEmpty {
+                    Text(descText).font(.subheadline)
                         .lineLimit(isDescriptionExpanded ? nil : 4)
-                        .background(GeometryReader { geo in
-                            Color.clear.onAppear {
-                                let screenH = UIScreen.main.bounds.height
-                                if geo.size.height > screenH / 4 {
-                                    isDescriptionExpanded = false
-                                } else {
-                                    isDescriptionExpanded = true
-                                }
-                            }
-                        })
-                    if desc.count > 100 {
+                    let approxLines = descText.count / 40
+                    let screenH = UIScreen.main.bounds.height
+                    let overflows = CGFloat(approxLines) * 20 > screenH / 4
+                    if overflows {
                         Button(isDescriptionExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
                             withAnimation { isDescriptionExpanded.toggle() }
                         }
@@ -203,21 +185,17 @@ struct ArchiveDetailView: View {
                     }
                 } else {
                     Text(String(localized: "detail_no_description"))
-                        .font(.subheadline).italic()
-                        .foregroundColor(.secondary)
+                        .font(.subheadline).italic().foregroundColor(.secondary)
                 }
 
                 let tags = parseTags()
-                if !tags.isEmpty {
-                    DetailTagView(tags: tags)
-                }
+                if !tags.isEmpty { DetailTagView(tags: tags) }
             }
             .padding(.horizontal, 16)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "detail_related"))
                     .font(.headline)
-
                 if isLoading {
                     HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
                 } else if related.isEmpty {
@@ -234,6 +212,7 @@ struct ArchiveDetailView: View {
             }
             .padding(.horizontal, 16)
         }
+        .padding(.top, 8)
     }
 
     // MARK: - Content Tab
@@ -275,12 +254,10 @@ struct ArchiveDetailView: View {
     }
 
     private var previewGrid: some View {
-        let columns = [GridItem(.adaptive(minimum: 100), spacing: 8)]
-        return LazyVGrid(columns: columns, spacing: 8) {
+        let cols = [GridItem(.adaptive(minimum: 100), spacing: 8)]
+        return LazyVGrid(columns: cols, spacing: 8) {
             ForEach(files.indices, id: \.self) { i in
-                Button {
-                    // placeholder: reading
-                } label: {
+                Button {} label: {
                     Rectangle().fill(Color(.systemGray5))
                         .aspectRatio(3.0 / 4.0, contentMode: .fit)
                         .overlay(alignment: .topTrailing) {
@@ -319,26 +296,27 @@ struct ArchiveDetailView: View {
         } else {
             if let aid = archive.assets?.cover ?? meta?.coverAssetId { coverData = try? await fetchImage(assetId: aid) }
         }
+        // Related: fetch 40, deduplicate, remove self, keep 10
         if isTankoubon, let id = archive.tankoubonId {
-            related = ((try? await server.apiClient.fetchRecommendations(count: 20, scene: "tankoubon_related", tankoubonId: id)) ?? [])
-                .filter { $0.arcid != archive.arcid && $0.tankoubonId != archive.tankoubonId }
-                .reduce(into: [SearchResultItem]()) { result, item in
-                    if !result.contains(where: { $0.arcid == item.arcid || $0.tankoubonId == item.tankoubonId }) {
-                        result.append(item)
-                    }
-                }
-                .prefix(10).map { $0 }
+            if let items = try? await server.apiClient.fetchRecommendations(count: 40, scene: "tankoubon_related", tankoubonId: id) {
+                related = processRelated(items)
+            }
         } else if let id = archive.arcid {
-            related = ((try? await server.apiClient.fetchRecommendations(count: 20, scene: "archive_related", archiveId: id)) ?? [])
-                .filter { $0.arcid != archive.arcid && $0.tankoubonId != archive.tankoubonId }
-                .reduce(into: [SearchResultItem]()) { result, item in
-                    if !result.contains(where: { $0.arcid == item.arcid || $0.tankoubonId == item.tankoubonId }) {
-                        result.append(item)
-                    }
-                }
-                .prefix(10).map { $0 }
+            if let items = try? await server.apiClient.fetchRecommendations(count: 40, scene: "archive_related", archiveId: id) {
+                related = processRelated(items)
+            }
         }
         isLoading = false
+    }
+
+    private func processRelated(_ items: [SearchResultItem]) -> [SearchResultItem] {
+        var seen = Set<String>()
+        return items.filter { item in
+            let id = item.arcid ?? item.tankoubonId ?? ""
+            guard id != archive.arcid && id != archive.tankoubonId && !seen.contains(id) else { return false }
+            seen.insert(id)
+            return true
+        }.prefix(10).map { $0 }
     }
 
     private func fetchImage(assetId: Int) async throws -> Data {
