@@ -213,6 +213,7 @@ struct ArchiveDetailView: View {
             Spacer(minLength: 0)
         }
         .padding(.top, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // MARK: - Content Tab
