@@ -163,14 +163,18 @@ struct ArchiveGridCell: View {
 
     private func loadCover() async {
         if isTankoubon {
-            await loadTankoubonCover()
+            if let assetId = coverAssetId {
+                await loadCoverImage(assetId: assetId)
+            } else {
+                await loadTankoubonCover()
+            }
         } else {
-            await loadArchiveCover()
+            await loadCoverImage(assetId: coverAssetId)
         }
     }
 
-    private func loadArchiveCover() async {
-        guard let assetId = coverAssetId else { return }
+    private func loadCoverImage(assetId: Int?) async {
+        guard let assetId else { return }
         if let cached = CacheManager.shared.getCover(id: "\(assetId)") {
             coverData = cached; return
         }
