@@ -228,14 +228,22 @@ struct ArchiveDetailView: View {
             if let children = tankoubonMeta?.children, !children.isEmpty {
                 LazyVStack(spacing: 0) {
                     ForEach(children.indices, id: \.self) { i in
-                        let c = children[i]
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(c.entityId ?? "---").font(.subheadline).lineLimit(1)
-                            Text(String(format: String(localized: "detail_volume"), c.volumeNo ?? i + 1))
-                                .font(.caption).foregroundColor(.secondary)
+                        HStack(spacing: 12) {
+                            ChildCoverCell(child: children[i], index: i, server: server)
+                                .frame(height: 128)
+                                .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(children[i].entityId ?? "---")
+                                    .font(.subheadline).lineLimit(1)
+                                Text(String(format: String(localized: "detail_volume"), children[i].volumeNo ?? i + 1))
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
-                        if i < children.count - 1 { Divider().padding(.leading, 16) }
+                        if i < children.count - 1 { Divider().padding(.leading, 88) }
                     }
                 }
             }
@@ -358,5 +366,49 @@ struct ArchiveDetailView: View {
     private func parseTags() -> [String] {
         if let t = meta?.tags ?? tankoubonMeta?.tags, !t.isEmpty { return t }
         return archive.tags?.components(separatedBy: ",").filter { !$0.isEmpty } ?? []
+    }
+}
+
+struct ChildCoverCell: View {
+    let child: APIClient.TankoubonChild
+    let index: Int
+    let server: Server
+    @State private var coverData: Data?
+
+    var body: some View {
+        Rectangle()
+            .fill(.clear)
+            .overlay {
+                if let data = coverData, let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage).resizable().scaledToFill()
+                } else {
+                    Rectangle().fill(Color(.systemGray5))
+                        .overlay { Image(systemName: "photo").foregroundColor(.secondary) }
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                Text(String(format: String(localized: "detail_volume"), child.volumeNo ?? index + 1))
+                    .font(.caption2).foregroundColor(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.black.opacity(0.6)).clipShape(Capsule()).padding(4)
+            }
+            .clipped()
+        .task { await loadCover() }
+    }
+
+    private func loadCover() async {
+        guard let eid = child.entityId else { return }
+        guard let meta = try? await server.apiClient.fetchArchiveMetadata(arcid: eid),
+              let aid = meta.coverAssetId else { return }
+        if let cached = CacheManager.shared.getCover(id: "\(aid)") { coverData = cached; return }
+        var urlString = server.baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard let url = URL(string: urlString)?.appendingPathComponent("api/assets/\(aid)") else { return }
+        var req = URLRequest(url: url); req.httpMethod = "GET"
+        if let t = server.authToken { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+        guard let (d, r) = try? await URLSession.shared.data(for: req),
+              let h = r as? HTTPURLResponse, h.statusCode == 200 else { return }
+        CacheManager.shared.cacheCover(id: "\(aid)", data: d)
+        coverData = d
     }
 }
