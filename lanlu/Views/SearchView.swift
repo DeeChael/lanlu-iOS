@@ -304,11 +304,10 @@ struct TagFlowView: View {
                     tags.removeAll()
                     onTagRemoved()
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.secondary)
+                    Image(systemName: "xmark")
+                        // .font(.title3)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
 
                 ForEach(tags.indices, id: \.self) { i in
                     HStack(spacing: 4) {
