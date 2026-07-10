@@ -772,6 +772,32 @@ class APIClient {
         return (try? JSONDecoder().decode([PageFile].self, from: data)) ?? []
     }
 
+    // MARK: - Favorites
+
+    func favoriteArchive(arcid: String) async throws {
+        guard let url = try? makeURL("/api/archives/\(arcid)/favorite") else { return }
+        var req = URLRequest(url: url); req.httpMethod = "PUT"
+        applyAuthHeader(&req); _ = try await URLSession.shared.data(for: req)
+    }
+
+    func unfavoriteArchive(arcid: String) async throws {
+        guard let url = try? makeURL("/api/archives/\(arcid)/favorite") else { return }
+        var req = URLRequest(url: url); req.httpMethod = "DELETE"
+        applyAuthHeader(&req); _ = try await URLSession.shared.data(for: req)
+    }
+
+    func favoriteTankoubon(tankoubonId: String) async throws {
+        guard let url = try? makeURL("/api/tankoubons/\(tankoubonId)/favorite") else { return }
+        var req = URLRequest(url: url); req.httpMethod = "PUT"
+        applyAuthHeader(&req); _ = try await URLSession.shared.data(for: req)
+    }
+
+    func unfavoriteTankoubon(tankoubonId: String) async throws {
+        guard let url = try? makeURL("/api/tankoubons/\(tankoubonId)/favorite") else { return }
+        var req = URLRequest(url: url); req.httpMethod = "DELETE"
+        applyAuthHeader(&req); _ = try await URLSession.shared.data(for: req)
+    }
+
     // MARK: - Recommendations
 
     struct RecommendationsResponse: Decodable {

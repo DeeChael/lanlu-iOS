@@ -175,7 +175,7 @@ struct ArchiveDetailView: View {
                 if let descText, !descText.isEmpty {
                     Text(descText).font(.subheadline)
                         .lineLimit(isDescriptionExpanded ? nil : 4)
-                    if descText.count > 150 {
+                    if descText.count > 100 {
                         Button(isDescriptionExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
                             withAnimation { isDescriptionExpanded.toggle() }
                         }
@@ -194,6 +194,7 @@ struct ArchiveDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "detail_related"))
                     .font(.headline)
+                    .padding(.top, 8)
                 if isLoading {
                     HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
                 } else if related.isEmpty {
@@ -328,7 +329,18 @@ struct ArchiveDetailView: View {
         return d
     }
 
-    private func toggleFavorite() { isFavorite.toggle() }
+    private func toggleFavorite() {
+        isFavorite.toggle()
+        Task {
+            if isTankoubon, let id = archive.tankoubonId {
+                if isFavorite { try? await server.apiClient.favoriteTankoubon(tankoubonId: id) }
+                else { try? await server.apiClient.unfavoriteTankoubon(tankoubonId: id) }
+            } else if let id = archive.arcid {
+                if isFavorite { try? await server.apiClient.favoriteArchive(arcid: id) }
+                else { try? await server.apiClient.unfavoriteArchive(arcid: id) }
+            }
+        }
+    }
 
     private func parseTags() -> [String] {
         if let t = meta?.tags ?? tankoubonMeta?.tags, !t.isEmpty { return t }
