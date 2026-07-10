@@ -266,19 +266,7 @@ struct ArchiveDetailView: View {
         let cols = [GridItem(.adaptive(minimum: 100), spacing: 8)]
         return LazyVGrid(columns: cols, spacing: 8) {
             ForEach(files.indices, id: \.self) { i in
-                Button {} label: {
-                    Rectangle().fill(Color(.systemGray5))
-                        .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                        .overlay(alignment: .topTrailing) {
-                            Text("\(i + 1)").font(.caption2).foregroundColor(.white)
-                                .padding(4).background(Color.black.opacity(0.6)).clipShape(Capsule()).padding(4)
-                        }
-                        .overlay {
-                            if files[i].type == "image" {
-                                Image(systemName: "photo").foregroundColor(.secondary)
-                            }
-                        }
-                }
+                ArchivePreviewCell(file: files[i], index: i, arcid: archive.arcid ?? "", server: server)
             }
         }
         .padding(16)
@@ -295,9 +283,10 @@ struct ArchiveDetailView: View {
                 isFavorite = tankoubonMeta?.isfavorite ?? false
             }
         } else if let id = archive.arcid {
-            async let md = server.apiClient.fetchArchiveMetadata(arcid: id)
-            async let fl = server.apiClient.fetchFiles(arcid: id)
-            meta = try? await md; files = (try? await fl) ?? []; print("[Detail] Files loaded: \(files.count)")
+            let client = server.apiClient
+            meta = try? await client.fetchArchiveMetadata(arcid: id)
+            files = (try? await client.fetchFiles(arcid: id)) ?? []
+            print("[Detail] Files loaded: \(files.count)")
             isFavorite = meta?.isfavorite ?? false
         }
         if isTankoubon {
@@ -451,3 +440,43 @@ struct ChildCoverCell: View {
         coverData = d
     }
 }
+
+struct ArchivePreviewCell: View {
+    let file: APIClient.PageFile
+    let index: Int
+    let arcid: String
+    let server: Server
+    @State private var imageData: Data?
+
+    var body: some View {
+        Rectangle().fill(Color(.systemGray5))
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .overlay {
+                if let data = imageData, let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "photo").foregroundColor(.secondary)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                Text("\(index + 1)").font(.caption2).foregroundColor(.white)
+                    .padding(4).background(Color.black.opacity(0.6)).clipShape(Capsule()).padding(4)
+            }
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .task { await loadImage() }
+    }
+
+    private func loadImage() async {
+        guard let path = file.path, !path.isEmpty else { return }
+        let cacheKey = "page_\(arcid)_\(path)"
+        if let cached = CacheManager.shared.getCover(id: cacheKey) {
+            imageData = cached; return
+        }
+        let client = server.apiClient
+        guard let data = try? await client.fetchPageImage(arcid: arcid, path: path) else { return }
+        CacheManager.shared.cacheCover(id: cacheKey, data: data)
+        imageData = data
+    }
+}
+

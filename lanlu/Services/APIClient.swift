@@ -795,6 +795,27 @@ class APIClient {
         return (try? JSONDecoder().decode([PageFile].self, from: data)) ?? []
     }
 
+    func fetchPageImage(arcid: String, path: String) async throws -> Data {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var components = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/archives/\(arcid)/page"
+        components.queryItems = [URLQueryItem(name: "path", value: path)]
+        guard let url = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return data
+    }
+
     // MARK: - Favorites
 
     func favoriteArchive(arcid: String) async throws {
