@@ -236,11 +236,12 @@ struct ArchiveDetailView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
 
                             VStack(alignment: .leading, spacing: 4) {
+                                Spacer()
                                 Text(children[i].entityId ?? "---")
                                     .font(.subheadline).lineLimit(1)
-                                Text(String(format: String(localized: "detail_volume"), children[i].volumeNo ?? i + 1))
-                                    .font(.caption).foregroundColor(.secondary)
+                                ChildMetaView(child: children[i], server: server)
                             }
+                            .frame(maxHeight: .infinity)
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         if i < children.count - 1 { Divider().padding(.leading, 88) }
@@ -366,6 +367,34 @@ struct ArchiveDetailView: View {
     private func parseTags() -> [String] {
         if let t = meta?.tags ?? tankoubonMeta?.tags, !t.isEmpty { return t }
         return archive.tags?.components(separatedBy: ",").filter { !$0.isEmpty } ?? []
+    }
+}
+
+struct ChildMetaView: View {
+    let child: APIClient.TankoubonChild
+    let server: Server
+    @State private var pagecount: Int?
+    @State private var description: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let p = pagecount {
+                Text("\(p) \(String(localized: "page_unit"))")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            if let d = description, !d.isEmpty {
+                Text(d).font(.caption).foregroundColor(.secondary).lineLimit(2)
+            }
+        }
+        .task { await loadMeta() }
+    }
+
+    private func loadMeta() async {
+        guard let eid = child.entityId else { print("[ChildMeta] no entityId"); return }
+        guard let meta = try? await server.apiClient.fetchArchiveMetadata(arcid: eid) else { print("[ChildMeta] fetch failed for \(eid)"); return }
+        pagecount = meta.pagecount
+        description = meta.description
+        print("[ChildMeta] loaded \(eid): pages=\(meta.pagecount ?? 0) desc=\(meta.description?.prefix(30) ?? "nil")")
     }
 }
 
