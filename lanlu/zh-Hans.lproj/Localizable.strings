@@ -136,3 +136,4 @@
 "detail_preview" = "预览";
 "detail_filetree" = "文件树";
 "detail_volume" = "第 %d 卷";
+"detail_no_description" = "没有简介";

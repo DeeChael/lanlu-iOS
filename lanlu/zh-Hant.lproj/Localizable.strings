@@ -136,3 +136,4 @@
 "detail_preview" = "預覽";
 "detail_filetree" = "文件樹";
 "detail_volume" = "第 %d 卷";
+"detail_no_description" = "沒有簡介";
