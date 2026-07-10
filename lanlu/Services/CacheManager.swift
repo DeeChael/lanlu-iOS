@@ -6,6 +6,7 @@ final class CacheManager {
 
     private var archiveCache = NSCache<NSString, NSData>()
     private var coverCache = NSCache<NSString, NSData>()
+    private var metaCache = NSCache<NSString, NSData>()
 
     private var diskCacheDir: URL {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -38,6 +39,27 @@ final class CacheManager {
         return try? Data(contentsOf: url)
     }
 
+    var metadataCacheCount: Int { metaCacheCount }
+    private var metaCacheCount = 0
+
+    func cacheArchiveMetadata(arcid: String, data: Data) {
+        metaCache.setObject(data as NSData, forKey: "meta_\(arcid)" as NSString)
+        metaCacheCount += 1
+    }
+
+    func getArchiveMetadata(arcid: String) -> Data? {
+        metaCache.object(forKey: "meta_\(arcid)" as NSString) as? Data
+    }
+
+    func cacheTankoubonMetadata(tankoubonId: String, data: Data) {
+        metaCache.setObject(data as NSData, forKey: "tmeta_\(tankoubonId)" as NSString)
+        metaCacheCount += 1
+    }
+
+    func getTankoubonMetadata(tankoubonId: String) -> Data? {
+        metaCache.object(forKey: "tmeta_\(tankoubonId)" as NSString) as? Data
+    }
+
     var diskCacheCount: Int {
         (try? FileManager.default.contentsOfDirectory(at: diskCacheDir, includingPropertiesForKeys: nil).count) ?? 0
     }
@@ -54,9 +76,15 @@ final class CacheManager {
         return String(format: "%.1f MB", Double(total) / (1024.0 * 1024.0))
     }
 
+    var allCachesCount: Int {
+        diskCacheCount + metadataCacheCount
+    }
+
     func clearAll() {
         archiveCache.removeAllObjects()
         coverCache.removeAllObjects()
+        metaCache.removeAllObjects()
+        metaCacheCount = 0
         let dir = diskCacheDir
         if let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
             for url in files { try? FileManager.default.removeItem(at: url) }

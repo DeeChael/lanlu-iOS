@@ -186,7 +186,7 @@ struct SettingsTabView: View {
                 }
 
                 Button(role: .destructive) {
-                    cacheInfo = String(format: String(localized: "clear_cache_detail"), CacheManager.shared.diskCacheCount, CacheManager.shared.diskCacheSize)
+                    cacheInfo = String(format: String(localized: "clear_cache_detail"), CacheManager.shared.metadataCacheCount, CacheManager.shared.diskCacheCount)
                     showClearCacheAlert = true
                 } label: {
                     HStack {

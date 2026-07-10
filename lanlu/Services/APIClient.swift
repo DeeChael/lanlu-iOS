@@ -716,6 +716,9 @@ class APIClient {
     }
 
     func fetchArchiveMetadata(arcid: String) async throws -> ArchiveMetadata {
+        if let cached = CacheManager.shared.getArchiveMetadata(arcid: arcid) {
+            return try JSONDecoder().decode(ArchiveMetadata.self, from: cached)
+        }
         var urlString = baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard var components = URLComponents(string: urlString) else {
@@ -734,10 +737,15 @@ class APIClient {
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
-        return try JSONDecoder().decode(ArchiveMetadata.self, from: data)
+        let meta = try JSONDecoder().decode(ArchiveMetadata.self, from: data)
+        CacheManager.shared.cacheArchiveMetadata(arcid: arcid, data: data)
+        return meta
     }
 
     func fetchTankoubonMetadata(tankoubonId: String) async throws -> TankoubonMetadata {
+        if let cached = CacheManager.shared.getTankoubonMetadata(tankoubonId: tankoubonId) {
+            return try JSONDecoder().decode(TankoubonMetadata.self, from: cached)
+        }
         var urlString = baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard var components = URLComponents(string: urlString) else {
@@ -754,7 +762,9 @@ class APIClient {
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
-        return try JSONDecoder().decode(TankoubonMetadata.self, from: data)
+        let meta = try JSONDecoder().decode(TankoubonMetadata.self, from: data)
+        CacheManager.shared.cacheTankoubonMetadata(tankoubonId: tankoubonId, data: data)
+        return meta
     }
 
     func fetchFiles(arcid: String) async throws -> [PageFile] {
