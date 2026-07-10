@@ -69,20 +69,16 @@ struct ArchiveDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 12) {
-                    GeometryReader { geo in
-                        coverView
-                            .onAppear { coverHeight = geo.size.height }
-                    }
-                    .frame(width: 120)
-                    .aspectRatio(3.0 / 4.0, contentMode: .fill)
+                    coverView
+                        .frame(width: 140)
+                        .aspectRatio(3.0 / 4.0, contentMode: .fill)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(archive.filename ?? archive.title ?? "---")
+                        MarqueeText(text: archive.filename ?? archive.title ?? "---")
                             .font(.title3)
                             .fontWeight(.bold)
-                            .fixedSize(horizontal: false, vertical: true)
 
                         if isTankoubon {
                             if let ac = archive.archiveCount ?? tankoubonMeta?.archiveCount {
@@ -132,7 +128,7 @@ struct ArchiveDetailView: View {
                     }
                 }
                 .padding(16)
-                .frame(minHeight: coverHeight > 0 ? coverHeight : 160)
+                .frame(minHeight: 140 * 4 / 3 + 16)
 
                 Picker("", selection: $selectedTab) {
                     Text(String(localized: "detail_info")).tag(0)
@@ -181,48 +177,55 @@ struct ArchiveDetailView: View {
 
     private var infoTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            let desc = archive.description ?? meta?.description
-            if let desc, !desc.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "detail_description")).font(.headline).padding(.horizontal, 16)
+            // Description + Tags
+            VStack(alignment: .leading, spacing: 8) {
+                let desc = archive.description ?? meta?.description
+                if let desc, !desc.isEmpty {
                     Text(desc).font(.subheadline)
                         .lineLimit(isDescriptionExpanded ? nil : 3)
-                        .padding(.horizontal, 16)
                     if desc.count > 100 {
                         Button(isDescriptionExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
                             withAnimation { isDescriptionExpanded.toggle() }
                         }
-                        .font(.caption).padding(.horizontal, 16)
+                        .font(.caption)
                     }
+                } else {
+                    Text(String(localized: "detail_no_description"))
+                        .font(.subheadline).italic()
+                        .foregroundColor(.secondary)
                 }
-            } else {
-                Text(String(localized: "detail_no_description"))
-                    .font(.subheadline).italic()
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 16)
-            }
 
-            let tags = parseTags()
-            if !tags.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "detail_tags")).font(.headline).padding(.horizontal, 16)
-                    DetailTagView(tags: tags).padding(.horizontal, 16)
+                let tags = parseTags()
+                if !tags.isEmpty {
+                    DetailTagView(tags: tags)
                 }
             }
+            .padding(.horizontal, 16)
 
-            if !related.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "detail_related")).font(.headline).padding(.horizontal, 16)
+            // Related
+            VStack(alignment: .leading, spacing: 8) {
+                Text(String(localized: "detail_related"))
+                    .font(.headline)
+
+                if related.isEmpty {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .id(isLoading ? "loading" : "done")
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
                             ForEach(related, id: \.arcid) { item in
                                 ArchiveGridCell(archive: item, server: server).frame(width: 120)
                             }
                         }
-                        .padding(.horizontal, 16)
                     }
                 }
             }
+            .padding(.horizontal, 16)
         }
     }
 
