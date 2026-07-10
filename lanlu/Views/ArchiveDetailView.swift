@@ -79,6 +79,7 @@ struct ArchiveDetailView: View {
                         MarqueeText(text: archive.filename ?? archive.title ?? "---")
                             .font(.title3)
                             .fontWeight(.bold)
+                            .padding(.vertical, 2)
 
                         if isTankoubon {
                             if let ac = archive.archiveCount ?? tankoubonMeta?.archiveCount {
@@ -111,8 +112,8 @@ struct ArchiveDetailView: View {
                             .clipShape(Circle())
 
                             if !isTankoubon {
-                                NavigationLink {
-                                    // placeholder: reader view
+                                Button {
+                                    // placeholder
                                 } label: {
                                     Label(String(localized: "detail_start_read"), systemImage: "book.fill")
                                         .font(.subheadline)
@@ -123,6 +124,7 @@ struct ArchiveDetailView: View {
                                         .foregroundColor(.white)
                                         .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
+                                .disabled(true)
                             }
                         }
                     }
@@ -143,6 +145,7 @@ struct ArchiveDetailView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .task { await loadData() }
     }
 
@@ -177,12 +180,21 @@ struct ArchiveDetailView: View {
 
     private var infoTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Description + Tags
             VStack(alignment: .leading, spacing: 8) {
                 let desc = archive.description ?? meta?.description
                 if let desc, !desc.isEmpty {
                     Text(desc).font(.subheadline)
-                        .lineLimit(isDescriptionExpanded ? nil : 3)
+                        .lineLimit(isDescriptionExpanded ? nil : 4)
+                        .background(GeometryReader { geo in
+                            Color.clear.onAppear {
+                                let screenH = UIScreen.main.bounds.height
+                                if geo.size.height > screenH / 4 {
+                                    isDescriptionExpanded = false
+                                } else {
+                                    isDescriptionExpanded = true
+                                }
+                            }
+                        })
                     if desc.count > 100 {
                         Button(isDescriptionExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
                             withAnimation { isDescriptionExpanded.toggle() }
@@ -202,19 +214,14 @@ struct ArchiveDetailView: View {
             }
             .padding(.horizontal, 16)
 
-            // Related
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "detail_related"))
                     .font(.headline)
 
-                if related.isEmpty {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                            .id(isLoading ? "loading" : "done")
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
+                if isLoading {
+                    HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
+                } else if related.isEmpty {
+                    HStack { Spacer(); Text("---").foregroundColor(.secondary); Spacer() }.padding(.vertical, 8)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
@@ -313,9 +320,23 @@ struct ArchiveDetailView: View {
             if let aid = archive.assets?.cover ?? meta?.coverAssetId { coverData = try? await fetchImage(assetId: aid) }
         }
         if isTankoubon, let id = archive.tankoubonId {
-            related = (try? await server.apiClient.fetchRecommendations(count: 10, scene: "tankoubon_related", tankoubonId: id)) ?? []
+            related = ((try? await server.apiClient.fetchRecommendations(count: 20, scene: "tankoubon_related", tankoubonId: id)) ?? [])
+                .filter { $0.arcid != archive.arcid && $0.tankoubonId != archive.tankoubonId }
+                .reduce(into: [SearchResultItem]()) { result, item in
+                    if !result.contains(where: { $0.arcid == item.arcid || $0.tankoubonId == item.tankoubonId }) {
+                        result.append(item)
+                    }
+                }
+                .prefix(10).map { $0 }
         } else if let id = archive.arcid {
-            related = (try? await server.apiClient.fetchRecommendations(count: 10, scene: "archive_related", archiveId: id)) ?? []
+            related = ((try? await server.apiClient.fetchRecommendations(count: 20, scene: "archive_related", archiveId: id)) ?? [])
+                .filter { $0.arcid != archive.arcid && $0.tankoubonId != archive.tankoubonId }
+                .reduce(into: [SearchResultItem]()) { result, item in
+                    if !result.contains(where: { $0.arcid == item.arcid || $0.tankoubonId == item.tankoubonId }) {
+                        result.append(item)
+                    }
+                }
+                .prefix(10).map { $0 }
         }
         isLoading = false
     }

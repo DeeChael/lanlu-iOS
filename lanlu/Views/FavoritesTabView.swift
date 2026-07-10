@@ -230,7 +230,7 @@ struct MarqueeText: View {
                 .offset(x: needsScroll ? offset : 0)
                 .onAppear { startMarquee(textWidth: geo.size.width) }
         }
-        .frame(height: 20)
+        .frame(height: 24)
         .clipped()
     }
 
