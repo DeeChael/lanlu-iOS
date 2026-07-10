@@ -256,10 +256,7 @@ struct ArchiveDetailView: View {
             }
             .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
 
-            if previewMode == 0 { previewGrid } else {
-                Text("\(files.count) files").font(.caption).foregroundColor(.secondary).padding(.horizontal, 16).padding(.top, 4)
-                FileTreeView(files: files).padding(.horizontal, 16).id("ftv_\(files.count)")
-            }
+            if previewMode == 0 { previewGrid } else { FileTreeView(files: files).padding(.horizontal, 16) }
         }
     }
 
