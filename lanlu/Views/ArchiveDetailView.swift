@@ -47,6 +47,63 @@ struct FlowLayout: Layout {
     }
 }
 
+struct DescriptionTagBlock: View {
+    let descText: String?
+    let tags: [String]
+    @Binding var isExpanded: Bool
+
+    @State private var shouldFold = false
+    private let screenHeight = UIScreen.main.bounds.height
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let descText, !descText.isEmpty {
+                if isExpanded || !shouldFold {
+                    Text(descText).font(.subheadline)
+                    if !tags.isEmpty { DetailTagView(tags: tags) }
+                } else {
+                    Text(descText).font(.subheadline)
+                        .lineLimit(2)
+                        .frame(maxHeight: 40, alignment: .top)
+                        .overlay(alignment: .bottom) {
+                            LinearGradient(
+                                colors: [.white.opacity(0), .white],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 20)
+                            .allowsHitTesting(false)
+                        }
+                }
+
+                if shouldFold {
+                    Button(isExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
+                        withAnimation(.easeInOut(duration: 0.25)) { isExpanded.toggle() }
+                    }
+                    .font(.caption)
+                }
+            } else {
+                Text(String(localized: "detail_no_description"))
+                    .font(.subheadline).italic().foregroundColor(.secondary)
+                if !tags.isEmpty { DetailTagView(tags: tags) }
+            }
+        }
+        .onChange(of: descText) { _, _ in checkFold() }
+        .onChange(of: tags) { _, _ in checkFold() }
+        .onAppear { checkFold() }
+    }
+
+    private func checkFold() {
+        let textCount = descText?.count ?? 0
+        let textH = CGFloat(textCount) / 38.0 * 20.0
+        let tagRows = tags.isEmpty ? 0 : (tags.count + 3) / 4
+        let tagH = CGFloat(tagRows) * 30.0
+        let total = textH + tagH
+        let threshold = screenHeight / 4.0
+        shouldFold = total > threshold
+    }
+}
+
 struct ArchiveDetailView: View {
     let archive: SearchResultItem
     let server: Server
@@ -171,35 +228,11 @@ struct ArchiveDetailView: View {
 
     private var infoTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            let descText = archive.description ?? meta?.description
-            VStack(alignment: .leading, spacing: 8) {
-                if let descText, !descText.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(descText).font(.subheadline)
-                            .lineLimit(isDescriptionExpanded ? nil : 4)
-
-                        if isDescriptionExpanded {
-                            let tags = parseTags()
-                            if !tags.isEmpty { DetailTagView(tags: tags) }
-                        } else {
-                            let tags = parseTags()
-                            if !tags.isEmpty { DetailTagView(tags: tags).lineLimit(1) }
-                        }
-                    }
-
-                    if descText.count > 80 || !parseTags().isEmpty {
-                        Button(isDescriptionExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
-                            withAnimation { isDescriptionExpanded.toggle() }
-                        }
-                        .font(.caption)
-                    }
-                } else {
-                    Text(String(localized: "detail_no_description"))
-                        .font(.subheadline).italic().foregroundColor(.secondary)
-                    let tags = parseTags()
-                    if !tags.isEmpty { DetailTagView(tags: tags) }
-                }
-            }
+            DescriptionTagBlock(
+                descText: archive.description ?? meta?.description,
+                tags: parseTags(),
+                isExpanded: $isDescriptionExpanded
+            )
             .padding(.horizontal, 16)
 
             if !relatedLoaded || !related.isEmpty {
@@ -211,7 +244,7 @@ struct ArchiveDetailView: View {
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                ForEach(related, id: \.arcid) { item in
+                                ForEach(related, id: \.displayId) { item in
                                     ArchiveGridCell(archive: item, server: server).frame(width: 120)
                                 }
                             }
@@ -222,6 +255,7 @@ struct ArchiveDetailView: View {
             }
         }
         .padding(.top, 8)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Content Tab
@@ -322,15 +356,18 @@ struct ArchiveDetailView: View {
     }
 
     private func processRelated(_ items: [SearchResultItem]) -> [SearchResultItem] {
-        var seenArcid = Set<String>()
-        var seenTankoubon = Set<String>()
-        return items.filter { item in
-            if let aid = archive.arcid, item.arcid == aid { return false }
-            if let tid = archive.tankoubonId, item.tankoubonId == tid { return false }
-            if let id = item.arcid { guard !seenArcid.contains(id) else { return false }; seenArcid.insert(id) }
-            if let id = item.tankoubonId { guard !seenTankoubon.contains(id) else { return false }; seenTankoubon.insert(id) }
-            return true
-        }.prefix(10).map { $0 }
+        var seen = Set<String>()
+        var result: [SearchResultItem] = []
+        for item in items {
+            let id = item.arcid ?? item.tankoubonId ?? ""
+            if id.isEmpty { continue }
+            if id == archive.arcid || id == archive.tankoubonId { continue }
+            if seen.contains(id) { continue }
+            seen.insert(id)
+            result.append(item)
+            if result.count >= 10 { break }
+        }
+        return result
     }
 
     private func fetchImage(assetId: Int) async throws -> Data {
