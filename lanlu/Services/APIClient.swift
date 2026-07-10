@@ -446,7 +446,7 @@ class APIClient {
 
     // MARK: - Search
 
-    func search(favoriteOnly: Bool = false, favoriteTankoubonsOnly: Bool = false, untaggedOnly: Bool = false, filter: String? = nil, tags: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, start: Int = 0, count: Int = 20) async throws -> SearchResponse {
+    func search(favoriteOnly: Bool = false, favoriteTankoubonsOnly: Bool = false, untaggedOnly: Bool = false, filter: String? = nil, tags: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, page: Int = 1, pageSize: Int = 20) async throws -> SearchResponse {
         var urlString = baseURL
         if !urlString.contains("://") {
             urlString = "https://" + urlString
@@ -458,8 +458,8 @@ class APIClient {
 
         baseComponents.path = (baseComponents.path.hasSuffix("/") ? "" : "/") + "api/search"
         var items: [URLQueryItem] = [
-            URLQueryItem(name: "start", value: "\(start)"),
-            URLQueryItem(name: "count", value: "\(count)"),
+            URLQueryItem(name: "page", value: "\(page)"),
+            URLQueryItem(name: "pageSize", value: "\(pageSize)"),
             URLQueryItem(name: "sortby", value: sortby),
             URLQueryItem(name: "order", value: order),
         ]
@@ -494,7 +494,7 @@ class APIClient {
         request.httpMethod = "GET"
         applyAuthHeader(&request)
 
-        LogManager.shared.log("GET /api/search start=\(start) count=\(count) sortby=\(sortby)")
+        LogManager.shared.log("GET /api/search page=\(page) pageSize=\(pageSize) sortby=\(sortby)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let bodyStr = String(data: data, encoding: .utf8) ?? "nil"
@@ -510,24 +510,16 @@ class APIClient {
         throw AuthError.networkError(String(localized: "connection_failed"))
     }
 
-    func fetchFavorites(start: Int = 0, count: Int = 40) async throws -> [SearchResultItem] {
-        async let archiveResp = search(favoriteOnly: true, sortby: "updated_at", order: "desc", start: start, count: count)
-        async let tankoubonResp = search(favoriteTankoubonsOnly: true, sortby: "updated_at", order: "desc", start: start, count: count)
-
-        let archives = (try? await archiveResp.data) ?? []
-        let tankoubons = (try? await tankoubonResp.data) ?? []
-
-        let combined = (archives + tankoubons).sorted { lhs, rhs in
-            let lhsTime = lhs.updatedAt ?? ""
-            let rhsTime = rhs.updatedAt ?? ""
-            return lhsTime > rhsTime
-        }
-
-        return combined
+    func fetchFavoritesArchives(page: Int = 1, pageSize: Int = 20) async throws -> SearchResponse {
+        try await search(favoriteOnly: true, sortby: "updated_at", order: "desc", page: page, pageSize: pageSize)
     }
 
-    func fetchHistory(start: Int = 0, count: Int = 40) async throws -> SearchResponse {
-        try await search(favoriteOnly: false, sortby: "lastread", order: "desc", start: start, count: count)
+    func fetchFavoritesTankoubons(page: Int = 1, pageSize: Int = 20) async throws -> SearchResponse {
+        try await search(favoriteTankoubonsOnly: true, sortby: "updated_at", order: "desc", page: page, pageSize: pageSize)
+    }
+
+    func fetchHistory(page: Int = 1, pageSize: Int = 40) async throws -> SearchResponse {
+        try await search(favoriteOnly: false, sortby: "lastread", order: "desc", page: page, pageSize: pageSize)
     }
 
     // MARK: - Autocomplete

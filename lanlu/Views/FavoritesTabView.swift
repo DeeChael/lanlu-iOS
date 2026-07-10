@@ -3,79 +3,129 @@ import SwiftUI
 struct FavoritesTabView: View {
     let server: Server
     @State private var archives: [SearchResultItem] = []
+    @State private var tankoubons: [SearchResultItem] = []
     @State private var isLoading = false
-    @State private var hasMore = true
+    @State private var isRefreshing = false
+    @State private var hasMoreArchives = true
+    @State private var hasMoreTankoubons = true
 
     private let pageSize = 20
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
+    private let favCacheKey = "fav_cache"
+
+    private var allItems: [SearchResultItem] {
+        (archives + tankoubons).sorted { ($0.favoritetime ?? 0) > ($1.favoritetime ?? 0) }
+    }
 
     var body: some View {
         Group {
-            if isLoading && archives.isEmpty {
+            if isLoading && allItems.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if archives.isEmpty {
-                ContentUnavailableView(
-                    "favorites_placeholder",
-                    systemImage: "heart.fill",
-                    description: Text("favorites_placeholder_desc")
-                )
+            } else if allItems.isEmpty {
+                ContentUnavailableView("favorites_placeholder", systemImage: "heart.fill", description: Text("favorites_placeholder_desc"))
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(archives, id: \.displayId) { archive in
-                            ArchiveGridCell(archive: archive, server: server)
-                                .onAppear { loadMoreIfNeeded(archive) }
+                        ForEach(allItems, id: \.displayId) { item in
+                            ArchiveGridCell(archive: item, server: server)
                         }
-
                         if isLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding()
+                            ProgressView().frame(maxWidth: .infinity).padding()
                         }
                     }
                     .padding(12)
+                }
+                .refreshable {
+                    await refreshAll()
                 }
             }
         }
         .navigationDestination(for: SearchResultItem.self) { item in
             ArchiveDetailView(archive: item, server: server)
         }
-        .task { await loadFavorites(reset: true) }
+        .task { await loadInitial() }
     }
 
-    private func loadFavorites(reset: Bool) async {
-        guard !isLoading else { return }
+    private func loadInitial() async {
+        loadFromCache()
+        if !allItems.isEmpty { return }
         isLoading = true
-        if reset { archives = [] }
-
-        do {
-            let startOffset = archives.count
-            let items = try await server.apiClient.fetchFavorites(start: startOffset, count: pageSize)
-
-            var newCount = 0
-            for item in items {
-                if !archives.contains(where: { $0.displayId == item.displayId }) {
-                    CacheManager.shared.cacheArchive(item)
-                    archives.append(item)
-                    newCount += 1
-                }
-            }
-
-            hasMore = items.count >= pageSize
-        } catch {
-            print("[Favorites] Error: \(error)")
-            hasMore = false
-        }
+        await fetchAll()
         isLoading = false
     }
 
-    private func loadMoreIfNeeded(_ archive: SearchResultItem) {
-        guard hasMore, !isLoading,
-              let index = archives.firstIndex(where: { $0.displayId == archive.displayId }),
-              index >= archives.count - 5 else { return }
-        Task { await loadFavorites(reset: false) }
+    private func refreshAll() async {
+        isRefreshing = true
+        await fetchAll()
+        isRefreshing = false
     }
+
+    private func fetchAll() async {
+        print("[Favorites] Fetching all favorites")
+        var allArchives: [SearchResultItem] = []
+        var allTankoubons: [SearchResultItem] = []
+        var page = 1
+        var maxPages = 10
+
+        while page <= maxPages {
+            if let r = try? await server.apiClient.fetchFavoritesArchives(page: page, pageSize: pageSize) {
+                let items = r.data ?? []
+                if items.isEmpty { break }
+                var newCount = 0
+                for item in items {
+                    if !allArchives.contains(where: { $0.displayId == item.displayId }) {
+                        allArchives.append(item)
+                        newCount += 1
+                    }
+                }
+                if newCount == 0 || items.count < pageSize { break }
+                page += 1
+            } else { break }
+        }
+
+        page = 1
+        while page <= maxPages {
+            if let r = try? await server.apiClient.fetchFavoritesTankoubons(page: page, pageSize: pageSize) {
+                let items = r.data ?? []
+                if items.isEmpty { break }
+                var newCount = 0
+                for item in items {
+                    if !allTankoubons.contains(where: { $0.displayId == item.displayId }) {
+                        allTankoubons.append(item)
+                        newCount += 1
+                    }
+                }
+                if newCount == 0 || items.count < pageSize { break }
+                page += 1
+            } else { break }
+        }
+
+        print("[Favorites] Fetched: archives=\(allArchives.count) tankoubons=\(allTankoubons.count)")
+        archives = allArchives
+        tankoubons = allTankoubons
+        saveToCache()
+    }
+
+    private func loadFromCache() {
+        guard let data = UserDefaults.standard.data(forKey: favCacheKey),
+              let cached = try? JSONDecoder().decode(CachedFavorites.self, from: data) else { return }
+        archives = cached.archives
+        tankoubons = cached.tankoubons
+        print("[Favorites] Cache loaded: archives=\(archives.count) tankoubons=\(tankoubons.count)")
+    }
+
+    private func saveToCache() {
+        let cached = CachedFavorites(archives: archives, tankoubons: tankoubons)
+        if let data = try? JSONEncoder().encode(cached) {
+            UserDefaults.standard.set(data, forKey: favCacheKey)
+        }
+    }
+}
+
+private struct CachedFavorites: Codable {
+    let archives: [SearchResultItem]
+    let tankoubons: [SearchResultItem]
 }
 
 struct ArchiveGridCell: View {
@@ -135,8 +185,8 @@ struct ArchiveGridCell: View {
                 }
             }
             }
-            }
             .task { await loadCover() }
+            }
             .tint(.primary)
     }
 
@@ -237,3 +287,4 @@ struct MarqueeText: View {
         }
     }
 }
+

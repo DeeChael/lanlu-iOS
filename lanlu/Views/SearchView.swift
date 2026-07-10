@@ -235,7 +235,7 @@ struct SearchView: View {
                 sortby: sortField, order: sortOrder,
                 dateFrom: dateEnabled ? df.string(from: dateFrom) : nil,
                 dateTo: dateEnabled ? df.string(from: dateTo) : nil,
-                start: nextStart, count: pageSize
+                page: (nextStart / pageSize) + 1, pageSize: pageSize
             )
             let items = result.data ?? []
             for item in items {
@@ -281,7 +281,7 @@ struct SearchView: View {
                 sortby: sortField, order: sortOrder,
                 dateFrom: dateEnabled ? df.string(from: dateFrom) : nil,
                 dateTo: dateEnabled ? df.string(from: dateTo) : nil,
-                start: nextStart, count: pageSize
+                page: (nextStart / pageSize) + 1, pageSize: pageSize
             )
             let items = result.data ?? []
             for item in items {

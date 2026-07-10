@@ -50,7 +50,7 @@ struct HistoryTabView: View {
 
         do {
             let startOffset = archives.count
-            let result = try await server.apiClient.fetchHistory(start: startOffset, count: pageSize)
+            let result = try await server.apiClient.fetchHistory(page: (startOffset / pageSize) + 1, pageSize: pageSize)
             let items = result.data ?? []
 
             var newCount = 0

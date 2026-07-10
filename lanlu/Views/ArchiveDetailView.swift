@@ -46,64 +46,7 @@ struct FlowLayout: Layout {
         }
     }
 }
-
-struct DescriptionTagBlock: View {
-    let descText: String?
-    let tags: [String]
-    @Binding var isExpanded: Bool
-
-    @State private var shouldFold = false
-    private let screenHeight = UIScreen.main.bounds.height
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let descText, !descText.isEmpty {
-                if isExpanded || !shouldFold {
-                    Text(descText).font(.subheadline)
-                    if !tags.isEmpty { DetailTagView(tags: tags) }
-                } else {
-                    Text(descText).font(.subheadline)
-                        .lineLimit(2)
-                        .frame(maxHeight: 40, alignment: .top)
-                        .overlay(alignment: .bottom) {
-                            LinearGradient(
-                                colors: [.white.opacity(0), .white],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .frame(height: 20)
-                            .allowsHitTesting(false)
-                        }
-                }
-
-                if shouldFold {
-                    Button(isExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
-                        withAnimation(.easeInOut(duration: 0.25)) { isExpanded.toggle() }
-                    }
-                    .font(.caption)
-                }
-            } else {
-                Text(String(localized: "detail_no_description"))
-                    .font(.subheadline).italic().foregroundColor(.secondary)
-                if !tags.isEmpty { DetailTagView(tags: tags) }
-            }
-        }
-        .onChange(of: descText) { _, _ in checkFold() }
-        .onChange(of: tags) { _, _ in checkFold() }
-        .onAppear { checkFold() }
-    }
-
-    private func checkFold() {
-        let textCount = descText?.count ?? 0
-        let textH = CGFloat(textCount) / 38.0 * 20.0
-        let tagRows = tags.isEmpty ? 0 : (tags.count + 3) / 4
-        let tagH = CGFloat(tagRows) * 30.0
-        let total = textH + tagH
-        let threshold = screenHeight / 4.0
-        shouldFold = total > threshold
-    }
-}
-
+ 
 struct ArchiveDetailView: View {
     let archive: SearchResultItem
     let server: Server
@@ -228,18 +171,25 @@ struct ArchiveDetailView: View {
 
     private var infoTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            DescriptionTagBlock(
-                descText: archive.description ?? meta?.description,
-                tags: parseTags(),
-                isExpanded: $isDescriptionExpanded
-            )
+            // Description + Tags
+            VStack(alignment: .leading, spacing: 8) {
+                let descText = archive.description ?? meta?.description
+                if let descText, !descText.isEmpty {
+                    Text(descText).font(.subheadline)
+                } else {
+                    Text(String(localized: "detail_no_description"))
+                        .font(.subheadline).italic().foregroundColor(.secondary)
+                }
+                let tags = parseTags()
+                if !tags.isEmpty { DetailTagView(tags: tags) }
+            }
             .padding(.horizontal, 16)
+            .padding(.bottom, 8)
 
             if !relatedLoaded || !related.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(String(localized: "detail_related"))
                         .font(.headline)
-                        .padding(.top, 4)
                     if !relatedLoaded {
                         HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
                     } else {
@@ -384,6 +334,7 @@ struct ArchiveDetailView: View {
     }
 
     private func toggleFavorite() {
+        let wasFavorite = isFavorite
         isFavorite.toggle()
         Task {
             if isTankoubon, let id = archive.tankoubonId {
@@ -393,6 +344,8 @@ struct ArchiveDetailView: View {
                 if isFavorite { try? await server.apiClient.favoriteArchive(arcid: id) }
                 else { try? await server.apiClient.unfavoriteArchive(arcid: id) }
             }
+            // Invalidate favorites cache
+            UserDefaults.standard.removeObject(forKey: "fav_cache")
         }
     }
 
