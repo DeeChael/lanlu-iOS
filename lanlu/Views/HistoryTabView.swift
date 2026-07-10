@@ -37,6 +37,9 @@ struct HistoryTabView: View {
                 }
             }
         }
+        .navigationDestination(for: SearchResultItem.self) { item in
+            ArchiveDetailView(archive: item, server: server)
+        }
         .task { await loadHistory(reset: true) }
     }
 

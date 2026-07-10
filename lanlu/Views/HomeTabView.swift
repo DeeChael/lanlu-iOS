@@ -99,6 +99,9 @@ struct HomeTabView: View {
             }
             .presentationDetents([.large])
         }
+        .navigationDestination(for: SearchResultItem.self) { item in
+            ArchiveDetailView(archive: item, server: server)
+        }
         .task {
             await loadInitial()
         }

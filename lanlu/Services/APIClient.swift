@@ -57,11 +57,11 @@ struct TrendPoint: Decodable {
 
 // MARK: - Search / Archive
 
-struct ArchiveAsset: Codable, Sendable {
+    struct ArchiveAsset: Codable, Hashable, Sendable {
     let cover: Int?
 }
 
-    struct SearchResultItem: Codable, Sendable {
+    struct SearchResultItem: Codable, Hashable, Sendable {
         let type: String?
         let arcid: String?
         let tankoubonId: String?
@@ -152,6 +152,15 @@ struct ArchiveAsset: Codable, Sendable {
             if let int = try? container.decode(Int.self, forKey: key) { return int }
             if let str = try? container.decode(String.self, forKey: key), let int = Int(str) { return int }
             return nil
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(arcid)
+            hasher.combine(tankoubonId)
+        }
+
+        static func == (lhs: SearchResultItem, rhs: SearchResultItem) -> Bool {
+            lhs.arcid == rhs.arcid && lhs.tankoubonId == rhs.tankoubonId
         }
 
         var displayId: String { arcid ?? tankoubonId ?? UUID().uuidString }
@@ -610,13 +619,93 @@ class APIClient {
 
     struct ArchiveMetadata: Decodable {
         let arcid: String?
+        let title: String?
+        let description: String?
+        let tags: [String]?
         let assets: [ArchiveMetadataAsset]?
         let pagecount: Int?
         let progress: Int?
+        let filename: String?
+        let fileSize: Int?
+        let archivetype: String?
+        let isnew: Bool?
+        let isfavorite: Bool?
+        let thumbnailHash: String?
+        let capabilities: [String]?
 
         var coverAssetId: Int? {
             assets?.first(where: { $0.key == "cover" })?.value
         }
+
+        enum CodingKeys: String, CodingKey {
+            case arcid, title, description, tags, assets, pagecount, progress, filename
+            case fileSize = "file_size"
+            case archivetype, isnew, isfavorite
+            case thumbnailHash = "thumbnail_hash"
+            case capabilities
+        }
+    }
+
+    struct TankoubonMetadata: Decodable {
+        let tankoubonId: String?
+        let title: String?
+        let description: String?
+        let tags: [String]?
+        let assets: [ArchiveMetadataAsset]?
+        let pagecount: Int?
+        let progress: Int?
+        let archiveCount: Int?
+        let isnew: Bool?
+        let isfavorite: Bool?
+        let children: [TankoubonChild]?
+
+        var coverAssetId: Int? {
+            assets?.first(where: { $0.key == "cover" })?.value
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case title, description, tags, assets, pagecount, progress, children, isnew, isfavorite
+            case tankoubonId = "tankoubon_id"
+            case archiveCount = "archive_count"
+        }
+    }
+
+    struct TankoubonChild: Decodable {
+        let entityType: String?
+        let entityId: String?
+        let volumeNo: Int?
+        let orderIndex: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case entityType = "entity_type"
+            case entityId = "entity_id"
+            case volumeNo = "volume_no"
+            case orderIndex = "order_index"
+        }
+    }
+
+    struct PageFile: Decodable {
+        let id: String?
+        let type: String?
+        let title: String?
+        let path: String?
+        let defaultSource: PageFileSource?
+
+        enum CodingKeys: String, CodingKey {
+            case id, type, title, path
+            case defaultSource = "default_source"
+        }
+    }
+
+    struct PageFileSource: Decodable {
+        let id: String?
+        let path: String?
+        let type: String?
+        let title: String?
+    }
+
+    struct FilesResponse: Decodable {
+        let pages: [PageFile]?
     }
 
     func fetchArchiveMetadata(arcid: String) async throws -> ArchiveMetadata {
@@ -641,6 +730,48 @@ class APIClient {
         return try JSONDecoder().decode(ArchiveMetadata.self, from: data)
     }
 
+    func fetchTankoubonMetadata(tankoubonId: String) async throws -> TankoubonMetadata {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var components = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/tankoubons/\(tankoubonId)/metadata"
+        guard let url = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return try JSONDecoder().decode(TankoubonMetadata.self, from: data)
+    }
+
+    func fetchFiles(arcid: String) async throws -> [PageFile] {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var components = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/archives/\(arcid)/files"
+        guard let url = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        if let result = try? JSONDecoder().decode(FilesResponse.self, from: data),
+           let pages = result.pages { return pages }
+        return (try? JSONDecoder().decode([PageFile].self, from: data)) ?? []
+    }
+
     // MARK: - Recommendations
 
     struct RecommendationsResponse: Decodable {
@@ -648,7 +779,7 @@ class APIClient {
         let data: [SearchResultItem]?
     }
 
-    func fetchRecommendations(count: Int = 20, categoryId: Int? = nil) async throws -> [SearchResultItem] {
+    func fetchRecommendations(count: Int = 20, categoryId: Int? = nil, scene: String = "discover", archiveId: String? = nil, tankoubonId: String? = nil) async throws -> [SearchResultItem] {
         var urlString = baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard var components = URLComponents(string: urlString) else {
@@ -656,11 +787,17 @@ class APIClient {
         }
         components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/recommendations"
         var items: [URLQueryItem] = [
-            URLQueryItem(name: "scene", value: "discover"),
+            URLQueryItem(name: "scene", value: scene),
             URLQueryItem(name: "count", value: "\(count)"),
         ]
         if let categoryId {
             items.append(URLQueryItem(name: "category_id", value: "\(categoryId)"))
+        }
+        if let archiveId {
+            items.append(URLQueryItem(name: "archive_id", value: archiveId))
+        }
+        if let tankoubonId {
+            items.append(URLQueryItem(name: "tankoubon_id", value: tankoubonId))
         }
         components.queryItems = items
         guard let url = components.url else {

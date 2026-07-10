@@ -123,3 +123,16 @@
 "clear_history_confirm" = "确认清除所有搜索记录？此操作不可撤销。";
 "delete" = "删除";
 "search_clear_history" = "清除所有记录";
+"detail_total_pages" = "%d 页";
+"detail_favorite" = "收藏";
+"detail_start_read" = "开始阅读";
+"detail_info" = "详细";
+"detail_content" = "内容";
+"detail_description" = "简介";
+"detail_tags" = "标签";
+"detail_related" = "相关推荐";
+"detail_expand" = "展开";
+"detail_collapse" = "收起";
+"detail_preview" = "预览";
+"detail_filetree" = "文件树";
+"detail_volume" = "第 %d 卷";

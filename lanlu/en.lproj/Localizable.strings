@@ -123,3 +123,16 @@
 "clear_history_confirm" = "Clear all search history? This cannot be undone.";
 "delete" = "Delete";
 "search_clear_history" = "Clear All History";
+"detail_total_pages" = "%d pages";
+"detail_favorite" = "Favorite";
+"detail_start_read" = "Start Reading";
+"detail_info" = "Details";
+"detail_content" = "Content";
+"detail_description" = "Description";
+"detail_tags" = "Tags";
+"detail_related" = "Related";
+"detail_expand" = "Show more";
+"detail_collapse" = "Show less";
+"detail_preview" = "Preview";
+"detail_filetree" = "File Tree";
+"detail_volume" = "Volume %d";

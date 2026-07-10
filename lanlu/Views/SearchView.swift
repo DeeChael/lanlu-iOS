@@ -72,6 +72,9 @@ struct SearchView: View {
         .onSubmit(of: .search) {
             performSearch()
         }
+        .navigationDestination(for: SearchResultItem.self) { item in
+            ArchiveDetailView(archive: item, server: server)
+        }
         .onChange(of: query) { _, newValue in
             hasSearched = false
             if isAddingTag { isAddingTag = false; return }

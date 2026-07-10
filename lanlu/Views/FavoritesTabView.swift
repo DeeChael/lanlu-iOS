@@ -38,6 +38,9 @@ struct FavoritesTabView: View {
                 }
             }
         }
+        .navigationDestination(for: SearchResultItem.self) { item in
+            ArchiveDetailView(archive: item, server: server)
+        }
         .task { await loadFavorites(reset: true) }
     }
 
@@ -95,7 +98,8 @@ struct ArchiveGridCell: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        NavigationLink(value: archive) {
+            VStack(alignment: .leading, spacing: 4) {
             coverView
                 .overlay(alignment: .topLeading) {
                     if isTankoubon {
@@ -137,8 +141,9 @@ struct ArchiveGridCell: View {
                         .foregroundColor(.accentColor)
                 }
             }
-        }
-        .task { await loadCover() }
+            }
+            }
+            .task { await loadCover() }
     }
 
     @ViewBuilder
