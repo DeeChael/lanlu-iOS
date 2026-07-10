@@ -67,72 +67,77 @@ struct ArchiveDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Fixed header
-            HStack(alignment: .top, spacing: 12) {
-                coverView
-                    .frame(width: 140)
-                    .aspectRatio(3.0 / 4.0, contentMode: .fill)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                VStack(alignment: .leading, spacing: 6) {
-                    MarqueeText(text: archive.filename ?? archive.title ?? "---")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .padding(.vertical, 2)
-
-                    if isTankoubon {
-                        if let ac = archive.archiveCount ?? tankoubonMeta?.archiveCount {
-                            Text(String(format: String(localized: "tankoubon_archives"), ac))
-                                .font(.subheadline).foregroundColor(.secondary)
-                        }
-                        Text(String(format: String(localized: "detail_total_pages"), tankoubonMeta?.pagecount ?? 0))
-                            .font(.subheadline).foregroundColor(.secondary)
-                    } else {
-                        if let pages = archive.pagecount ?? meta?.pagecount {
-                            Text(String(format: String(localized: "detail_total_pages"), pages))
-                                .font(.subheadline).foregroundColor(.secondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    HStack(spacing: 8) {
-                        Button { toggleFavorite() } label: {
-                            Image(systemName: isFavorite ? "heart.fill" : "heart").font(.body)
-                        }
-                        .frame(width: 36, height: 36)
-                        .background(Color(.systemGray5))
-                        .clipShape(Circle())
-
-                        if !isTankoubon {
-                            Button {} label: {
-                                Label(String(localized: "detail_start_read"), systemImage: "book.fill")
-                                    .font(.subheadline).fontWeight(.semibold)
-                                    .frame(maxWidth: .infinity).frame(height: 36)
-                                    .background(Color.accentColor).foregroundColor(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            .disabled(true)
-                        }
-                    }
-                }
-                .frame(height: 140 * 4 / 3)
-            }
-            .padding(16)
-
-            // Segmented tabs
-            Picker("", selection: $selectedTab) {
-                Text(String(localized: "detail_info")).tag(0)
-                Text(String(localized: "detail_content")).tag(1)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            
 
             // Scrollable content
             ScrollView {
                 if selectedTab == 0 { infoTab } else { contentTab }
+            }
+        }
+        .safeAreaBar(edge: .top) {
+            VStack {
+                // Fixed header
+                HStack(alignment: .top, spacing: 12) {
+                    coverView
+                        .frame(width: 140)
+                        .aspectRatio(3.0 / 4.0, contentMode: .fill)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        MarqueeText(text: archive.filename ?? archive.title ?? "---")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .padding(.vertical, 2)
+
+                        if isTankoubon {
+                            if let ac = archive.archiveCount ?? tankoubonMeta?.archiveCount {
+                                Text(String(format: String(localized: "tankoubon_archives"), ac))
+                                    .font(.subheadline).foregroundColor(.secondary)
+                            }
+                            Text(String(format: String(localized: "detail_total_pages"), tankoubonMeta?.pagecount ?? 0))
+                                .font(.subheadline).foregroundColor(.secondary)
+                        } else {
+                            if let pages = archive.pagecount ?? meta?.pagecount {
+                                Text(String(format: String(localized: "detail_total_pages"), pages))
+                                    .font(.subheadline).foregroundColor(.secondary)
+                            }
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 8) {
+                            Button { toggleFavorite() } label: {
+                                Image(systemName: isFavorite ? "heart.fill" : "heart").font(.body)
+                            }
+                            .frame(width: 36, height: 36)
+                            .background(Color(.systemGray5))
+                            .clipShape(Circle())
+
+                            if !isTankoubon {
+                                Button {} label: {
+                                    Label(String(localized: "detail_start_read"), systemImage: "book.fill")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                        .frame(maxWidth: .infinity).frame(height: 36)
+                                        .background(Color.accentColor).foregroundColor(.white)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                                .disabled(true)
+                            }
+                        }
+                    }
+                    .frame(height: 140 * 4 / 3)
+                }
+                .padding(16)
+                
+                // Segmented tabs
+                Picker("", selection: $selectedTab) {
+                    Text(String(localized: "detail_info")).tag(0)
+                    Text(String(localized: "detail_content")).tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
         }
         .navigationTitle("")
