@@ -446,7 +446,7 @@ class APIClient {
 
     // MARK: - Search
 
-    func search(favoriteOnly: Bool = false, untaggedOnly: Bool = false, filter: String? = nil, tags: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, start: Int = 0, count: Int = 20) async throws -> SearchResponse {
+    func search(favoriteOnly: Bool = false, favoriteTankoubonsOnly: Bool = false, untaggedOnly: Bool = false, filter: String? = nil, tags: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, start: Int = 0, count: Int = 20) async throws -> SearchResponse {
         var urlString = baseURL
         if !urlString.contains("://") {
             urlString = "https://" + urlString
@@ -465,6 +465,9 @@ class APIClient {
         ]
         if favoriteOnly {
             items.append(URLQueryItem(name: "favoriteonly", value: "true"))
+        }
+        if favoriteTankoubonsOnly {
+            items.append(URLQueryItem(name: "favorite_tankoubons_only", value: "true"))
         }
         if untaggedOnly {
             items.append(URLQueryItem(name: "untaggedonly", value: "true"))
@@ -507,8 +510,20 @@ class APIClient {
         throw AuthError.networkError(String(localized: "connection_failed"))
     }
 
-    func fetchFavorites(start: Int = 0, count: Int = 40) async throws -> SearchResponse {
-        try await search(favoriteOnly: true, sortby: "updated_at", order: "desc", start: start, count: count)
+    func fetchFavorites(start: Int = 0, count: Int = 40) async throws -> [SearchResultItem] {
+        async let archiveResp = search(favoriteOnly: true, sortby: "updated_at", order: "desc", start: start, count: count)
+        async let tankoubonResp = search(favoriteTankoubonsOnly: true, sortby: "updated_at", order: "desc", start: start, count: count)
+
+        let archives = (try? await archiveResp.data) ?? []
+        let tankoubons = (try? await tankoubonResp.data) ?? []
+
+        let combined = (archives + tankoubons).sorted { lhs, rhs in
+            let lhsTime = lhs.updatedAt ?? ""
+            let rhsTime = rhs.updatedAt ?? ""
+            return lhsTime > rhsTime
+        }
+
+        return combined
     }
 
     func fetchHistory(start: Int = 0, count: Int = 40) async throws -> SearchResponse {

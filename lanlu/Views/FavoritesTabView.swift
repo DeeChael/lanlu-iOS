@@ -23,7 +23,7 @@ struct FavoritesTabView: View {
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(archives, id: \.arcid) { archive in
+                        ForEach(archives, id: \.displayId) { archive in
                             ArchiveGridCell(archive: archive, server: server)
                                 .onAppear { loadMoreIfNeeded(archive) }
                         }
@@ -49,27 +49,20 @@ struct FavoritesTabView: View {
         isLoading = true
         if reset { archives = [] }
 
-        print("[Favorites] Loading start=\(archives.count) count=\(pageSize)")
-
         do {
             let startOffset = archives.count
-            let result = try await server.apiClient.fetchFavorites(start: startOffset, count: pageSize)
-            let items = result.data ?? []
-            print("[Favorites] Got \(items.count) items, recordsTotal=\(result.recordsTotal ?? 0)")
+            let items = try await server.apiClient.fetchFavorites(start: startOffset, count: pageSize)
 
             var newCount = 0
             for item in items {
-                guard item.isfavorite == true else { continue }
-                if !archives.contains(where: { $0.arcid == item.arcid }) {
+                if !archives.contains(where: { $0.displayId == item.displayId }) {
                     CacheManager.shared.cacheArchive(item)
                     archives.append(item)
                     newCount += 1
                 }
             }
-            print("[Favorites] Added \(newCount) new unique items")
 
-            hasMore = items.count == pageSize && (result.recordsTotal ?? 0) > archives.count
-            print("[Favorites] hasMore=\(hasMore) (\(archives.count)/\(result.recordsTotal ?? 0))")
+            hasMore = items.count >= pageSize
         } catch {
             print("[Favorites] Error: \(error)")
             hasMore = false
@@ -79,7 +72,7 @@ struct FavoritesTabView: View {
 
     private func loadMoreIfNeeded(_ archive: SearchResultItem) {
         guard hasMore, !isLoading,
-              let index = archives.firstIndex(where: { $0.arcid == archive.arcid }),
+              let index = archives.firstIndex(where: { $0.displayId == archive.displayId }),
               index >= archives.count - 5 else { return }
         Task { await loadFavorites(reset: false) }
     }
