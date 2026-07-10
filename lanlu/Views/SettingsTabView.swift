@@ -21,6 +21,7 @@ struct SettingsTabView: View {
     @State private var showLanguagePicker = false
     @State private var showDiagnostics = false
     @State private var showClearCacheAlert = false
+    @State private var cacheInfo = ""
     @State private var showRestartAlert = false
 
     private var client: APIClient { server.apiClient }
@@ -185,6 +186,7 @@ struct SettingsTabView: View {
                 }
 
                 Button(role: .destructive) {
+                    cacheInfo = String(format: String(localized: "clear_cache_detail"), CacheManager.shared.diskCacheCount, CacheManager.shared.diskCacheSize)
                     showClearCacheAlert = true
                 } label: {
                     HStack {
@@ -198,7 +200,7 @@ struct SettingsTabView: View {
                     Button(String(localized: "cancel"), role: .cancel) {}
                     Button(String(localized: "confirm"), role: .destructive) { clearCache() }
                 } message: {
-                    Text(String(localized: "clear_cache_message"))
+                    Text(cacheInfo)
                 }
             }
 

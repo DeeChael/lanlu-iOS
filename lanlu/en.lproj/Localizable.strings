@@ -121,6 +121,7 @@
 "filter_date_enable" = "Enable Date Range";
 "search_tag_count" = "tags";
 "clear_history_confirm" = "Clear all search history? This cannot be undone.";
+"clear_cache_detail" = "%d cached images (%@) will be cleared.";
 "delete" = "Delete";
 "search_clear_history" = "Clear All History";
 "detail_total_pages" = "%d pages";

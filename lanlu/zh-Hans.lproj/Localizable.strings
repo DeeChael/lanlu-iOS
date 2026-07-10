@@ -121,6 +121,7 @@
 "filter_date_enable" = "启用日期范围";
 "search_tag_count" = "个标签";
 "clear_history_confirm" = "确认清除所有搜索记录？此操作不可撤销。";
+"clear_cache_detail" = "将清除 %d 张缓存图片（%@）。";
 "delete" = "删除";
 "search_clear_history" = "清除所有记录";
 "detail_total_pages" = "%d 页";
