@@ -58,6 +58,7 @@ struct ArchiveDetailView: View {
     @State private var coverData: Data?
     @State private var isFavorite = false
     @State private var isLoading = true
+    @State private var relatedLoaded = false
     @State private var selectedTab = 0
     @State private var previewMode = 0
     @State private var isDescriptionExpanded = true
@@ -173,10 +174,20 @@ struct ArchiveDetailView: View {
             let descText = archive.description ?? meta?.description
             VStack(alignment: .leading, spacing: 8) {
                 if let descText, !descText.isEmpty {
-                    Text(descText).font(.subheadline)
-                        .lineLimit(isDescriptionExpanded ? nil : 4)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(descText).font(.subheadline)
+                            .lineLimit(isDescriptionExpanded ? nil : 4)
 
-                    if descText.count > 80 {
+                        if isDescriptionExpanded {
+                            let tags = parseTags()
+                            if !tags.isEmpty { DetailTagView(tags: tags) }
+                        } else {
+                            let tags = parseTags()
+                            if !tags.isEmpty { DetailTagView(tags: tags).lineLimit(1) }
+                        }
+                    }
+
+                    if descText.count > 80 || !parseTags().isEmpty {
                         Button(isDescriptionExpanded ? String(localized: "detail_collapse") : String(localized: "detail_expand")) {
                             withAnimation { isDescriptionExpanded.toggle() }
                         }
@@ -185,18 +196,17 @@ struct ArchiveDetailView: View {
                 } else {
                     Text(String(localized: "detail_no_description"))
                         .font(.subheadline).italic().foregroundColor(.secondary)
+                    let tags = parseTags()
+                    if !tags.isEmpty { DetailTagView(tags: tags) }
                 }
-
-                let tags = parseTags()
-                if !tags.isEmpty { DetailTagView(tags: tags) }
             }
             .padding(.horizontal, 16)
 
-            if isLoading || !related.isEmpty {
+            if !relatedLoaded || !related.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(String(localized: "detail_related"))
                         .font(.headline)
-                    if isLoading {
+                    if !relatedLoaded {
                         HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -296,14 +306,17 @@ struct ArchiveDetailView: View {
             if let aid = archive.assets?.cover ?? meta?.coverAssetId { coverData = try? await fetchImage(assetId: aid) }
         }
         // Related: fetch 40, deduplicate, remove self, keep 10
-        if isTankoubon, let id = archive.tankoubonId {
-            if let items = try? await server.apiClient.fetchRecommendations(count: 40, scene: "tankoubon_related", tankoubonId: id) {
-                related = processRelated(items)
+        if !relatedLoaded {
+            if isTankoubon, let id = archive.tankoubonId {
+                if let items = try? await server.apiClient.fetchRecommendations(count: 40, scene: "tankoubon_related", tankoubonId: id) {
+                    related = processRelated(items)
+                }
+            } else if let id = archive.arcid {
+                if let items = try? await server.apiClient.fetchRecommendations(count: 40, scene: "archive_related", archiveId: id) {
+                    related = processRelated(items)
+                }
             }
-        } else if let id = archive.arcid {
-            if let items = try? await server.apiClient.fetchRecommendations(count: 40, scene: "archive_related", archiveId: id) {
-                related = processRelated(items)
-            }
+            relatedLoaded = true
         }
         isLoading = false
     }
