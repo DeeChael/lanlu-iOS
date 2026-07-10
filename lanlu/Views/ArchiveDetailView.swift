@@ -236,9 +236,6 @@ struct ArchiveDetailView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Spacer()
-                                Text(children[i].entityId ?? "---")
-                                    .font(.subheadline).lineLimit(1)
                                 ChildMetaView(child: children[i], server: server)
                             }
                             .frame(maxHeight: .infinity)
@@ -373,15 +370,24 @@ struct ArchiveDetailView: View {
 struct ChildMetaView: View {
     let child: APIClient.TankoubonChild
     let server: Server
+    @State private var archiveName: String?
     @State private var pagecount: Int?
     @State private var description: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if let name =  archiveName {
+                Text(name)
+                    .font(.subheadline).lineLimit(1)
+            } else {
+                Text(child.entityId ?? "---")
+                    .font(.subheadline).lineLimit(1)
+            }
             if let p = pagecount {
                 Text("\(p) \(String(localized: "page_unit"))")
                     .font(.caption).foregroundColor(.secondary)
             }
+            Spacer()
             if let d = description, !d.isEmpty {
                 Text(d).font(.caption).foregroundColor(.secondary).lineLimit(2)
             }
@@ -392,6 +398,7 @@ struct ChildMetaView: View {
     private func loadMeta() async {
         guard let eid = child.entityId else { print("[ChildMeta] no entityId"); return }
         guard let meta = try? await server.apiClient.fetchArchiveMetadata(arcid: eid) else { print("[ChildMeta] fetch failed for \(eid)"); return }
+        archiveName = meta.title
         pagecount = meta.pagecount
         description = meta.description
         print("[ChildMeta] loaded \(eid): pages=\(meta.pagecount ?? 0) desc=\(meta.description?.prefix(30) ?? "nil")")
