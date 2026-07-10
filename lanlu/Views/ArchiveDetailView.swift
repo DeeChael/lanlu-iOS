@@ -256,7 +256,10 @@ struct ArchiveDetailView: View {
             }
             .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
 
-            if previewMode == 0 { previewGrid } else { FileTreeView(files: files).padding(.horizontal, 16) }
+            if previewMode == 0 { previewGrid } else {
+                Text("\(files.count) files").font(.caption).foregroundColor(.secondary).padding(.horizontal, 16).padding(.top, 4)
+                FileTreeView(files: files).padding(.horizontal, 16).id("ftv_\(files.count)")
+            }
         }
     }
 
@@ -286,6 +289,7 @@ struct ArchiveDetailView: View {
 
     private func loadData() async {
         isLoading = true
+        print("[Detail] loadData isTankoubon=\(isTankoubon) arcid=\(archive.arcid ?? "nil") tankoubonId=\(archive.tankoubonId ?? "nil")")
         if isTankoubon {
             if let id = archive.tankoubonId {
                 tankoubonMeta = try? await server.apiClient.fetchTankoubonMetadata(tankoubonId: id)
@@ -294,7 +298,7 @@ struct ArchiveDetailView: View {
         } else if let id = archive.arcid {
             async let md = server.apiClient.fetchArchiveMetadata(arcid: id)
             async let fl = server.apiClient.fetchFiles(arcid: id)
-            meta = try? await md; files = (try? await fl) ?? []
+            meta = try? await md; files = (try? await fl) ?? []; print("[Detail] Files loaded: \(files.count)")
             isFavorite = meta?.isfavorite ?? false
         }
         if isTankoubon {

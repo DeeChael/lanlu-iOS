@@ -781,11 +781,17 @@ class APIClient {
         request.httpMethod = "GET"
         applyAuthHeader(&request)
         let (data, response) = try await URLSession.shared.data(for: request)
+        let bodyStr = String(data: data, encoding: .utf8) ?? "nil"
+        print("[API] fetchFiles \(arcid): status \((response as? HTTPURLResponse)?.statusCode ?? 0) body \(bodyStr.prefix(300))")
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            print("[API] fetchFiles failed: status \((response as? HTTPURLResponse)?.statusCode ?? 0)")
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
         if let result = try? JSONDecoder().decode(FilesResponse.self, from: data),
-           let pages = result.pages { return pages }
+           let pages = result.pages { print("[API] fetchFiles decoded \(pages.count) pages"); return pages }
+        if let envelope = try? JSONDecoder().decode(ApiEnvelope<FilesResponse>.self, from: data),
+           let result = envelope.data, let pages = result.pages { print("[API] fetchFiles envelope decoded \(pages.count) pages"); return pages }
+        print("[API] fetchFiles decode failed, raw: \(bodyStr.prefix(200))")
         return (try? JSONDecoder().decode([PageFile].self, from: data)) ?? []
     }
 

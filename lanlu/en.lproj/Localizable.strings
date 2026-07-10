@@ -119,6 +119,7 @@
 "home_filter_all" = "All";
 "search_go" = "Search";
 "filter_date_enable" = "Enable Date Range";
+"filetree_empty" = "No files available";
 "search_tag_count" = "tags";
 "clear_history_confirm" = "Clear all search history? This cannot be undone.";
 "clear_cache_detail" = "%d metadata items and %d images will be cleared.";

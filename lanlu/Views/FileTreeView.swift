@@ -4,15 +4,22 @@ struct FileTreeView: View {
     let files: [APIClient.PageFile]
 
     var body: some View {
-        let tree = buildTree()
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(tree.keys.sorted(), id: \.self) { folder in
-                if folder.isEmpty {
-                    ForEach(tree[folder] ?? [], id: \.path) { file in
-                        fileRow(file, indent: 0)
+        if files.isEmpty {
+            Text(String(localized: "filetree_empty"))
+                .font(.subheadline).foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 40)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                let tree = buildTree()
+                ForEach(tree.keys.sorted(), id: \.self) { folder in
+                    if folder.isEmpty {
+                        ForEach(tree[folder] ?? [], id: \.path) { file in
+                            fileRow(file, indent: 0)
+                        }
+                    } else {
+                        folderRow(folder, files: tree[folder] ?? [])
                     }
-                } else {
-                    folderRow(folder, files: tree[folder] ?? [])
                 }
             }
         }
