@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Server.lastUsedAt, order: .reverse) private var servers: [Server]
     @State private var showAddServer = false
+    @State private var showSettings = false
     @State private var serverToEdit: Server?
     @State private var activeServer: Server?
 
@@ -28,9 +29,22 @@ struct ContentView: View {
                             .fontWeight(.semibold)
                     }
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .fontWeight(.semibold)
+                    }
+                }
             }
             .sheet(isPresented: $showAddServer) {
                 AddServerView(existingServer: serverToEdit)
+            }
+            .sheet(isPresented: $showSettings) {
+                ClientSettingsSheetView()
+                    .presentationDetents([.large])
             }
             .onChange(of: showAddServer) { _, isShowing in
                 if !isShowing { serverToEdit = nil }
