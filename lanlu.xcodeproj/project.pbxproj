@@ -34,9 +34,22 @@
 		BB8B87F52FFF8A1100A67955 /* lanlu.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = lanlu.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BB8B89AE3003EE7000A67955 /* Exceptions for "lanlu" folder in "lanlu" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BB1D44B02FFE91D20079F88B /* lanlu */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		BB1D44B32FFE91D20079F88B /* lanlu */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BB8B89AE3003EE7000A67955 /* Exceptions for "lanlu" folder in "lanlu" target */,
+			);
 			path = lanlu;
 			sourceTree = "<group>";
 		};
@@ -409,6 +422,7 @@
 				DEVELOPMENT_TEAM = P4KM7Q588X;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = lanlu/Info.plist;
 				INFOPLIST_KEY_CFBundleLocalizations = "en zh-Hans zh-Hant";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -442,6 +456,7 @@
 				DEVELOPMENT_TEAM = P4KM7Q588X;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = lanlu/Info.plist;
 				INFOPLIST_KEY_CFBundleLocalizations = "en zh-Hans zh-Hant";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
