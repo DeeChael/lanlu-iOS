@@ -392,6 +392,7 @@ struct ArchiveDetailView: View {
             for i in validIndices {
                 group.addTask { [i] in
                     await sem.wait()
+                    guard !Task.isCancelled else { return }
 
                     let file = files[i]
                     let path = file.defaultSource?.path ?? file.path ?? ""
@@ -400,12 +401,22 @@ struct ArchiveDetailView: View {
                     if let cached = CacheManager.shared.getCover(id: cacheKey) {
                         previewImages[i] = cached
                     } else {
-                        do {
-                            let data = try await client.fetchPageImage(arcid: arcid, path: path)
-                            CacheManager.shared.cacheCover(id: cacheKey, data: data)
-                            previewImages[i] = data
-                        } catch {
-                            LogManager.shared.log("[Preview] failed index=\(i): \(error.localizedDescription)")
+                        var lastError: Error?
+                        for attempt in 1...3 {
+                            do {
+                                let data = try await client.fetchPageImage(arcid: arcid, path: path)
+                                CacheManager.shared.cacheCover(id: cacheKey, data: data)
+                                previewImages[i] = data
+                                lastError = nil
+                                break
+                            } catch {
+                                lastError = error
+                                LogManager.shared.log("[Preview] attempt \(attempt)/3 failed index=\(i): \(error.localizedDescription)")
+                                if attempt < 3 { try? await Task.sleep(nanoseconds: 500_000_000) }
+                            }
+                        }
+                        if let error = lastError {
+                            LogManager.shared.log("[Preview] all 3 attempts failed index=\(i): \(error.localizedDescription)")
                         }
                     }
 

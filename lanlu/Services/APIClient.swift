@@ -1,23 +1,57 @@
 import Foundation
 
 actor AsyncSemaphore {
+    private enum WaiterState {
+        case pending(CheckedContinuation<Void, Never>)
+        case cancelled
+    }
+
     private var count: Int
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [UUID: WaiterState] = [:]
+    private var order: [UUID] = []
 
     init(limit: Int) { count = limit }
 
     func wait() async {
         if count > 0 { count -= 1; return }
-        await withCheckedContinuation { c in waiters.append(c) }
+        let id = UUID()
+        order.append(id)
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                if case .cancelled = waiters[id] {
+                    c.resume()
+                } else {
+                    waiters[id] = .pending(c)
+                }
+            }
+        } onCancel: {
+            Task { await cancelWaiter(id: id) }
+        }
+    }
+
+    private func cancelWaiter(id: UUID) {
+        switch waiters[id] {
+        case .pending(let c):
+            waiters.removeValue(forKey: id)
+            order.removeAll { $0 == id }
+            c.resume()
+        case .cancelled, .none:
+            waiters[id] = .cancelled
+        }
     }
 
     func signal() {
-        if let next = waiters.first {
-            waiters.removeFirst()
-            next.resume()
-        } else {
-            count += 1
+        while let id = order.first {
+            order.removeFirst()
+            switch waiters.removeValue(forKey: id) {
+            case .pending(let c):
+                c.resume()
+                return
+            case .cancelled, .none:
+                continue
+            }
         }
+        count += 1
     }
 }
 
@@ -244,8 +278,6 @@ enum AuthError: LocalizedError, Equatable {
 // MARK: - APIClient
 
 class APIClient {
-    static let imageLoadSemaphore = AsyncSemaphore(limit: 4)
-
     let baseURL: String
     var token: String?
 
@@ -811,10 +843,7 @@ class APIClient {
     }
 
     func fetchPageImage(arcid: String, path: String) async throws -> Data {
-        LogManager.shared.log("[API] fetchPageImage waiting for slot arcid=\(arcid) path=\(path)")
-        await APIClient.imageLoadSemaphore.wait()
-        defer { APIClient.imageLoadSemaphore.signal() }
-        LogManager.shared.log("[API] fetchPageImage got slot arcid=\(arcid) path=\(path)")
+        LogManager.shared.log("[API] fetchPageImage arcid=\(arcid) path=\(path)")
         var urlString = baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard var components = URLComponents(string: urlString) else {
