@@ -62,6 +62,8 @@ struct ArchiveDetailView: View {
     @State private var selectedTab = 0
     @State private var previewMode = 0
     @State private var isDescriptionExpanded = true
+    @State private var previewImages: [Int: Data] = [:]
+    @State private var previewLoading: [Int: Bool] = [:]
 
     private var isTankoubon: Bool { archive.type == "tankoubon" }
 
@@ -269,10 +271,18 @@ struct ArchiveDetailView: View {
         let cols = [GridItem(.adaptive(minimum: 100), spacing: 8)]
         return LazyVGrid(columns: cols, spacing: 8) {
             ForEach(files.indices, id: \.self) { i in
-                ArchivePreviewCell(file: files[i], index: i, arcid: archive.arcid ?? "", server: server)
+                ArchivePreviewCell(
+                    file: files[i],
+                    index: i,
+                    imageData: previewImages[i],
+                    isLoading: previewLoading[i] ?? false
+                )
             }
         }
         .padding(16)
+        .task(id: files.count) {
+            await loadPreviewImages()
+        }
     }
 
     // MARK: - Data
@@ -360,6 +370,42 @@ struct ArchiveDetailView: View {
     private func parseTags() -> [String] {
         if let t = meta?.tags ?? tankoubonMeta?.tags, !t.isEmpty { return t }
         return archive.tags?.components(separatedBy: ",").filter { !$0.isEmpty } ?? []
+    }
+
+    private func loadPreviewImages() async {
+        guard let arcid = archive.arcid else { return }
+        let client = server.apiClient
+        previewImages = [:]
+        previewLoading = [:]
+
+        for i in files.indices {
+            let file = files[i]
+            guard let path = file.defaultSource?.path ?? file.path, !path.isEmpty else {
+                LogManager.shared.log("[Preview] skip index=\(i) empty path")
+                continue
+            }
+
+            previewLoading[i] = true
+            let cacheKey = "page_\(arcid)_\(path)"
+
+            if let cached = CacheManager.shared.getCover(id: cacheKey) {
+                LogManager.shared.log("[Preview] cache hit index=\(i)")
+                previewImages[i] = cached
+                previewLoading[i] = false
+                continue
+            }
+
+            LogManager.shared.log("[Preview] loading index=\(i) path=\(path)")
+            do {
+                let data = try await client.fetchPageImage(arcid: arcid, path: path)
+                LogManager.shared.log("[Preview] loaded index=\(i) size=\(data.count)")
+                CacheManager.shared.cacheCover(id: cacheKey, data: data)
+                previewImages[i] = data
+            } catch {
+                LogManager.shared.log("[Preview] failed index=\(i): \(error.localizedDescription)")
+            }
+            previewLoading[i] = false
+        }
     }
 }
 
@@ -465,9 +511,8 @@ struct ChildCoverCell: View {
 struct ArchivePreviewCell: View {
     let file: APIClient.PageFile
     let index: Int
-    let arcid: String
-    let server: Server
-    @State private var imageData: Data?
+    let imageData: Data?
+    let isLoading: Bool
 
     var body: some View {
         Rectangle().fill(Color(.systemGray5))
@@ -475,6 +520,8 @@ struct ArchivePreviewCell: View {
             .overlay {
                 if let data = imageData, let uiImage = UIImage(data: data) {
                     Image(uiImage: uiImage).resizable().scaledToFill()
+                } else if isLoading {
+                    ProgressView()
                 } else {
                     Image(systemName: "photo").foregroundColor(.secondary)
                 }
@@ -485,30 +532,6 @@ struct ArchivePreviewCell: View {
             }
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 6))
-            .task { await loadImage() }
-    }
-
-    private func loadImage() async {
-        guard let path = file.defaultSource?.path ?? file.path, !path.isEmpty else {
-            LogManager.shared.log("[Preview] empty path for file index=\(index)")
-            return
-        }
-        let cacheKey = "page_\(arcid)_\(path)"
-        LogManager.shared.log("[Preview] loading index=\(index) arcid=\(arcid) path=\(path) cacheKey=\(cacheKey)")
-        if let cached = CacheManager.shared.getCover(id: cacheKey) {
-            LogManager.shared.log("[Preview] cache hit for \(cacheKey)")
-            imageData = cached; return
-        }
-        LogManager.shared.log("[Preview] cache miss, fetching from server")
-        let client = server.apiClient
-        do {
-            let data = try await client.fetchPageImage(arcid: arcid, path: path)
-            LogManager.shared.log("[Preview] fetched \(data.count) bytes for \(cacheKey)")
-            CacheManager.shared.cacheCover(id: cacheKey, data: data)
-            imageData = data
-        } catch {
-            LogManager.shared.log("[Preview] fetch failed: \(error.localizedDescription)")
-        }
     }
 }
 
