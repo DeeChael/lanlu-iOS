@@ -387,42 +387,49 @@ struct ArchiveDetailView: View {
             return false
         }
 
-        let sem = AsyncSemaphore(limit: 3)
         await withTaskGroup(of: Void.self) { group in
-            for i in validIndices {
+            var next = 0
+
+            func enqueueNext() {
+                guard next < validIndices.count else { return }
+                let i = validIndices[next]
+                next += 1
                 group.addTask { [i] in
-                    await sem.wait()
-                    guard !Task.isCancelled else { return }
-
-                    let file = files[i]
-                    let path = file.defaultSource?.path ?? file.path ?? ""
-                    let cacheKey = "page_\(arcid)_\(path)"
-
-                    if let cached = CacheManager.shared.getCover(id: cacheKey) {
-                        previewImages[i] = cached
-                    } else {
-                        var lastError: Error?
-                        for attempt in 1...3 {
-                            do {
-                                let data = try await client.fetchPageImage(arcid: arcid, path: path)
-                                CacheManager.shared.cacheCover(id: cacheKey, data: data)
-                                previewImages[i] = data
-                                lastError = nil
-                                break
-                            } catch {
-                                lastError = error
-                                LogManager.shared.log("[Preview] attempt \(attempt)/3 failed index=\(i): \(error.localizedDescription)")
-                                if attempt < 3 { try? await Task.sleep(nanoseconds: 500_000_000) }
-                            }
-                        }
-                        if let error = lastError {
-                            LogManager.shared.log("[Preview] all 3 attempts failed index=\(i): \(error.localizedDescription)")
-                        }
-                    }
-
-                    previewLoading[i] = false
-                    await sem.signal()
+                    await loadSinglePreviewImage(index: i, arcid: arcid, client: client)
                 }
+            }
+
+            for _ in 0..<min(2, validIndices.count) { enqueueNext() }
+
+            for await _ in group {
+                enqueueNext()
+            }
+        }
+    }
+
+    private func loadSinglePreviewImage(index: Int, arcid: String, client: APIClient) async {
+        defer { previewLoading[index] = false }
+
+        let file = files[index]
+        let path = file.defaultSource?.path ?? file.path ?? ""
+        let cacheKey = "page_\(arcid)_\(path)"
+
+        if let cached = CacheManager.shared.getCover(id: cacheKey) {
+            previewImages[index] = cached
+            return
+        }
+
+        for attempt in 1...3 {
+            guard !Task.isCancelled else { return }
+            do {
+                let data = try await client.fetchPageImage(arcid: arcid, path: path)
+                CacheManager.shared.cacheCover(id: cacheKey, data: data)
+                previewImages[index] = data
+                return
+            } catch {
+                if Task.isCancelled { return }
+                LogManager.shared.log("[Preview] attempt \(attempt)/3 failed index=\(index): \(error.localizedDescription)")
+                if attempt < 3 { try? await Task.sleep(nanoseconds: 500_000_000) }
             }
         }
     }
