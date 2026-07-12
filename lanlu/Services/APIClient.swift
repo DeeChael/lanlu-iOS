@@ -37,14 +37,14 @@ struct UserInfoData: Decodable {
     let user: UserData
 }
 
-struct UserStatsData: Decodable {
+struct UserStatsData: Codable {
     let favoriteCount: Int?
     let readCount: Int?
     let totalPagesRead: Int?
     let totalArchives: Int?
 }
 
-struct TrendPoint: Decodable {
+struct TrendPoint: Codable {
     let date: String
     let count: Int
 
@@ -180,7 +180,7 @@ struct AutocompleteSuggestion: Decodable {
     let display: String?
 }
 
-struct UserTrendData {
+struct UserTrendData: Codable {
     let trend: [TrendPoint]
     let mostActiveDate: String?
     let activeDays: Int?

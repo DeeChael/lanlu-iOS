@@ -17,12 +17,25 @@ struct SettingsTabView: View {
     @State private var trend: UserTrendData?
     @State private var statsError: String?
     @State private var trendError: String?
+    @State private var isSyncingStats = false
 
     @State private var showLanguagePicker = false
     @State private var showDiagnostics = false
     @State private var showClearCacheAlert = false
     @State private var cacheInfo = ""
     @State private var showRestartAlert = false
+
+    init(server: Server) {
+        self.server = server
+        let statsKey = "stats_cache_\(server.baseURL)"
+        if let data = UserDefaults.standard.data(forKey: statsKey) {
+            _stats = State(initialValue: try? JSONDecoder().decode(UserStatsData.self, from: data))
+        }
+        let trendKey = "trend_cache_\(server.baseURL)"
+        if let data = UserDefaults.standard.data(forKey: trendKey) {
+            _trend = State(initialValue: try? JSONDecoder().decode(UserTrendData.self, from: data))
+        }
+    }
 
     private var client: APIClient { server.apiClient }
     private let gridCols = [GridItem(.flexible()), GridItem(.flexible())]
@@ -94,7 +107,7 @@ struct SettingsTabView: View {
                 .padding(.vertical, 4)
             }
 
-            Section(String(localized: "stats_title")) {
+            Section {
                 if let statsError {
                     Text(statsError)
                         .foregroundColor(.red)
@@ -125,12 +138,25 @@ struct SettingsTabView: View {
                     }
                     .frame(height: 200)
                     .padding(.vertical, 4)
+                } else {
+                    Color.clear
+                        .frame(height: 200)
+                        .padding(.vertical, 4)
                 }
 
                 if let trendError {
                     Text(trendError)
                         .foregroundColor(.red)
                         .font(.caption)
+                }
+            } header: {
+                HStack {
+                    Text(String(localized: "stats_title"))
+                    Spacer()
+                    if isSyncingStats {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
                 }
             }
 
@@ -330,9 +356,11 @@ struct SettingsTabView: View {
         }
         .task {
             await loadUserInfo()
+            isSyncingStats = true
             async let s = loadStats()
             async let t = loadTrend()
             _ = await (s, t)
+            isSyncingStats = false
         }
         .onChange(of: language) { _, newValue in
             if newValue != "system" {
@@ -386,8 +414,10 @@ struct SettingsTabView: View {
 
     private func loadStats() async {
         do {
-            stats = try await client.fetchStats()
+            let s = try await client.fetchStats()
+            stats = s
             statsError = nil
+            cacheStats(s)
         } catch {
             statsError = error.localizedDescription
         }
@@ -399,6 +429,7 @@ struct SettingsTabView: View {
             if !result.trend.isEmpty {
                 trend = result
                 trendError = nil
+                cacheTrend(result)
             } else {
                 trendError = String(localized: "trend_empty")
             }
@@ -406,6 +437,21 @@ struct SettingsTabView: View {
             trendError = error.localizedDescription
         }
     }
+
+    private func cacheStats(_ s: UserStatsData) {
+        if let data = try? JSONEncoder().encode(s) {
+            UserDefaults.standard.set(data, forKey: "stats_cache_\(server.baseURL)")
+        }
+    }
+
+    private func cacheTrend(_ t: UserTrendData) {
+        if let data = try? JSONEncoder().encode(t) {
+            UserDefaults.standard.set(data, forKey: "trend_cache_\(server.baseURL)")
+        }
+    }
+
+
+
 
     private func loadAvatar(assetId: Int) async throws -> Data {
         var urlString = server.baseURL
