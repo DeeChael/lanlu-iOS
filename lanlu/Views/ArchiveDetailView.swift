@@ -378,33 +378,41 @@ struct ArchiveDetailView: View {
         previewImages = [:]
         previewLoading = [:]
 
-        for i in files.indices {
+        let validIndices = files.indices.filter { i in
             let file = files[i]
-            guard let path = file.defaultSource?.path ?? file.path, !path.isEmpty else {
-                LogManager.shared.log("[Preview] skip index=\(i) empty path")
-                continue
+            if (file.defaultSource?.path ?? file.path).map({ !$0.isEmpty }) == true {
+                previewLoading[i] = true
+                return true
             }
+            return false
+        }
 
-            previewLoading[i] = true
-            let cacheKey = "page_\(arcid)_\(path)"
+        let sem = AsyncSemaphore(limit: 3)
+        await withTaskGroup(of: Void.self) { group in
+            for i in validIndices {
+                group.addTask { [i] in
+                    await sem.wait()
 
-            if let cached = CacheManager.shared.getCover(id: cacheKey) {
-                LogManager.shared.log("[Preview] cache hit index=\(i)")
-                previewImages[i] = cached
-                previewLoading[i] = false
-                continue
+                    let file = files[i]
+                    let path = file.defaultSource?.path ?? file.path ?? ""
+                    let cacheKey = "page_\(arcid)_\(path)"
+
+                    if let cached = CacheManager.shared.getCover(id: cacheKey) {
+                        previewImages[i] = cached
+                    } else {
+                        do {
+                            let data = try await client.fetchPageImage(arcid: arcid, path: path)
+                            CacheManager.shared.cacheCover(id: cacheKey, data: data)
+                            previewImages[i] = data
+                        } catch {
+                            LogManager.shared.log("[Preview] failed index=\(i): \(error.localizedDescription)")
+                        }
+                    }
+
+                    previewLoading[i] = false
+                    await sem.signal()
+                }
             }
-
-            LogManager.shared.log("[Preview] loading index=\(i) path=\(path)")
-            do {
-                let data = try await client.fetchPageImage(arcid: arcid, path: path)
-                LogManager.shared.log("[Preview] loaded index=\(i) size=\(data.count)")
-                CacheManager.shared.cacheCover(id: cacheKey, data: data)
-                previewImages[i] = data
-            } catch {
-                LogManager.shared.log("[Preview] failed index=\(i): \(error.localizedDescription)")
-            }
-            previewLoading[i] = false
         }
     }
 }
