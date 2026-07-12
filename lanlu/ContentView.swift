@@ -166,6 +166,8 @@ struct ServerRow: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .padding(.vertical, 4)
     }
 }
