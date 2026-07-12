@@ -35,7 +35,27 @@ struct FavoritesTabView: View {
         .navigationDestination(for: SearchResultItem.self) { item in
             ArchiveDetailView(archive: item, server: server)
         }
-        .task { await loadFavorites(reset: true) }
+        .task { await checkForUpdates() }
+    }
+
+    private func checkForUpdates() async {
+        if items.isEmpty {
+            await loadFavorites(reset: true)
+            return
+        }
+        guard !isLoading else { return }
+        isLoading = true
+        if let result = try? await server.apiClient.search(favoriteOnly: true, groupbyTanks: true, sortby: "favoritetime", order: "desc", page: 1, pageSize: 20) {
+            let newItems = result.data ?? []
+            for item in newItems {
+                if !items.contains(where: { $0.displayId == item.displayId }) {
+                    items.append(item)
+                }
+            }
+            items.sort { ($0.favoritetime ?? 0) > ($1.favoritetime ?? 0) }
+            print("[Favorites] checkForUpdates: total=\(items.count)")
+        }
+        isLoading = false
     }
 
     private func loadFavorites(reset: Bool) async {

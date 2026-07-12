@@ -35,7 +35,26 @@ struct HistoryTabView: View {
         .navigationDestination(for: SearchResultItem.self) { item in
             ArchiveDetailView(archive: item, server: server)
         }
-        .task { await loadHistory(reset: true) }
+        .task { await checkForUpdates() }
+    }
+
+    private func checkForUpdates() async {
+        if items.isEmpty {
+            await loadHistory(reset: true)
+            return
+        }
+        guard !isLoading else { return }
+        isLoading = true
+        if let result = try? await server.apiClient.search(sortby: "lastread", order: "desc", page: 1, pageSize: 20) {
+            let newItems = result.data ?? []
+            for item in newItems {
+                if !items.contains(where: { $0.displayId == item.displayId }) {
+                    items.append(item)
+                }
+            }
+            print("[History] checkForUpdates: total=\(items.count)")
+        }
+        isLoading = false
     }
 
     private func loadHistory(reset: Bool) async {
