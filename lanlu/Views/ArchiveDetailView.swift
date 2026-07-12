@@ -276,6 +276,7 @@ struct ArchiveDetailView: View {
 
     private func loadData() async {
         isLoading = true
+        isFavorite = archive.isfavorite ?? false
         print("[Detail] loadData isTankoubon=\(isTankoubon) arcid=\(archive.arcid ?? "nil") tankoubonId=\(archive.tankoubonId ?? "nil")")
         if isTankoubon {
             if let id = archive.tankoubonId {
