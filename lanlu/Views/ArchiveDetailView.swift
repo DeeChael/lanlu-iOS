@@ -261,11 +261,16 @@ struct ArchiveDetailView: View {
         }
     }
 
-    private var archiveContent: some View {
-        VStack(spacing: 0) {
-            if previewMode == 0 { previewGrid } else { FileTreeView(files: files) }
-        }
-    }
+     private var archiveContent: some View {
+         ZStack(alignment: .top) {
+             previewGrid
+                 .opacity(previewMode == 0 ? 1 : 0)
+                 .allowsHitTesting(previewMode == 0)
+             FileTreeView(files: files)
+                 .opacity(previewMode == 1 ? 1 : 0)
+                 .allowsHitTesting(previewMode == 1)
+         }
+     }
 
     private var previewGrid: some View {
         let cols = [GridItem(.adaptive(minimum: 100), spacing: 8)]

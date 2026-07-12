@@ -130,14 +130,16 @@ struct FileTreeRow: View {
                     .frame(width: 16)
 
                 Text(node.name)
-                    .font(.subheadline)
+                    .font(.body)
 
                 Spacer()
             }
             .padding(.leading, CGFloat(depth) * 24)
             .contentShape(Rectangle())
             .onTapGesture {
-                if node.isFolder { isExpanded.toggle() }
+                if node.isFolder {
+                    withAnimation(.default) { isExpanded.toggle() }
+                }
             }
 
             if node.isFolder && isExpanded, let children = node.children {
