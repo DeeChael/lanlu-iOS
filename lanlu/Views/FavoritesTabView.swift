@@ -2,33 +2,27 @@ import SwiftUI
 
 struct FavoritesTabView: View {
     let server: Server
-    @State private var archives: [SearchResultItem] = []
-    @State private var tankoubons: [SearchResultItem] = []
+    @State private var items: [SearchResultItem] = []
     @State private var isLoading = false
-    @State private var isRefreshing = false
-    @State private var hasMoreArchives = true
-    @State private var hasMoreTankoubons = true
+    @State private var hasMore = true
+    @State private var nextPage = 1
 
     private let pageSize = 20
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
-    private let favCacheKey = "fav_cache"
-
-    private var allItems: [SearchResultItem] {
-        (archives + tankoubons).sorted { ($0.favoritetime ?? 0) > ($1.favoritetime ?? 0) }
-    }
 
     var body: some View {
         Group {
-            if isLoading && allItems.isEmpty {
+            if isLoading && items.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if allItems.isEmpty {
+            } else if items.isEmpty {
                 ContentUnavailableView("favorites_placeholder", systemImage: "heart.fill", description: Text("favorites_placeholder_desc"))
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(allItems, id: \.displayId) { item in
+                        ForEach(items, id: \.displayId) { item in
                             ArchiveGridCell(archive: item, server: server)
+                                .onAppear { loadMoreIfNeeded(item) }
                         }
                         if isLoading {
                             ProgressView().frame(maxWidth: .infinity).padding()
@@ -36,96 +30,48 @@ struct FavoritesTabView: View {
                     }
                     .padding(12)
                 }
-                .refreshable {
-                    await refreshAll()
-                }
             }
         }
         .navigationDestination(for: SearchResultItem.self) { item in
             ArchiveDetailView(archive: item, server: server)
         }
-        .task { await loadInitial() }
+        .task { await loadFavorites(reset: true) }
     }
 
-    private func loadInitial() async {
-        loadFromCache()
-        if !allItems.isEmpty { return }
+    private func loadFavorites(reset: Bool) async {
+        guard !isLoading else { return }
         isLoading = true
-        await fetchAll()
+        if reset { items = []; nextPage = 1 }
+
+        do {
+            let result = try await server.apiClient.search(favoriteOnly: true, groupbyTanks: true, sortby: "favoritetime", order: "desc", page: nextPage, pageSize: pageSize)
+            let newItems = result.data ?? []
+
+            var added = 0
+            for item in newItems {
+                if !items.contains(where: { $0.displayId == item.displayId }) {
+                    items.append(item)
+                    added += 1
+                }
+            }
+
+            print("[Favorites] page=\(nextPage) got=\(newItems.count) new=\(added) total=\(items.count)")
+            nextPage += 1
+            hasMore = newItems.count >= pageSize
+        } catch {
+            print("[Favorites] error: \(error)")
+            hasMore = false
+        }
+
         isLoading = false
     }
 
-    private func refreshAll() async {
-        isRefreshing = true
-        await fetchAll()
-        isRefreshing = false
+    private func loadMoreIfNeeded(_ item: SearchResultItem) {
+        guard hasMore, !isLoading,
+              let idx = items.firstIndex(where: { $0.displayId == item.displayId }),
+              idx >= items.count - 5 else { return }
+        Task { await loadFavorites(reset: false) }
     }
-
-    private func fetchAll() async {
-        print("[Favorites] Fetching all favorites")
-        var allArchives: [SearchResultItem] = []
-        var allTankoubons: [SearchResultItem] = []
-        var page = 1
-        var maxPages = 10
-
-        while page <= maxPages {
-            if let r = try? await server.apiClient.fetchFavoritesArchives(page: page, pageSize: pageSize) {
-                let items = r.data ?? []
-                if items.isEmpty { break }
-                var newCount = 0
-                for item in items {
-                    if !allArchives.contains(where: { $0.displayId == item.displayId }) {
-                        allArchives.append(item)
-                        newCount += 1
-                    }
-                }
-                if newCount == 0 || items.count < pageSize { break }
-                page += 1
-            } else { break }
-        }
-
-        page = 1
-        while page <= maxPages {
-            if let r = try? await server.apiClient.fetchFavoritesTankoubons(page: page, pageSize: pageSize) {
-                let items = r.data ?? []
-                if items.isEmpty { break }
-                var newCount = 0
-                for item in items {
-                    if !allTankoubons.contains(where: { $0.displayId == item.displayId }) {
-                        allTankoubons.append(item)
-                        newCount += 1
-                    }
-                }
-                if newCount == 0 || items.count < pageSize { break }
-                page += 1
-            } else { break }
-        }
-
-        print("[Favorites] Fetched: archives=\(allArchives.count) tankoubons=\(allTankoubons.count)")
-        archives = allArchives
-        tankoubons = allTankoubons
-        saveToCache()
-    }
-
-    private func loadFromCache() {
-        guard let data = UserDefaults.standard.data(forKey: favCacheKey),
-              let cached = try? JSONDecoder().decode(CachedFavorites.self, from: data) else { return }
-        archives = cached.archives
-        tankoubons = cached.tankoubons
-        print("[Favorites] Cache loaded: archives=\(archives.count) tankoubons=\(tankoubons.count)")
-    }
-
-    private func saveToCache() {
-        let cached = CachedFavorites(archives: archives, tankoubons: tankoubons)
-        if let data = try? JSONEncoder().encode(cached) {
-            UserDefaults.standard.set(data, forKey: favCacheKey)
-        }
-    }
-}
-
-private struct CachedFavorites: Codable {
-    let archives: [SearchResultItem]
-    let tankoubons: [SearchResultItem]
 }
 
 struct ArchiveGridCell: View {
@@ -147,41 +93,31 @@ struct ArchiveGridCell: View {
                 .overlay(alignment: .topLeading) {
                     if isTankoubon {
                         Text(String(localized: "badge_tankoubon"))
-                            .font(.subheadline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.accentColor)
-                            .clipShape(Capsule())
-                            .padding(4)
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color.accentColor).clipShape(Capsule()).padding(4)
                     }
                 }
 
             MarqueeText(text: isTankoubon ? (archive.title ?? "---") : (archive.filename ?? archive.title ?? "---"))
-                .font(.subheadline)
-                .lineLimit(1)
+                .font(.subheadline).lineLimit(1)
 
             HStack(spacing: 4) {
                 if isTankoubon {
                     if let count = archive.archiveCount {
                         Text(String(format: String(localized: "tankoubon_archives"), count))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .font(.caption).foregroundColor(.secondary)
                     }
                 } else {
                     if let pages = archive.pagecount {
                         Text("\(pages) \(String(localized: "page_unit"))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .font(.caption).foregroundColor(.secondary)
                     }
                 }
                 Spacer()
                 if !isTankoubon {
                     Text("\(progressPercent)%")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
+                        .font(.caption).fontWeight(.semibold).foregroundColor(.primary)
                 }
             }
             }
@@ -192,72 +128,54 @@ struct ArchiveGridCell: View {
 
     @ViewBuilder
     private var coverView: some View {
-        Rectangle()
-            .fill(.clear)
-            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+        Rectangle().fill(.clear).aspectRatio(3.0 / 4.0, contentMode: .fit)
             .overlay {
                 if let data = coverData, let uiImage = UIImage(data: data) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
+                    Image(uiImage: uiImage).resizable().scaledToFill()
                 } else {
-                    Rectangle()
-                        .fill(Color(.systemGray5))
+                    Rectangle().fill(Color(.systemGray5))
                         .overlay { Image(systemName: "photo").foregroundColor(.secondary) }
                 }
             }
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipped().clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private func loadCover() async {
         if isTankoubon {
-            if let assetId = coverAssetId {
-                await loadCoverImage(assetId: assetId)
-            } else {
-                await loadTankoubonCover()
-            }
+            if let aid = coverAssetId { await loadCoverImage(assetId: aid) }
+            else { await loadTankoubonCover() }
         } else {
             await loadCoverImage(assetId: coverAssetId)
         }
     }
 
     private func loadCoverImage(assetId: Int?) async {
-        guard let assetId else { return }
-        if let cached = CacheManager.shared.getCover(id: "\(assetId)") {
-            coverData = cached; return
-        }
-        guard let data = await fetchAsset(assetId: assetId) else { return }
-        CacheManager.shared.cacheCover(id: "\(assetId)", data: data)
+        guard let aid = assetId else { return }
+        if let cached = CacheManager.shared.getCover(id: "\(aid)") { coverData = cached; return }
+        guard let data = await fetchAsset(assetId: aid) else { return }
+        CacheManager.shared.cacheCover(id: "\(aid)", data: data)
         coverData = data
     }
 
     private func loadTankoubonCover() async {
         guard let firstChild = archive.children?.first else { return }
-        do {
-            let meta = try await server.apiClient.fetchArchiveMetadata(arcid: firstChild)
-            guard let assetId = meta.coverAssetId else { return }
-            if let cached = CacheManager.shared.getCover(id: "\(assetId)") {
-                coverData = cached; return
-            }
-            guard let data = await fetchAsset(assetId: assetId) else { return }
-            CacheManager.shared.cacheCover(id: "\(assetId)", data: data)
-            coverData = data
-        } catch {}
+        guard let meta = try? await server.apiClient.fetchArchiveMetadata(arcid: firstChild),
+              let aid = meta.coverAssetId else { return }
+        if let cached = CacheManager.shared.getCover(id: "\(aid)") { coverData = cached; return }
+        guard let data = await fetchAsset(assetId: aid) else { return }
+        CacheManager.shared.cacheCover(id: "\(aid)", data: data)
+        coverData = data
     }
 
     private func fetchAsset(assetId: Int) async -> Data? {
         var urlString = server.baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard let url = URL(string: urlString)?.appendingPathComponent("api/assets/\(assetId)") else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        if let token = server.authToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        guard let (data, resp) = try? await URLSession.shared.data(for: request),
-              let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 else { return nil }
-        return data
+        var req = URLRequest(url: url); req.httpMethod = "GET"
+        if let t = server.authToken { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+        guard let (d, r) = try? await URLSession.shared.data(for: req),
+              let h = r as? HTTPURLResponse, h.statusCode == 200 else { return nil }
+        return d
     }
 }
 
@@ -268,14 +186,11 @@ struct MarqueeText: View {
 
     var body: some View {
         GeometryReader { geo in
-            Text(text)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+            Text(text).lineLimit(1).fixedSize(horizontal: true, vertical: false)
                 .offset(x: needsScroll ? offset : 0)
                 .onAppear { startMarquee(textWidth: geo.size.width) }
         }
-        .frame(height: 24)
-        .clipped()
+        .frame(height: 24).clipped()
     }
 
     private func startMarquee(textWidth: CGFloat) {
@@ -287,4 +202,3 @@ struct MarqueeText: View {
         }
     }
 }
-

@@ -446,7 +446,7 @@ class APIClient {
 
     // MARK: - Search
 
-    func search(favoriteOnly: Bool = false, favoriteTankoubonsOnly: Bool = false, untaggedOnly: Bool = false, filter: String? = nil, tags: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, page: Int = 1, pageSize: Int = 20) async throws -> SearchResponse {
+    func search(favoriteOnly: Bool = false, untaggedOnly: Bool = false, groupbyTanks: Bool = false, filter: String? = nil, tags: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, page: Int = 1, pageSize: Int = 20) async throws -> SearchResponse {
         var urlString = baseURL
         if !urlString.contains("://") {
             urlString = "https://" + urlString
@@ -466,11 +466,11 @@ class APIClient {
         if favoriteOnly {
             items.append(URLQueryItem(name: "favoriteonly", value: "true"))
         }
-        if favoriteTankoubonsOnly {
-            items.append(URLQueryItem(name: "favorite_tankoubons_only", value: "true"))
-        }
         if untaggedOnly {
             items.append(URLQueryItem(name: "untaggedonly", value: "true"))
+        }
+        if groupbyTanks {
+            items.append(URLQueryItem(name: "groupby_tanks", value: "true"))
         }
         if let filter, !filter.isEmpty {
             items.append(URLQueryItem(name: "filter", value: filter))
@@ -508,14 +508,6 @@ class APIClient {
             return try JSONDecoder().decode(SearchResponse.self, from: data)
         }
         throw AuthError.networkError(String(localized: "connection_failed"))
-    }
-
-    func fetchFavoritesArchives(page: Int = 1, pageSize: Int = 20) async throws -> SearchResponse {
-        try await search(favoriteOnly: true, sortby: "updated_at", order: "desc", page: page, pageSize: pageSize)
-    }
-
-    func fetchFavoritesTankoubons(page: Int = 1, pageSize: Int = 20) async throws -> SearchResponse {
-        try await search(favoriteTankoubonsOnly: true, sortby: "updated_at", order: "desc", page: page, pageSize: pageSize)
     }
 
     func fetchHistory(page: Int = 1, pageSize: Int = 40) async throws -> SearchResponse {

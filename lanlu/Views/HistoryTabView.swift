@@ -2,35 +2,30 @@ import SwiftUI
 
 struct HistoryTabView: View {
     let server: Server
-    @State private var archives: [SearchResultItem] = []
+    @State private var items: [SearchResultItem] = []
     @State private var isLoading = false
     @State private var hasMore = true
+    @State private var nextPage = 1
 
     private let pageSize = 20
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
     var body: some View {
         Group {
-            if isLoading && archives.isEmpty {
+            if isLoading && items.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if archives.isEmpty {
-                ContentUnavailableView(
-                    "history_placeholder",
-                    systemImage: "clock.fill",
-                    description: Text("history_placeholder_desc")
-                )
+            } else if items.isEmpty {
+                ContentUnavailableView("history_placeholder", systemImage: "clock.fill", description: Text("history_placeholder_desc"))
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(archives, id: \.arcid) { archive in
-                            ArchiveGridCell(archive: archive, server: server)
-                                .onAppear { loadMoreIfNeeded(archive) }
+                        ForEach(items, id: \.displayId) { item in
+                            ArchiveGridCell(archive: item, server: server)
+                                .onAppear { loadMoreIfNeeded(item) }
                         }
                         if isLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding()
+                            ProgressView().frame(maxWidth: .infinity).padding()
                         }
                     }
                     .padding(12)
@@ -46,33 +41,35 @@ struct HistoryTabView: View {
     private func loadHistory(reset: Bool) async {
         guard !isLoading else { return }
         isLoading = true
-        if reset { archives = [] }
+        if reset { items = []; nextPage = 1 }
 
         do {
-            let startOffset = archives.count
-            let result = try await server.apiClient.fetchHistory(page: (startOffset / pageSize) + 1, pageSize: pageSize)
-            let items = result.data ?? []
+            let result = try await server.apiClient.search(sortby: "lastread", order: "desc", page: nextPage, pageSize: pageSize)
+            let newItems = result.data ?? []
 
-            var newCount = 0
-            for item in items {
-                if !archives.contains(where: { $0.arcid == item.arcid }) {
-                    CacheManager.shared.cacheArchive(item)
-                    archives.append(item)
-                    newCount += 1
+            var added = 0
+            for item in newItems {
+                if !items.contains(where: { $0.displayId == item.displayId }) {
+                    items.append(item)
+                    added += 1
                 }
             }
 
-            hasMore = items.count == pageSize && (result.recordsTotal ?? 0) > archives.count
+            print("[History] page=\(nextPage) got=\(newItems.count) new=\(added) total=\(items.count)")
+            nextPage += 1
+            hasMore = newItems.count >= pageSize
         } catch {
+            print("[History] error: \(error)")
             hasMore = false
         }
+
         isLoading = false
     }
 
-    private func loadMoreIfNeeded(_ archive: SearchResultItem) {
+    private func loadMoreIfNeeded(_ item: SearchResultItem) {
         guard hasMore, !isLoading,
-              let index = archives.firstIndex(where: { $0.arcid == archive.arcid }),
-              index >= archives.count - 5 else { return }
+              let idx = items.firstIndex(where: { $0.displayId == item.displayId }),
+              idx >= items.count - 5 else { return }
         Task { await loadHistory(reset: false) }
     }
 }
