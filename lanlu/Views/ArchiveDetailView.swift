@@ -199,24 +199,27 @@ struct ArchiveDetailView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
 
-            if !relatedLoaded || !related.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(String(localized: "detail_related"))
-                        .font(.headline)
-                    if !relatedLoaded {
-                        HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
-                    } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(related, id: \.displayId) { item in
-                                    ArchiveGridCell(archive: item, server: server).frame(width: 120)
-                                }
+            VStack(alignment: .leading, spacing: 8) {
+                Text(String(localized: "detail_related"))
+                    .font(.headline)
+                if !relatedLoaded {
+                    HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
+                } else if related.isEmpty {
+                    Text(String(localized: "no_related"))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 8)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(related, id: \.displayId) { item in
+                                ArchiveGridCell(archive: item, server: server).frame(width: 120)
                             }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
             }
+            .padding(.horizontal, 16)
 
             Spacer(minLength: 0)
         }
