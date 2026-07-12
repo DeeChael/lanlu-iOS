@@ -1,7 +1,8 @@
 "app_name" = "LanLu";
 "add_server" = "Add Server";
 "add_server_title" = "Add Server";
-"no_servers_yet" = "No servers yet";
+"no_servers_yet" = "No Servers";
+"no_servers_desc" = "Connect to a LanLu server to start browsing your archives.";
 "server_name" = "Name";
 "server_url" = "Server URL";
 "connect" = "Connect";

@@ -11,6 +11,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Group {
+                emptyState
                 if servers.isEmpty {
                     emptyState
                 } else {
@@ -56,17 +57,16 @@ struct ContentView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Text(String(localized: "no_servers_yet"))
-                .foregroundColor(.secondary)
-
-            Button {
+        ContentUnavailableView {
+            Label(String(localized: "no_servers_yet"), systemImage: "server.rack")
+        } description: {
+            Text(String(localized: "no_servers_desc"))
+        } actions: {
+            Button(String(localized: "add_server")) {
                 serverToEdit = nil
                 showAddServer = true
-            } label: {
-                Text(String(localized: "add_server"))
-                    .fontWeight(.semibold)
             }
+            .buttonStyle(.borderedProminent)
         }
     }
 

@@ -1,7 +1,8 @@
 "app_name" = "兰鹿";
 "add_server" = "添加服务器";
 "add_server_title" = "添加服务器";
-"no_servers_yet" = "还未添加服务器";
+"no_servers_yet" = "暂无服务器";
+"no_servers_desc" = "连接一台兰鹿服务器以开始浏览您的档案。";
 "server_name" = "名称";
 "server_url" = "服务器 URL";
 "connect" = "连接";
