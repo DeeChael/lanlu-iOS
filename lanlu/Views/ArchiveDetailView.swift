@@ -263,7 +263,7 @@ struct ArchiveDetailView: View {
 
     private var archiveContent: some View {
         VStack(spacing: 0) {
-            if previewMode == 0 { previewGrid } else { FileTreeView(files: files).padding(.horizontal, 16) }
+            if previewMode == 0 { previewGrid } else { FileTreeView(files: files) }
         }
     }
 
