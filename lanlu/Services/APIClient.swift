@@ -1,5 +1,26 @@
 import Foundation
 
+actor AsyncSemaphore {
+    private var count: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) { count = limit }
+
+    func wait() async {
+        if count > 0 { count -= 1; return }
+        await withCheckedContinuation { c in waiters.append(c) }
+    }
+
+    func signal() {
+        if let next = waiters.first {
+            waiters.removeFirst()
+            next.resume()
+        } else {
+            count += 1
+        }
+    }
+}
+
 // MARK: - API Models
 
 struct ApiEnvelope<T: Decodable>: Decodable {
@@ -223,6 +244,8 @@ enum AuthError: LocalizedError, Equatable {
 // MARK: - APIClient
 
 class APIClient {
+    static let imageLoadSemaphore = AsyncSemaphore(limit: 4)
+
     let baseURL: String
     var token: String?
 
@@ -788,21 +811,33 @@ class APIClient {
     }
 
     func fetchPageImage(arcid: String, path: String) async throws -> Data {
+        LogManager.shared.log("[API] fetchPageImage waiting for slot arcid=\(arcid) path=\(path)")
+        await APIClient.imageLoadSemaphore.wait()
+        defer { APIClient.imageLoadSemaphore.signal() }
+        LogManager.shared.log("[API] fetchPageImage got slot arcid=\(arcid) path=\(path)")
         var urlString = baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard var components = URLComponents(string: urlString) else {
+            LogManager.shared.log("[API] fetchPageImage invalid URL: \(urlString)")
             throw AuthError.networkError(String(localized: "invalid_url"))
         }
         components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/archives/\(arcid)/page"
         components.queryItems = [URLQueryItem(name: "path", value: path)]
         guard let url = components.url else {
+            LogManager.shared.log("[API] fetchPageImage components failed for arcid=\(arcid) path=\(path)")
             throw AuthError.networkError(String(localized: "invalid_url"))
         }
+        LogManager.shared.log("[API] fetchPageImage url=\(url.absoluteString)")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyAuthHeader(&request)
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            LogManager.shared.log("[API] fetchPageImage no HTTP response for \(url.absoluteString)")
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        LogManager.shared.log("[API] fetchPageImage status=\(httpResponse.statusCode) size=\(data.count) for arcid=\(arcid) path=\(path)")
+        guard httpResponse.statusCode == 200 else {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
         return data

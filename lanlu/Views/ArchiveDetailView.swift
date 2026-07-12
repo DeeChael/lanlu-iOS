@@ -280,7 +280,7 @@ struct ArchiveDetailView: View {
     private func loadData() async {
         isLoading = true
         isFavorite = archive.isfavorite ?? false
-        print("[Detail] loadData isTankoubon=\(isTankoubon) arcid=\(archive.arcid ?? "nil") tankoubonId=\(archive.tankoubonId ?? "nil")")
+        LogManager.shared.log("[Detail] loadData isTankoubon=\(isTankoubon) arcid=\(archive.arcid ?? "nil") tankoubonId=\(archive.tankoubonId ?? "nil")")
         if isTankoubon {
             if let id = archive.tankoubonId {
                 tankoubonMeta = try? await server.apiClient.fetchTankoubonMetadata(tankoubonId: id)
@@ -290,7 +290,7 @@ struct ArchiveDetailView: View {
             let client = server.apiClient
             meta = try? await client.fetchArchiveMetadata(arcid: id)
             files = (try? await client.fetchFiles(arcid: id)) ?? []
-            print("[Detail] Files loaded: \(files.count)")
+            LogManager.shared.log("[Detail] Files loaded: \(files.count) for arcid=\(id)")
             isFavorite = meta?.isfavorite ?? false
         }
         if isTankoubon {
@@ -429,17 +429,34 @@ struct ChildCoverCell: View {
     }
 
     private func loadCover() async {
-        guard let eid = child.entityId else { return }
+        guard let eid = child.entityId else {
+            LogManager.shared.log("[Cover] child missing entityId")
+            return
+        }
+        LogManager.shared.log("[Cover] loading cover for child entityId=\(eid)")
         guard let meta = try? await server.apiClient.fetchArchiveMetadata(arcid: eid),
-              let aid = meta.coverAssetId else { return }
-        if let cached = CacheManager.shared.getCover(id: "\(aid)") { coverData = cached; return }
+              let aid = meta.coverAssetId else {
+            LogManager.shared.log("[Cover] failed to get metadata or coverAssetId for \(eid)")
+            return
+        }
+        LogManager.shared.log("[Cover] got coverAssetId=\(aid) for \(eid)")
+        if let cached = CacheManager.shared.getCover(id: "\(aid)") { coverData = cached; LogManager.shared.log("[Cover] cache hit for \(aid)"); return }
+        LogManager.shared.log("[Cover] cache miss, fetching asset from server")
         var urlString = server.baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
-        guard let url = URL(string: urlString)?.appendingPathComponent("api/assets/\(aid)") else { return }
+        guard let url = URL(string: urlString)?.appendingPathComponent("api/assets/\(aid)") else {
+            LogManager.shared.log("[Cover] invalid URL for asset \(aid)")
+            return
+        }
+        LogManager.shared.log("[Cover] fetching \(url.absoluteString)")
         var req = URLRequest(url: url); req.httpMethod = "GET"
         if let t = server.authToken { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
         guard let (d, r) = try? await URLSession.shared.data(for: req),
-              let h = r as? HTTPURLResponse, h.statusCode == 200 else { return }
+              let h = r as? HTTPURLResponse, h.statusCode == 200 else {
+            LogManager.shared.log("[Cover] fetch failed for asset \(aid)")
+            return
+        }
+        LogManager.shared.log("[Cover] fetched \(d.count) bytes for asset \(aid)")
         CacheManager.shared.cacheCover(id: "\(aid)", data: d)
         coverData = d
     }
@@ -472,15 +489,26 @@ struct ArchivePreviewCell: View {
     }
 
     private func loadImage() async {
-        guard let path = file.path, !path.isEmpty else { return }
+        guard let path = file.defaultSource?.path ?? file.path, !path.isEmpty else {
+            LogManager.shared.log("[Preview] empty path for file index=\(index)")
+            return
+        }
         let cacheKey = "page_\(arcid)_\(path)"
+        LogManager.shared.log("[Preview] loading index=\(index) arcid=\(arcid) path=\(path) cacheKey=\(cacheKey)")
         if let cached = CacheManager.shared.getCover(id: cacheKey) {
+            LogManager.shared.log("[Preview] cache hit for \(cacheKey)")
             imageData = cached; return
         }
+        LogManager.shared.log("[Preview] cache miss, fetching from server")
         let client = server.apiClient
-        guard let data = try? await client.fetchPageImage(arcid: arcid, path: path) else { return }
-        CacheManager.shared.cacheCover(id: cacheKey, data: data)
-        imageData = data
+        do {
+            let data = try await client.fetchPageImage(arcid: arcid, path: path)
+            LogManager.shared.log("[Preview] fetched \(data.count) bytes for \(cacheKey)")
+            CacheManager.shared.cacheCover(id: cacheKey, data: data)
+            imageData = data
+        } catch {
+            LogManager.shared.log("[Preview] fetch failed: \(error.localizedDescription)")
+        }
     }
 }
 
