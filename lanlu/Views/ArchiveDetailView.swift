@@ -588,7 +588,11 @@ struct ArchivePreviewCell: View {
             }
             .overlay(alignment: .topTrailing) {
                 Text("\(index + 1)").font(.caption2).foregroundColor(.white)
-                    .padding(4).background(Color.black.opacity(0.6)).clipShape(Capsule()).padding(4)
+                    .padding(.horizontal, index + 1 < 10 ? 8 : 6)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.6))
+                    .clipShape(Capsule())
+                    .padding(4)
             }
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 6))
