@@ -417,18 +417,38 @@ struct ArchiveDetailView: View {
             if let aid = archive.assets?.cover ?? meta?.coverAssetId { coverData = try? await fetchImage(assetId: aid) }
         }
 
+        // Load cached tag translations before showing UI
+        let serverId = server.baseURL
+        if let cached = CacheManager.shared.getTagTranslations(serverId: serverId),
+           let map = try? JSONDecoder().decode([String: String].self, from: cached) {
+            tagTranslations = map
+        }
+
         isLoading = false
 
-        // Background refresh favorite status + tag translations
+        // Background refresh favorite status
         if isTankoubon, let id = archive.tankoubonId {
             tankoubonMeta = try? await server.apiClient.fetchTankoubonMetadata(tankoubonId: id, forceRefresh: true)
             isFavorite = tankoubonMeta?.isfavorite ?? isFavorite
-            tagTranslations = (try? await server.apiClient.fetchTagTranslations(tankoubonId: id)) ?? [:]
         } else if let id = archive.arcid {
             let client = server.apiClient
             meta = try? await client.fetchArchiveMetadata(arcid: id, forceRefresh: true)
             isFavorite = meta?.isfavorite ?? isFavorite
-            tagTranslations = (try? await server.apiClient.fetchTagTranslations(arcid: id)) ?? [:]
+        }
+
+        // Fetch tag translations from server if not cached
+        if tagTranslations.isEmpty {
+            if isTankoubon, let id = archive.tankoubonId {
+                if let map = try? await server.apiClient.fetchTagTranslations(tankoubonId: id) {
+                    tagTranslations = map
+                    if let data = try? JSONEncoder().encode(map) { CacheManager.shared.cacheTagTranslations(serverId: serverId, data: data) }
+                }
+            } else if let id = archive.arcid {
+                if let map = try? await server.apiClient.fetchTagTranslations(arcid: id) {
+                    tagTranslations = map
+                    if let data = try? JSONEncoder().encode(map) { CacheManager.shared.cacheTagTranslations(serverId: serverId, data: data) }
+                }
+            }
         }
 
         // Related

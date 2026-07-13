@@ -81,8 +81,28 @@ final class CacheManager {
         return data
     }
 
+    // MARK: - Tag translation cache
+
+    func cacheTagTranslations(serverId: String, data: Data) {
+        let key = "tagtrans_\(serverId)"
+        metaMemoryCache.setObject(data as NSData, forKey: key as NSString)
+        try? data.write(to: metaDiskURL(key: key), options: .atomic)
+    }
+
+    func getTagTranslations(serverId: String) -> Data? {
+        let key = "tagtrans_\(serverId)"
+        if let cached = metaMemoryCache.object(forKey: key as NSString) as? Data { return cached }
+        let url = metaDiskURL(key: key)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        metaMemoryCache.setObject(data as NSData, forKey: key as NSString)
+        return data
+    }
+
     var metadataDiskCount: Int {
-        (try? FileManager.default.contentsOfDirectory(at: metaCacheDir, includingPropertiesForKeys: nil).count) ?? 0
+        (try? FileManager.default.contentsOfDirectory(at: metaCacheDir, includingPropertiesForKeys: nil).filter {
+            let name = $0.lastPathComponent
+            return name.hasPrefix("meta_") || name.hasPrefix("tmeta_") || name.hasPrefix("tagtrans_")
+        }.count) ?? 0
     }
 
     var imageDiskCount: Int {
