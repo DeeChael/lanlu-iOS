@@ -393,23 +393,42 @@ struct ArchiveDetailView: View {
         LogManager.shared.log("[Detail] loadData isTankoubon=\(isTankoubon) arcid=\(archive.arcid ?? "nil") tankoubonId=\(archive.tankoubonId ?? "nil")")
         if isTankoubon {
             if let id = archive.tankoubonId {
-                tankoubonMeta = try? await server.apiClient.fetchTankoubonMetadata(tankoubonId: id)
-                isFavorite = tankoubonMeta?.isfavorite ?? false
+                if let cached = CacheManager.shared.getTankoubonMetadata(tankoubonId: id),
+                   let cachedMeta = try? JSONDecoder().decode(APIClient.TankoubonMetadata.self, from: cached) {
+                    tankoubonMeta = cachedMeta
+                }
             }
         } else if let id = archive.arcid {
             let client = server.apiClient
-            meta = try? await client.fetchArchiveMetadata(arcid: id)
+            if let cached = CacheManager.shared.getArchiveMetadata(arcid: id),
+               let cachedMeta = try? JSONDecoder().decode(APIClient.ArchiveMetadata.self, from: cached) {
+                meta = cachedMeta
+            }
             files = (try? await client.fetchFiles(arcid: id)) ?? []
             LogManager.shared.log("[Detail] Files loaded: \(files.count) for arcid=\(id)")
-            isFavorite = meta?.isfavorite ?? false
         }
+
+        // Cover
         if isTankoubon {
             if let aid = archive.assets?.cover ?? tankoubonMeta?.coverAssetId { coverData = try? await fetchImage(assetId: aid) }
             else if let fc = archive.children?.first, let cm = try? await server.apiClient.fetchArchiveMetadata(arcid: fc), let aid = cm.coverAssetId { coverData = try? await fetchImage(assetId: aid) }
         } else {
             if let aid = archive.assets?.cover ?? meta?.coverAssetId { coverData = try? await fetchImage(assetId: aid) }
         }
-        // Related: fetch 40, deduplicate, remove self, keep 10
+
+        isLoading = false
+
+        // Background refresh favorite status
+        if isTankoubon, let id = archive.tankoubonId {
+            tankoubonMeta = try? await server.apiClient.fetchTankoubonMetadata(tankoubonId: id, forceRefresh: true)
+            isFavorite = tankoubonMeta?.isfavorite ?? isFavorite
+        } else if let id = archive.arcid {
+            let client = server.apiClient
+            meta = try? await client.fetchArchiveMetadata(arcid: id, forceRefresh: true)
+            isFavorite = meta?.isfavorite ?? isFavorite
+        }
+
+        // Related
         if !relatedLoaded {
             if isTankoubon, let id = archive.tankoubonId {
                 if let items = try? await server.apiClient.fetchRecommendations(count: 40, scene: "tankoubon_related", tankoubonId: id) {
@@ -426,7 +445,6 @@ struct ArchiveDetailView: View {
             archivedIn = (try? await server.apiClient.fetchArchivedIn(arcid: id)) ?? []
             archivedInLoaded = true
         }
-        isLoading = false
     }
 
     private func processRelated(_ items: [SearchResultItem]) -> [SearchResultItem] {
@@ -462,12 +480,31 @@ struct ArchiveDetailView: View {
             if isTankoubon, let id = archive.tankoubonId {
                 if isFavorite { try? await server.apiClient.favoriteTankoubon(tankoubonId: id) }
                 else { try? await server.apiClient.unfavoriteTankoubon(tankoubonId: id) }
+                updateCachedFavorite(tankoubonId: id)
             } else if let id = archive.arcid {
                 if isFavorite { try? await server.apiClient.favoriteArchive(arcid: id) }
                 else { try? await server.apiClient.unfavoriteArchive(arcid: id) }
+                updateCachedFavorite(arcid: id)
             }
-            // Invalidate favorites cache
             UserDefaults.standard.removeObject(forKey: "fav_cache")
+        }
+    }
+
+    private func updateCachedFavorite(arcid: String) {
+        guard var data = CacheManager.shared.getArchiveMetadata(arcid: arcid),
+              var meta = try? JSONDecoder().decode(APIClient.ArchiveMetadata.self, from: data) else { return }
+        meta.isfavorite = isFavorite
+        if let encoded = try? JSONEncoder().encode(meta) {
+            CacheManager.shared.cacheArchiveMetadata(arcid: arcid, data: encoded)
+        }
+    }
+
+    private func updateCachedFavorite(tankoubonId: String) {
+        guard var data = CacheManager.shared.getTankoubonMetadata(tankoubonId: tankoubonId),
+              var meta = try? JSONDecoder().decode(APIClient.TankoubonMetadata.self, from: data) else { return }
+        meta.isfavorite = isFavorite
+        if let encoded = try? JSONEncoder().encode(meta) {
+            CacheManager.shared.cacheTankoubonMetadata(tankoubonId: tankoubonId, data: encoded)
         }
     }
 

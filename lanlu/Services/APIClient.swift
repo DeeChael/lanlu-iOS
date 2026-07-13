@@ -714,12 +714,12 @@ class APIClient {
 
     // MARK: - Archive Metadata
 
-    struct ArchiveMetadataAsset: Decodable {
+    struct ArchiveMetadataAsset: Codable {
         let key: String?
         let value: Int?
     }
 
-    struct ArchiveMetadata: Decodable {
+    struct ArchiveMetadata: Codable {
         let arcid: String?
         let title: String?
         let description: String?
@@ -731,7 +731,7 @@ class APIClient {
         let fileSize: Int?
         let archivetype: String?
         let isnew: Bool?
-        let isfavorite: Bool?
+        var isfavorite: Bool?
         let thumbnailHash: String?
         let capabilities: [String]?
 
@@ -748,7 +748,7 @@ class APIClient {
         }
     }
 
-    struct TankoubonMetadata: Decodable {
+    struct TankoubonMetadata: Codable {
         let tankoubonId: String?
         let title: String?
         let description: String?
@@ -758,7 +758,7 @@ class APIClient {
         let progress: Int?
         let archiveCount: Int?
         let isnew: Bool?
-        let isfavorite: Bool?
+        var isfavorite: Bool?
         let children: [TankoubonChild]?
 
         var coverAssetId: Int? {
@@ -772,7 +772,7 @@ class APIClient {
         }
     }
 
-    struct TankoubonChild: Decodable {
+    struct TankoubonChild: Codable {
         let entityType: String?
         let entityId: String?
         let volumeNo: Int?
@@ -820,8 +820,8 @@ class APIClient {
         let pages: [PageFile]?
     }
 
-    func fetchArchiveMetadata(arcid: String) async throws -> ArchiveMetadata {
-        if let cached = CacheManager.shared.getArchiveMetadata(arcid: arcid) {
+    func fetchArchiveMetadata(arcid: String, forceRefresh: Bool = false) async throws -> ArchiveMetadata {
+        if !forceRefresh, let cached = CacheManager.shared.getArchiveMetadata(arcid: arcid) {
             return try JSONDecoder().decode(ArchiveMetadata.self, from: cached)
         }
         var urlString = baseURL
@@ -847,8 +847,8 @@ class APIClient {
         return meta
     }
 
-    func fetchTankoubonMetadata(tankoubonId: String) async throws -> TankoubonMetadata {
-        if let cached = CacheManager.shared.getTankoubonMetadata(tankoubonId: tankoubonId) {
+    func fetchTankoubonMetadata(tankoubonId: String, forceRefresh: Bool = false) async throws -> TankoubonMetadata {
+        if !forceRefresh, let cached = CacheManager.shared.getTankoubonMetadata(tankoubonId: tankoubonId) {
             return try JSONDecoder().decode(TankoubonMetadata.self, from: cached)
         }
         var urlString = baseURL
