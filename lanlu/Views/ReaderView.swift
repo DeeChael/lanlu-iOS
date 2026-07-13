@@ -164,16 +164,28 @@ struct ReaderView: View {
         }
         .toolbarBackground(.hidden, for: .bottomBar)
         .toolbar {
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button { previousPage() } label: {
-                    Image(systemName: "chevron.left").font(.title3).frame(width: 44, height: 44)
+            if (files.count > 1) {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button { previousPage() } label: {
+                        Image(systemName: "chevron.left").font(.title3).frame(width: 44, height: 44)
+                    }
+                    .disabled(currentIndex <= 0).opacity(currentIndex <= 0 ? 0.5 : 1)
+
+                    Slider(
+                        value: .init(
+                            get: { Double(currentIndex) },
+                            set: { currentIndex = Int($0) }
+                        ),
+                        in: 0...Double(maxIndex),
+                        step: 1
+                    )
+                    .frame(width: .infinity)
+
+                    Button { nextPage() } label: {
+                        Image(systemName: "chevron.right").font(.title3).frame(width: 44, height: 44)
+                    }
+                    .disabled(currentIndex >= maxIndex).opacity(currentIndex >= maxIndex ? 0.5 : 1)
                 }
-                .disabled(currentIndex <= 0).opacity(currentIndex <= 0 ? 0.5 : 1)
-                Spacer()
-                Button { nextPage() } label: {
-                    Image(systemName: "chevron.right").font(.title3).frame(width: 44, height: 44)
-                }
-                .disabled(currentIndex >= maxIndex).opacity(currentIndex >= maxIndex ? 0.5 : 1)
             }
         }
         .safeAreaBar(edge: .bottom) {
