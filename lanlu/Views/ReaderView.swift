@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ReaderView: View {
     @Environment(\.dismiss) fileprivate var dismiss
@@ -28,22 +29,7 @@ struct ReaderView: View {
     var maxIndex: Int { max(0, files.count - 1) }
 
     fileprivate var currentFileIsImage: Bool {
-        guard currentIndex >= 0, currentIndex < files.count else { return false }
-        let path = files[currentIndex].defaultSource?.path ?? files[currentIndex].path ?? ""
-        let ext = (path as NSString).pathExtension.lowercased()
-        let mediaExts: Set<String> = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff","mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
-        return !mediaExts.contains(ext)
-    }
-
-    fileprivate func iconForFile(_ path: String) -> String {
-        let ext = (path as NSString).pathExtension.lowercased()
-        let videoExts: Set<String> = ["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
-        if videoExts.contains(ext) { return "video.fill" }
-        let audioExts: Set<String> = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff"]
-        if audioExts.contains(ext) { return "music.note" }
-        let archiveExts: Set<String> = ["zip","rar","7z","tar","gz","bz2","xz","cbz","cbr"]
-        if archiveExts.contains(ext) { return "archivebox.fill" }
-        return "doc.fill"
+        isImageFile(filePath(at: currentIndex))
     }
 
     init(arcid: String, files: [APIClient.PageFile], startIndex: Int, server: Server) {
@@ -207,7 +193,10 @@ struct ReaderView: View {
             }
         }
         .statusBarHidden(!showControls)
-        .onAppear { loadPage(currentIndex) }
+        .onAppear {
+            loadPage(currentIndex)
+            preloadAdjacent()
+        }
         .onDisappear { cancelAllTasks() }
         .onChange(of: currentIndex) { _, _ in
             resetZoom(animated: false)
@@ -216,14 +205,48 @@ struct ReaderView: View {
         }
     }
 
+    // MARK: - File Helpers
+
+    fileprivate func filePath(at index: Int) -> String {
+        guard index >= 0, index < files.count else { return "" }
+        return files[index].defaultSource?.path ?? files[index].path ?? ""
+    }
+
+    fileprivate func isImageFile(_ path: String) -> Bool {
+        let clean = path.split(whereSeparator: { $0 == "?" || $0 == "#" }).first.map(String.init) ?? path
+        let ext = (clean as NSString).pathExtension.lowercased()
+        guard !ext.isEmpty else { return false }
+        if let type = UTType(filenameExtension: ext) { return type.conforms(to: .image) }
+        let fallback: Set<String> = ["jpg","jpeg","png","gif","webp","heic","heif","bmp","tif","tiff","avif"]
+        return fallback.contains(ext)
+    }
+
+    fileprivate func iconForFile(_ path: String) -> String {
+        let ext = (path as NSString).pathExtension.lowercased()
+        let video: Set<String> = ["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
+        if video.contains(ext) { return "video.fill" }
+        let audio: Set<String> = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff"]
+        if audio.contains(ext) { return "music.note" }
+        let archive: Set<String> = ["zip","rar","7z","tar","gz","bz2","xz","cbz","cbr"]
+        if archive.contains(ext) { return "archivebox.fill" }
+        let doc: Set<String> = ["pdf","doc","docx","pages","rtf"]
+        if doc.contains(ext) { return "doc.richtext.fill" }
+        let text: Set<String> = ["txt","md","json","xml","yaml","yml"]
+        if text.contains(ext) { return "doc.text.fill" }
+        let ebook: Set<String> = ["epub","mobi","azw","azw3"]
+        if ebook.contains(ext) { return "book.closed.fill" }
+        return "doc.fill"
+    }
+
+    // MARK: - Page View
+
     @ViewBuilder
     fileprivate func pageView(for index: Int, size: CGSize) -> some View {
-        if isLoading.contains(index) {
-            VStack(spacing: 12) {
-                ProgressView().tint(.white).scaleEffect(1.5)
-                Text("\(index + 1) / \(files.count)").font(.caption).foregroundColor(.white.opacity(0.6))
-            }
-            .frame(width: size.width, height: size.height)
+        let path = filePath(at: index)
+        let isImage = isImageFile(path)
+
+        if !isImage {
+            filePlaceholder(path: path, size: size)
         } else if let image = images[index] {
             ReaderPageView(
                 image: image,
@@ -232,20 +255,50 @@ struct ReaderView: View {
             )
             .frame(width: size.width, height: size.height)
         } else if failedPages.contains(index) {
-            VStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundColor(.orange)
-                Text(String(localized: "reader_tap_reload")).font(.subheadline).foregroundColor(.white)
-            }
-            .frame(width: size.width, height: size.height)
-            .onTapGesture { failedPages.remove(index); loadPage(index) }
-        } else if index < files.count {
-            let path = files[index].defaultSource?.path ?? files[index].path ?? ""
-            Image(systemName: iconForFile(path))
-                .font(.system(size: 48))
-                .foregroundColor(.white.opacity(0.3))
-                .frame(width: size.width, height: size.height)
+            failedPageView(index: index, size: size)
+        } else {
+            loadingPageView(index: index, size: size)
+                .task(id: path) { loadPage(index) }
         }
     }
+
+    @ViewBuilder
+    fileprivate func loadingPageView(index: Int, size: CGSize) -> some View {
+        VStack(spacing: 12) {
+            ProgressView().scaleEffect(1.5)
+            Text("\(index + 1) / \(files.count)")
+                .font(.caption)
+        }
+        .frame(width: size.width, height: size.height)
+    }
+
+    @ViewBuilder
+    fileprivate func failedPageView(index: Int, size: CGSize) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundColor(.orange)
+            Text(String(localized: "reader_tap_reload")).font(.subheadline)
+        }
+        .frame(width: size.width, height: size.height)
+        .contentShape(Rectangle())
+        .onTapGesture { failedPages.remove(index); loadPage(index) }
+    }
+
+    @ViewBuilder
+    fileprivate func filePlaceholder(path: String, size: CGSize) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: iconForFile(path))
+                .font(.system(size: 48))
+            let name = (path as NSString).lastPathComponent
+            if !name.isEmpty {
+                Text(name)
+                    .font(.caption)
+                    .lineLimit(1).truncationMode(.middle).padding(.horizontal, 32)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+    }
+
+    // MARK: - Animation Helpers
 
     fileprivate func withoutAnimation(_ action: () -> Void) {
         var t = Transaction(); t.disablesAnimations = true
@@ -322,32 +375,48 @@ extension ReaderView {
     }
 
     fileprivate func loadPage(_ index: Int) {
-        guard index >= 0, index < files.count, images[index] == nil, !failedPages.contains(index) else { return }
-        let file = files[index]
-        let path = file.defaultSource?.path ?? file.path ?? ""
-        guard !path.isEmpty else { return }
+        guard index >= 0, index < files.count else { return }
+        guard images[index] == nil else { return }
+        guard !failedPages.contains(index) else { return }
+        guard !isLoading.contains(index) else { return }
 
-        loadTasks[index]?.cancel()
+        let path = filePath(at: index)
+        guard !path.isEmpty else { return }
+        guard isImageFile(path) else { return }
+
         isLoading.insert(index)
+        loadTasks[index]?.cancel()
 
         loadTasks[index] = Task {
             let cacheKey = "page_\(arcid)_\(path)"
-            if let cached = CacheManager.shared.getCover(id: cacheKey), let img = UIImage(data: cached) {
-                await MainActor.run { images[index] = img; isLoading.remove(index); failedPages.remove(index) }
+
+            if let cached = CacheManager.shared.getCover(id: cacheKey),
+               let img = UIImage(data: cached) {
+                await MainActor.run {
+                    images[index] = img; failedPages.remove(index); isLoading.remove(index); loadTasks[index] = nil
+                }
                 return
             }
+
             do {
                 let data = try await server.apiClient.fetchPageImage(arcid: arcid, path: path)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    await MainActor.run { isLoading.remove(index); loadTasks[index] = nil }
+                    return
+                }
+                guard let img = UIImage(data: data) else {
+                    await MainActor.run { isLoading.remove(index); failedPages.insert(index); loadTasks[index] = nil }
+                    return
+                }
                 CacheManager.shared.cacheCover(id: cacheKey, data: data)
-                if let img = UIImage(data: data) {
-                    await MainActor.run { images[index] = img; isLoading.remove(index); failedPages.remove(index) }
-                } else {
-                    await MainActor.run { isLoading.remove(index); failedPages.insert(index) }
+                await MainActor.run {
+                    images[index] = img; failedPages.remove(index); isLoading.remove(index); loadTasks[index] = nil
                 }
             } catch {
-                guard !Task.isCancelled else { return }
-                await MainActor.run { isLoading.remove(index); failedPages.insert(index) }
+                await MainActor.run {
+                    isLoading.remove(index); loadTasks[index] = nil
+                    if !Task.isCancelled { failedPages.insert(index) }
+                }
             }
         }
     }
