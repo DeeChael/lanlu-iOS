@@ -42,108 +42,11 @@ struct ReaderView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let pageW = geo.size.width
-            let pageH = geo.size.height
-
-            ZStack {
-                HStack(spacing: 0) {
-                    if currentIndex > 0 {
-                        pageView(for: currentIndex - 1, size: geo.size)
-                            .frame(width: pageW, height: pageH)
-                    } else {
-                        Color.black.frame(width: pageW, height: pageH)
-                    }
-
-                    pageView(for: currentIndex, size: geo.size)
-                        .frame(width: pageW, height: pageH)
-
-                    if currentIndex < maxIndex {
-                        pageView(for: currentIndex + 1, size: geo.size)
-                            .frame(width: pageW, height: pageH)
-                    } else {
-                        Color.black.frame(width: pageW, height: pageH)
-                    }
+            readerCanvas(size: geo.size)
+                .onAppear { pageWidth = geo.size.width }
+                .onChange(of: geo.size.width) { _, newValue in
+                    pageWidth = newValue
                 }
-                .offset(x: -pageW + dragOffset)
-
-                Color.clear
-                    .contentShape(Rectangle())
-                    .highPriorityGesture(
-                        TapGesture(count: 2)
-                            .onEnded {
-                                guard currentFileIsImage else { return }
-                                if currentScale > 1.001 { resetZoom() }
-                                else {
-                                    withAnimation(.smooth(duration: 0.25)) {
-                                        currentScale = 3.0; lastScale = 3.0
-                                        panOffset = .zero; lastPanOffset = .zero; isZoomed = true
-                                    }
-                                }
-                            }
-                    )
-                    .onTapGesture { location in
-                        let x = location.x
-                        if x < pageW * 0.3 { previousPage() }
-                        else if x > pageW * 0.7 { nextPage() }
-                        else { withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() } }
-                    }
-                    .gesture(
-                        DragGesture()
-                            .onChanged { v in
-                                guard !isPageAnimating else { return }
-                                if currentFileIsImage, currentScale > 1.001 {
-                                    let proposed = CGSize(
-                                        width: lastPanOffset.width + v.translation.width,
-                                        height: lastPanOffset.height + v.translation.height
-                                    )
-                                    withoutAnimation { panOffset = clampedPanOffset(proposed, scale: currentScale) }
-                                } else {
-                                    isDragging = true
-                                    let t = v.translation.width
-                                    let damping = (currentIndex == 0 && t > 0) || (currentIndex == maxIndex && t < 0)
-                                    withoutAnimation { dragOffset = damping ? t * 0.2 : t }
-                                }
-                            }
-                            .onEnded { v in
-                                guard !isPageAnimating else { return }
-                                if currentFileIsImage, currentScale > 1.001 {
-                                    let proposed = CGSize(
-                                        width: lastPanOffset.width + v.translation.width,
-                                        height: lastPanOffset.height + v.translation.height
-                                    )
-                                    let corrected = clampedPanOffset(proposed, scale: currentScale)
-                                    panOffset = corrected; lastPanOffset = corrected
-                                } else {
-                                    finishPageDrag(v, pageWidth: pageW)
-                                }
-                            }
-                    )
-                    .simultaneousGesture(
-                        MagnificationGesture()
-                            .onChanged { value in
-                                guard currentFileIsImage else { return }
-                                let newScale = min(max(lastScale * value, 1.0), 3.0)
-                                withoutAnimation {
-                                    currentScale = newScale
-                                    isZoomed = newScale > 1.001
-                                    if newScale <= 1.001 { panOffset = .zero; lastPanOffset = .zero }
-                                }
-                            }
-                            .onEnded { value in
-                                guard currentFileIsImage else { return }
-                                let finalScale = min(max(lastScale * value, 1.0), 3.0)
-                                if finalScale <= 1.001 { resetZoom() }
-                                else {
-                                    currentScale = finalScale; lastScale = finalScale; isZoomed = true
-                                    let corrected = clampedPanOffset(panOffset, scale: finalScale)
-                                    withAnimation(.snappy(duration: 0.18)) { panOffset = corrected }
-                                    lastPanOffset = corrected
-                                }
-                            }
-                    )
-            }
-            .onAppear { pageWidth = pageW }
-            .onChange(of: pageW) { _, nv in pageWidth = nv }
         }
         .ignoresSafeArea()
         .navigationBarTitleDisplayMode(.inline)
@@ -166,12 +69,12 @@ struct ReaderView: View {
         .toolbar {
             if (files.count > 1) {
                 ToolbarItemGroup(placement: .bottomBar) {
-                    Button {
-                        // TODO:
-                    } label: {
-                        Image(systemName: "book")
-                    }
                     HStack(spacing: 4) {
+                        Button {
+                            // TODO:
+                        } label: {
+                            Image(systemName: "book")
+                        }
                         Button { previousPage() } label: {
                             Image(systemName: "chevron.left")
                         }
@@ -192,10 +95,11 @@ struct ReaderView: View {
                         step: 1
                     )
                     .frame(width: .infinity)
+                    .padding(.trailing, 4)
                 }
             }
             
-            if (!currentFileIsImage) {
+            if (!currentFileIsImage && currentIndex >= 0 && currentIndex <= maxIndex) {
                 ToolbarSpacer(.fixed, placement: .bottomBar)
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button {
@@ -203,9 +107,9 @@ struct ReaderView: View {
                     } label: {
                         Image(systemName: iconForFile(files[currentIndex].path ?? ""))
                     }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .animation(.easeInOut(duration: 0.2), value: !currentFileIsImage && currentIndex >= 0 && currentIndex <= maxIndex)
                 }
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.2), value: currentFileIsImage)
             }
         }
         .safeAreaBar(edge: .bottom) {
@@ -234,6 +138,182 @@ struct ReaderView: View {
             resetZoom(animated: false)
             loadPage(currentIndex)
             preloadAdjacent()
+        }
+    }
+
+    // MARK: - Reader Canvas
+
+    @ViewBuilder
+    fileprivate func readerCanvas(size: CGSize) -> some View {
+        ZStack {
+            pageStrip(size: size)
+            interactionOverlay(pageWidth: size.width)
+        }
+    }
+
+    @ViewBuilder
+    fileprivate func pageStrip(size: CGSize) -> some View {
+        HStack(spacing: 0) {
+            if currentIndex > 0 {
+                pageView(for: currentIndex - 1, size: size)
+                    .frame(width: size.width, height: size.height)
+            } else {
+                Color.black
+                    .frame(width: size.width, height: size.height)
+            }
+
+            pageView(for: currentIndex, size: size)
+                .frame(width: size.width, height: size.height)
+
+            if currentIndex < maxIndex {
+                pageView(for: currentIndex + 1, size: size)
+                    .frame(width: size.width, height: size.height)
+            } else {
+                Color.black
+                    .frame(width: size.width, height: size.height)
+            }
+        }
+        .offset(x: -size.width + dragOffset)
+    }
+
+    fileprivate func interactionOverlay(pageWidth: CGFloat) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .highPriorityGesture(doubleTapGesture)
+            .onTapGesture { location in
+                handleSingleTap(at: location, pageWidth: pageWidth)
+            }
+            .gesture(pageDragGesture(pageWidth: pageWidth))
+            .simultaneousGesture(zoomGesture)
+    }
+
+    fileprivate var doubleTapGesture: some Gesture {
+        TapGesture(count: 2)
+            .onEnded {
+                handleDoubleTap()
+            }
+    }
+
+    fileprivate func pageDragGesture(pageWidth: CGFloat) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                handleDragChanged(value)
+            }
+            .onEnded { value in
+                handleDragEnded(value, pageWidth: pageWidth)
+            }
+    }
+
+    fileprivate var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                handleMagnificationChanged(value)
+            }
+            .onEnded { value in
+                handleMagnificationEnded(value)
+            }
+    }
+
+    fileprivate func handleDoubleTap() {
+        guard currentFileIsImage else { return }
+
+        if currentScale > 1.001 {
+            resetZoom()
+        } else {
+            withAnimation(.smooth(duration: 0.25)) {
+                currentScale = 3.0
+                lastScale = 3.0
+                panOffset = .zero
+                lastPanOffset = .zero
+                isZoomed = true
+            }
+        }
+    }
+
+    fileprivate func handleSingleTap(at location: CGPoint, pageWidth: CGFloat) {
+        let x = location.x
+
+        if x < pageWidth * 0.3 {
+            previousPage()
+        } else if x > pageWidth * 0.7 {
+            nextPage()
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showControls.toggle()
+            }
+        }
+    }
+
+    fileprivate func handleDragChanged(_ value: DragGesture.Value) {
+        guard !isPageAnimating else { return }
+
+        if currentFileIsImage, currentScale > 1.001 {
+            let proposed = CGSize(
+                width: lastPanOffset.width + value.translation.width,
+                height: lastPanOffset.height + value.translation.height
+            )
+            withoutAnimation {
+                panOffset = clampedPanOffset(proposed, scale: currentScale)
+            }
+        } else {
+            isDragging = true
+            let translation = value.translation.width
+            let needsDamping =
+                (currentIndex == 0 && translation > 0) ||
+                (currentIndex == maxIndex && translation < 0)
+
+            withoutAnimation {
+                dragOffset = needsDamping ? translation * 0.2 : translation
+            }
+        }
+    }
+
+    fileprivate func handleDragEnded(_ value: DragGesture.Value, pageWidth: CGFloat) {
+        guard !isPageAnimating else { return }
+
+        if currentFileIsImage, currentScale > 1.001 {
+            let proposed = CGSize(
+                width: lastPanOffset.width + value.translation.width,
+                height: lastPanOffset.height + value.translation.height
+            )
+            let corrected = clampedPanOffset(proposed, scale: currentScale)
+            panOffset = corrected
+            lastPanOffset = corrected
+        } else {
+            finishPageDrag(value, pageWidth: pageWidth)
+        }
+    }
+
+    fileprivate func handleMagnificationChanged(_ value: CGFloat) {
+        guard currentFileIsImage else { return }
+
+        let newScale = min(max(lastScale * value, 1.0), 3.0)
+        withoutAnimation {
+            currentScale = newScale
+            isZoomed = newScale > 1.001
+            if newScale <= 1.001 {
+                panOffset = .zero
+                lastPanOffset = .zero
+            }
+        }
+    }
+
+    fileprivate func handleMagnificationEnded(_ value: CGFloat) {
+        guard currentFileIsImage else { return }
+
+        let finalScale = min(max(lastScale * value, 1.0), 3.0)
+        if finalScale <= 1.001 {
+            resetZoom()
+        } else {
+            currentScale = finalScale
+            lastScale = finalScale
+            isZoomed = true
+
+            let corrected = clampedPanOffset(panOffset, scale: finalScale)
+            withAnimation(.snappy(duration: 0.18)) {
+                panOffset = corrected
+            }
+            lastPanOffset = corrected
         }
     }
 
