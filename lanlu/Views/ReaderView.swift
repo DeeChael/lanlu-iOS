@@ -18,7 +18,9 @@ struct ReaderView: View {
     @State fileprivate var isDragging = false
     @State fileprivate var isZoomed = false
     @State fileprivate var currentScale: CGFloat = 1.0
+    @State fileprivate var lastScale: CGFloat = 1.0
     @State fileprivate var panOffset: CGSize = .zero
+    @State fileprivate var lastPanOffset: CGSize = .zero
     @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
 
     var maxIndex: Int { max(0, files.count - 1) }
@@ -37,7 +39,6 @@ struct ReaderView: View {
             let pageH = geo.size.height
 
             ZStack {
-                // Pages
                 HStack(spacing: 0) {
                     if currentIndex > 0 {
                         pageView(for: currentIndex - 1, size: geo.size)
@@ -58,19 +59,19 @@ struct ReaderView: View {
                 }
                 .offset(x: -pageW + dragOffset)
 
-                // Overlay (tap zones, drag, pinch, double-tap)
                 Color.clear
                     .contentShape(Rectangle())
                     .highPriorityGesture(
                         TapGesture(count: 2)
                             .onEnded {
-                                if currentScale > 1.0 {
-                                    currentScale = 1.0
-                                    isZoomed = false
-                                    panOffset = .zero
+                                if currentScale > 1.001 {
+                                    resetZoom()
                                 } else {
-                                    currentScale = 3.0
-                                    isZoomed = true
+                                    withAnimation(.smooth(duration: 0.25)) {
+                                        currentScale = 3.0; lastScale = 3.0
+                                        panOffset = .zero; lastPanOffset = .zero
+                                        isZoomed = true
+                                    }
                                 }
                             }
                     )
@@ -87,20 +88,29 @@ struct ReaderView: View {
                     .gesture(
                         DragGesture()
                             .onChanged { v in
-                                if currentScale > 1.0 {
-                                    panOffset = v.translation
+                                if currentScale > 1.001 {
+                                    let proposed = CGSize(
+                                        width: lastPanOffset.width + v.translation.width,
+                                        height: lastPanOffset.height + v.translation.height
+                                    )
+                                    let corrected = clampedPanOffset(proposed, scale: currentScale)
+                                    withoutAnimation { panOffset = corrected }
                                 } else {
                                     isDragging = true
-                                    dragOffset = v.translation.width
+                                    withoutAnimation { dragOffset = v.translation.width }
                                 }
                             }
                             .onEnded { v in
-                                if currentScale > 1.0 {
-                                    withAnimation(.spring(response: 0.2)) { panOffset = .zero }
+                                if currentScale > 1.001 {
+                                    let proposed = CGSize(
+                                        width: lastPanOffset.width + v.translation.width,
+                                        height: lastPanOffset.height + v.translation.height
+                                    )
+                                    let corrected = clampedPanOffset(proposed, scale: currentScale)
+                                    panOffset = corrected; lastPanOffset = corrected
                                 } else {
                                     let threshold = pageW * 0.25
                                     let velocity = v.predictedEndLocation.x - v.location.x
-
                                     if v.translation.width > threshold || velocity > 100 {
                                         withAnimation(.easeOut(duration: 0.25)) { dragOffset = pageW }
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -123,14 +133,22 @@ struct ReaderView: View {
                     .highPriorityGesture(
                         MagnificationGesture()
                             .onChanged { value in
-                                let newScale = min(max(1.0, value), 3.0)
-                                currentScale = newScale
-                                isZoomed = newScale > 1.0
+                                let newScale = min(max(lastScale * value, 1.0), 3.0)
+                                withoutAnimation {
+                                    currentScale = newScale
+                                    isZoomed = newScale > 1.001
+                                    if newScale <= 1.001 { panOffset = .zero; lastPanOffset = .zero }
+                                }
                             }
-                            .onEnded { _ in
-                                if currentScale <= 1.0 {
-                                    currentScale = 1.0
-                                    isZoomed = false
+                            .onEnded { value in
+                                let finalScale = min(max(lastScale * value, 1.0), 3.0)
+                                if finalScale <= 1.001 {
+                                    resetZoom()
+                                } else {
+                                    currentScale = finalScale; lastScale = finalScale; isZoomed = true
+                                    let corrected = clampedPanOffset(panOffset, scale: finalScale)
+                                    withAnimation(.snappy(duration: 0.18)) { panOffset = corrected }
+                                    lastPanOffset = corrected
                                 }
                             }
                     )
@@ -144,47 +162,34 @@ struct ReaderView: View {
         .toolbar(showControls ? .visible : .hidden, for: .bottomBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.left")
-                }
+                Button { dismiss() } label: { Image(systemName: "chevron.left") }
             }
             ToolbarItem(placement: .principal) {
-                Text("\(currentIndex + 1) / \(files.count)")
-                    .font(.subheadline)
+                Text("\(currentIndex + 1) / \(files.count)").font(.subheadline)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {} label: {
-                    Image(systemName: "gearshape.fill")
-                }
+                Button {} label: { Image(systemName: "gearshape.fill") }
             }
         }
         .toolbarBackground(.hidden, for: .bottomBar)
         .toolbar {
             ToolbarItemGroup(placement: .bottomBar) {
                 Button { previousPage() } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
+                    Image(systemName: "chevron.left").font(.title3).frame(width: 44, height: 44)
                 }
                 .disabled(currentIndex <= 0).opacity(currentIndex <= 0 ? 0.5 : 1)
-
                 Spacer()
-
                 Button { nextPage() } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
+                    Image(systemName: "chevron.right").font(.title3).frame(width: 44, height: 44)
                 }
                 .disabled(currentIndex >= maxIndex).opacity(currentIndex >= maxIndex ? 0.5 : 1)
             }
         }
         .safeAreaBar(edge: .bottom) {
-            if (isZoomed) {
+            if isZoomed {
                 Section {
                     Button {
-                        currentScale = 1.0
-                        isZoomed = false
-                        panOffset = .zero
+                        resetZoom()
                     } label: {
                         HStack {
                             Label(String(localized: "reader_reset_zoom"), systemImage: "arrow.counterclockwise")
@@ -203,9 +208,7 @@ struct ReaderView: View {
         .onAppear { loadPage(currentIndex) }
         .onDisappear { cancelAllTasks() }
         .onChange(of: currentIndex) { _, _ in
-            isZoomed = false
-            currentScale = 1.0
-            panOffset = .zero
+            resetZoom(animated: false)
             loadPage(currentIndex)
             preloadAdjacent()
         }
@@ -214,19 +217,17 @@ struct ReaderView: View {
     @ViewBuilder
     fileprivate func pageView(for index: Int, size: CGSize) -> some View {
         if let image = images[index] {
+            let isCurrent = index == currentIndex
             ReaderPageView(
                 image: image,
-                scale: $currentScale,
-                panOffset: $panOffset,
-                isZoomed: $isZoomed,
-                resetId: "\(index)"
+                scale: isCurrent ? currentScale : 1.0,
+                panOffset: isCurrent ? panOffset : .zero
             )
             .frame(width: size.width, height: size.height)
         } else if isLoading.contains(index) {
             VStack(spacing: 12) {
                 ProgressView().tint(.white).scaleEffect(1.5)
-                Text("\(index + 1) / \(files.count)")
-                    .font(.caption).foregroundColor(.white.opacity(0.6))
+                Text("\(index + 1) / \(files.count)").font(.caption).foregroundColor(.white.opacity(0.6))
             }
         } else if failedPages.contains(index) {
             VStack(spacing: 12) {
@@ -238,14 +239,38 @@ struct ReaderView: View {
             Image(systemName: "photo").font(.largeTitle).foregroundColor(.white.opacity(0.3))
         }
     }
+
+    fileprivate func withoutAnimation(_ action: () -> Void) {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { action() }
+    }
+
+    fileprivate func clampedPanOffset(_ proposed: CGSize, scale: CGFloat) -> CGSize {
+        guard let image = images[currentIndex],
+              image.size.width > 0, image.size.height > 0 else { return .zero }
+        let fitScale = min(UIScreen.main.bounds.width / image.size.width, UIScreen.main.bounds.height / image.size.height)
+        let fw = image.size.width * fitScale * scale
+        let fh = image.size.height * fitScale * scale
+        let mx = max(0, (fw - UIScreen.main.bounds.width) / 2)
+        let my = max(0, (fh - UIScreen.main.bounds.height) / 2)
+        return CGSize(width: min(max(proposed.width, -mx), mx), height: min(max(proposed.height, -my), my))
+    }
+
+    fileprivate func resetZoom(animated: Bool = true) {
+        let action = {
+            currentScale = 1.0; lastScale = 1.0
+            panOffset = .zero; lastPanOffset = .zero
+            isZoomed = false
+        }
+        if animated { withAnimation(.smooth(duration: 0.25)) { action() } }
+        else { withoutAnimation { action() } }
+    }
 }
 
 struct ReaderPageView: View {
     let image: UIImage
-    @Binding var scale: CGFloat
-    @Binding var panOffset: CGSize
-    @Binding var isZoomed: Bool
-    let resetId: String
+    let scale: CGFloat
+    let panOffset: CGSize
 
     var body: some View {
         Image(uiImage: image)
@@ -255,9 +280,6 @@ struct ReaderPageView: View {
             .offset(panOffset)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
-            .id(resetId)
-            .animation(.spring(response: 0.25), value: scale)
-            .animation(.spring(response: 0.2), value: panOffset)
     }
 }
 
