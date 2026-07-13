@@ -20,29 +20,57 @@ struct DetailTagView: View {
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 0
-        var height: CGFloat = 0
+    private struct ItemLayout {
+        let origin: CGPoint
+        let size: CGSize
+    }
+
+    private func calculateLayout(
+        width proposedWidth: CGFloat?,
+        subviews: Subviews
+    ) -> (size: CGSize, items: [ItemLayout]) {
+        let availableWidth = proposedWidth ?? .greatestFiniteMagnitude
+
+        var items: [ItemLayout] = []
         var x: CGFloat = 0
         var y: CGFloat = 0
-        for sv in subviews {
-            let s = sv.sizeThatFits(.unspecified)
-            if x + s.width > width, x > 0 { y += s.height + spacing; x = 0 }
-            x += s.width + spacing
-            height = max(height, y + s.height)
+        var rowHeight: CGFloat = 0
+        var contentWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+
+            if x > 0, x + size.width > availableWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+
+            items.append(ItemLayout(origin: CGPoint(x: x, y: y), size: size))
+
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            contentWidth = max(contentWidth, x - spacing)
         }
-        return CGSize(width: width, height: height)
+
+        let totalHeight = subviews.isEmpty ? 0 : y + rowHeight
+        let totalWidth = proposedWidth ?? contentWidth
+
+        return (CGSize(width: totalWidth, height: totalHeight), items)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        calculateLayout(width: proposal.width, subviews: subviews).size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let width = bounds.width
-        var x = bounds.minX
-        var y = bounds.minY
-        for sv in subviews {
-            let s = sv.sizeThatFits(.unspecified)
-            if x + s.width > width, x > bounds.minX { y += s.height + spacing; x = bounds.minX }
-            sv.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
-            x += s.width + spacing
+        let result = calculateLayout(width: bounds.width, subviews: subviews)
+        for (subview, item) in zip(subviews, result.items) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + item.origin.x, y: bounds.minY + item.origin.y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: item.size.width, height: item.size.height)
+            )
         }
     }
 }
