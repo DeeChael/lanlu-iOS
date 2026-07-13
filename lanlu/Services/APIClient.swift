@@ -743,10 +743,11 @@ class APIClient {
         let type: String?
         let title: String?
         let path: String?
+        let metadata: PageFileMetadata?
         let defaultSource: PageFileSource?
 
         enum CodingKeys: String, CodingKey {
-            case id, type, title, path
+            case id, type, title, path, metadata
             case defaultSource = "default_source"
         }
     }
@@ -756,6 +757,15 @@ class APIClient {
         let path: String?
         let type: String?
         let title: String?
+        let metadata: PageFileMetadata?
+    }
+
+    struct PageFileMetadata: Decodable {
+        let thumbAssetId: Int
+
+        enum CodingKeys: String, CodingKey {
+            case thumbAssetId = "thumb_asset_id"
+        }
     }
 
     struct FilesResponse: Decodable {
@@ -870,6 +880,22 @@ class APIClient {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
         return data
+    }
+
+    func fetchAsset(assetId: Int) async throws -> Data {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard let url = URL(string: urlString)?.appendingPathComponent("api/assets/\(assetId)") else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        applyAuthHeader(&req)
+        let (d, r) = try await URLSession.shared.data(for: req)
+        guard let h = r as? HTTPURLResponse, h.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return d
     }
 
     // MARK: - Favorites

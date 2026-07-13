@@ -302,14 +302,20 @@ struct ArchiveDetailView: View {
      }
 
     private var previewGrid: some View {
+        let mediaExts = Set(["mp3","wav","flac","aac","ogg","wma","m4a","aiff","mp4","mov","avi","mkv","webm","wmv","m4v","3gp"])
         let cols = [GridItem(.adaptive(minimum: 100), spacing: 8)]
         return LazyVGrid(columns: cols, spacing: 8) {
             ForEach(files.indices, id: \.self) { i in
+                let file = files[i]
+                let path = file.defaultSource?.path ?? file.path ?? ""
+                let ext = (path as NSString).pathExtension.lowercased()
+                let mediaIcon: String? = mediaExts.contains(ext) ? (["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"].contains(ext) ? "video.fill" : "music.note") : nil
                 ArchivePreviewCell(
                     file: files[i],
                     index: i,
                     imageData: previewImages[i],
-                    isLoading: previewLoading[i] ?? false
+                    isLoading: previewLoading[i] ?? false,
+                    mediaIcon: mediaIcon
                 )
             }
         }
@@ -446,6 +452,28 @@ struct ArchiveDetailView: View {
 
         let file = files[index]
         let path = file.defaultSource?.path ?? file.path ?? ""
+        let ext = (path as NSString).pathExtension.lowercased()
+        let mediaExts = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff","mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
+
+        if mediaExts.contains(ext) {
+            let thumbId = file.defaultSource?.metadata?.thumbAssetId ?? file.metadata?.thumbAssetId ?? 0
+            if thumbId > 0 {
+                let cacheKey = "thumb_\(thumbId)"
+                if let cached = CacheManager.shared.getCover(id: cacheKey) {
+                    previewImages[index] = cached
+                    return
+                }
+                do {
+                    let data = try await client.fetchAsset(assetId: thumbId)
+                    CacheManager.shared.cacheCover(id: cacheKey, data: data)
+                    previewImages[index] = data
+                } catch {
+                    LogManager.shared.log("[Preview] thumb fetch failed index=\(index): \(error.localizedDescription)")
+                }
+            }
+            return
+        }
+
         let cacheKey = "page_\(arcid)_\(path)"
 
         if let cached = CacheManager.shared.getCover(id: cacheKey) {
@@ -573,6 +601,7 @@ struct ArchivePreviewCell: View {
     let index: Int
     let imageData: Data?
     let isLoading: Bool
+    let mediaIcon: String?
 
     var body: some View {
         Rectangle().fill(Color(.systemGray5))
@@ -582,17 +611,33 @@ struct ArchivePreviewCell: View {
                     Image(uiImage: uiImage).resizable().scaledToFill()
                 } else if isLoading {
                     ProgressView()
+                } else if let icon = mediaIcon {
+                    Image(systemName: icon)
+                        .font(.title)
+                        .foregroundColor(.secondary)
                 } else {
                     Image(systemName: "photo").foregroundColor(.secondary)
                 }
             }
             .overlay(alignment: .topTrailing) {
-                Text("\(index + 1)").font(.caption2).foregroundColor(.white)
+                Text("\(index + 1)")
+                    .font(.caption2)
                     .padding(.horizontal, index + 1 < 10 ? 8 : 6)
                     .padding(.vertical, 3)
-                    .background(Color.black.opacity(0.6))
+                    .glassEffect(.regular)
                     .clipShape(Capsule())
                     .padding(4)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if let icon = mediaIcon, imageData != nil {
+                    Image(systemName: icon)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .glassEffect(.regular)
+                        .clipShape(Capsule())
+                        .padding(4)
+                }
             }
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 6))
