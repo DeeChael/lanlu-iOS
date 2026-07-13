@@ -96,6 +96,24 @@ struct ArchiveDetailView: View {
     @State private var previewImages: [Int: Data] = [:]
     @State private var previewLoading: [Int: Bool] = [:]
 
+    init(archive: SearchResultItem, server: Server) {
+        self.archive = archive
+        self.server = server
+
+        // Load cached cover
+        if let aid = archive.assets?.cover,
+           let data = CacheManager.shared.getCover(id: "\(aid)") {
+            _coverData = State(initialValue: data)
+        }
+
+        // Load cached tag translations
+        let sid = server.baseURL
+        if let cached = CacheManager.shared.getTagTranslations(serverId: sid),
+           let map = try? JSONDecoder().decode([String: String].self, from: cached) {
+            _tagTranslations = State(initialValue: map)
+        }
+    }
+
     private var isTankoubon: Bool { archive.type == "tankoubon" }
 
     var body: some View {
@@ -417,13 +435,6 @@ struct ArchiveDetailView: View {
             if let aid = archive.assets?.cover ?? meta?.coverAssetId { coverData = try? await fetchImage(assetId: aid) }
         }
 
-        // Load cached tag translations before showing UI
-        let serverId = server.baseURL
-        if let cached = CacheManager.shared.getTagTranslations(serverId: serverId),
-           let map = try? JSONDecoder().decode([String: String].self, from: cached) {
-            tagTranslations = map
-        }
-
         isLoading = false
 
         // Background refresh favorite status
@@ -437,6 +448,7 @@ struct ArchiveDetailView: View {
         }
 
         // Fetch tag translations from server if not cached
+        let serverId = server.baseURL
         if tagTranslations.isEmpty {
             if isTankoubon, let id = archive.tankoubonId {
                 if let map = try? await server.apiClient.fetchTagTranslations(tankoubonId: id) {
@@ -486,6 +498,9 @@ struct ArchiveDetailView: View {
     }
 
     private func fetchImage(assetId: Int) async throws -> Data {
+        if let cached = CacheManager.shared.getCover(id: "\(assetId)") {
+            return cached
+        }
         var urlString = server.baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard let url = URL(string: urlString)?.appendingPathComponent("api/assets/\(assetId)") else { return Data() }
@@ -493,6 +508,7 @@ struct ArchiveDetailView: View {
         if let t = server.authToken { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
         let (d, r) = try await URLSession.shared.data(for: req)
         guard let h = r as? HTTPURLResponse, h.statusCode == 200 else { return Data() }
+        CacheManager.shared.cacheCover(id: "\(assetId)", data: d)
         return d
     }
 
