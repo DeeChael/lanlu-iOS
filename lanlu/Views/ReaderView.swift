@@ -166,10 +166,22 @@ struct ReaderView: View {
         .toolbar {
             if (files.count > 1) {
                 ToolbarItemGroup(placement: .bottomBar) {
-                    Button { previousPage() } label: {
-                        Image(systemName: "chevron.left").font(.title3).frame(width: 44, height: 44)
+                    Button {
+                        // TODO:
+                    } label: {
+                        Image(systemName: "book")
                     }
-                    .disabled(currentIndex <= 0).opacity(currentIndex <= 0 ? 0.5 : 1)
+                    HStack(spacing: 4) {
+                        Button { previousPage() } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .disabled(currentIndex <= 0).opacity(currentIndex <= 0 ? 0.5 : 1)
+                        Button { nextPage() } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .disabled(currentIndex >= maxIndex)
+                        .opacity(currentIndex >= maxIndex ? 0.5 : 1)
+                    }
 
                     Slider(
                         value: .init(
@@ -180,12 +192,20 @@ struct ReaderView: View {
                         step: 1
                     )
                     .frame(width: .infinity)
-
-                    Button { nextPage() } label: {
-                        Image(systemName: "chevron.right").font(.title3).frame(width: 44, height: 44)
-                    }
-                    .disabled(currentIndex >= maxIndex).opacity(currentIndex >= maxIndex ? 0.5 : 1)
                 }
+            }
+            
+            if (!currentFileIsImage) {
+                ToolbarSpacer(.fixed, placement: .bottomBar)
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button {
+                        // TODO:
+                    } label: {
+                        Image(systemName: iconForFile(files[currentIndex].path ?? ""))
+                    }
+                }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: currentFileIsImage)
             }
         }
         .safeAreaBar(edge: .bottom) {
