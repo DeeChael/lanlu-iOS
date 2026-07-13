@@ -295,18 +295,46 @@ struct ArchiveDetailView: View {
             if let children = tankoubonMeta?.children, !children.isEmpty {
                 LazyVStack(spacing: 0) {
                     ForEach(children.indices, id: \.self) { i in
-                        HStack(spacing: 12) {
-                            ChildCoverCell(child: children[i], index: i, server: server)
-                                .frame(height: 128)
-                                .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                                .clipped()
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        let child = children[i]
+                        let dest = SearchResultItem(
+                            type: "archive",
+                            arcid: child.entityId,
+                            tankoubonId: nil,
+                            archivetype: nil,
+                            filename: nil,
+                            title: nil,
+                            description: nil,
+                            summary: nil,
+                            pagecount: nil,
+                            archiveCount: nil,
+                            progress: nil,
+                            size: nil,
+                            tags: nil,
+                            isnew: nil,
+                            isfavorite: nil,
+                            favoritetime: nil,
+                            lastreadtime: nil,
+                            assets: nil,
+                            children: nil,
+                            releaseAt: nil,
+                            createdAt: nil,
+                            updatedAt: nil
+                        )
+                        NavigationLink(value: dest) {
+                            HStack(spacing: 12) {
+                                ChildCoverCell(child: children[i], index: i, server: server)
+                                    .frame(height: 128)
+                                    .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                ChildMetaView(child: children[i], server: server)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ChildMetaView(child: children[i], server: server)
+                                }
+                                .frame(maxHeight: .infinity)
                             }
-                            .frame(maxHeight: .infinity)
                         }
+                        .buttonStyle(.plain)
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         if i < children.count - 1 { Divider().padding(.leading, 88) }
                     }
