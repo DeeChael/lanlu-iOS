@@ -83,6 +83,7 @@ struct ArchiveDetailView: View {
     @State private var tankoubonMeta: APIClient.TankoubonMetadata?
     @State private var files: [APIClient.PageFile] = []
     @State private var related: [SearchResultItem] = []
+    @State private var tagTranslations: [String: String] = [:]
     @State private var archivedIn: [APIClient.ArchivedInItem] = []
     @State private var archivedInLoaded = false
     @State private var coverData: Data?
@@ -418,14 +419,16 @@ struct ArchiveDetailView: View {
 
         isLoading = false
 
-        // Background refresh favorite status
+        // Background refresh favorite status + tag translations
         if isTankoubon, let id = archive.tankoubonId {
             tankoubonMeta = try? await server.apiClient.fetchTankoubonMetadata(tankoubonId: id, forceRefresh: true)
             isFavorite = tankoubonMeta?.isfavorite ?? isFavorite
+            tagTranslations = (try? await server.apiClient.fetchTagTranslations(tankoubonId: id)) ?? [:]
         } else if let id = archive.arcid {
             let client = server.apiClient
             meta = try? await client.fetchArchiveMetadata(arcid: id, forceRefresh: true)
             isFavorite = meta?.isfavorite ?? isFavorite
+            tagTranslations = (try? await server.apiClient.fetchTagTranslations(arcid: id)) ?? [:]
         }
 
         // Related
@@ -509,8 +512,11 @@ struct ArchiveDetailView: View {
     }
 
     private func parseTags() -> [String] {
-        if let t = meta?.tags ?? tankoubonMeta?.tags, !t.isEmpty { return t }
-        return archive.tags?.components(separatedBy: ",").filter { !$0.isEmpty } ?? []
+        let raw: [String]
+        if let t = meta?.tags ?? tankoubonMeta?.tags, !t.isEmpty { raw = t }
+        else { raw = archive.tags?.components(separatedBy: ",").filter { !$0.isEmpty } ?? [] }
+        if tagTranslations.isEmpty { return raw }
+        return raw.map { tagTranslations[$0] ?? $0 }
     }
 
     private func loadPreviewImages() async {

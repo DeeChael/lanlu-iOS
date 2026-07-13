@@ -658,6 +658,36 @@ class APIClient {
 
     // MARK: - Categories
 
+    struct TagTranslationData: Decodable {
+        let lang: String
+        let map: [String: String]
+    }
+
+    func fetchTagTranslations(arcid: String? = nil, tankoubonId: String? = nil) async throws -> [String: String] {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var components = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/tags/translations"
+        var queryItems: [URLQueryItem] = []
+        if let arcid { queryItems.append(URLQueryItem(name: "arcid", value: arcid)) }
+        if let tankoubonId { queryItems.append(URLQueryItem(name: "tankoubon_id", value: tankoubonId)) }
+        if !queryItems.isEmpty { components.queryItems = queryItems }
+        guard let url = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        let envelope = try JSONDecoder().decode(ApiEnvelope<TagTranslationData>.self, from: data)
+        return envelope.data?.map ?? [:]
+    }
+
     struct CategoryItem: Codable, Sendable {
         let id: Int
         let catid: String
