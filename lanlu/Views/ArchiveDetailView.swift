@@ -83,6 +83,8 @@ struct ArchiveDetailView: View {
     @State private var tankoubonMeta: APIClient.TankoubonMetadata?
     @State private var files: [APIClient.PageFile] = []
     @State private var related: [SearchResultItem] = []
+    @State private var archivedIn: [APIClient.ArchivedInItem] = []
+    @State private var archivedInLoaded = false
     @State private var coverData: Data?
     @State private var isFavorite = false
     @State private var isLoading = true
@@ -228,6 +230,31 @@ struct ArchiveDetailView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
 
+            if !isTankoubon {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(String(localized: "detail_archived_in"))
+                        .font(.headline)
+                    if !archivedInLoaded {
+                        HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 8)
+                    } else if archivedIn.isEmpty {
+                        Text(String(localized: "no_archived_in"))
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 8)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(archivedIn, id: \.tankoubonId) { item in
+                                    ArchiveGridCell(archive: item.asSearchResultItem, server: server).frame(width: 120)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "detail_related"))
                     .font(.headline)
@@ -361,6 +388,10 @@ struct ArchiveDetailView: View {
                 }
             }
             relatedLoaded = true
+        }
+        if !archivedInLoaded, let id = archive.arcid {
+            archivedIn = (try? await server.apiClient.fetchArchivedIn(arcid: id)) ?? []
+            archivedInLoaded = true
         }
         isLoading = false
     }

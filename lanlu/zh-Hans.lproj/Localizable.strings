@@ -139,6 +139,8 @@
 "detail_preview" = "预览";
 "detail_filetree" = "文件树";
 "detail_volume" = "第 %d 卷";
+"detail_archived_in" = "所属合集";
+"no_archived_in" = "无所属合集";
 "detail_no_description" = "没有简介";
 "no_related" = "暂无相关推荐";
 "syncing" = "正在同步…";

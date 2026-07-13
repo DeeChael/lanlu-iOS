@@ -139,6 +139,8 @@
 "detail_preview" = "預覽";
 "detail_filetree" = "文件樹";
 "detail_volume" = "第 %d 卷";
+"detail_archived_in" = "所屬合集";
+"no_archived_in" = "無所屬合集";
 "detail_no_description" = "沒有簡介";
 "no_related" = "暫無相關推薦";
 "syncing" = "正在同步…";

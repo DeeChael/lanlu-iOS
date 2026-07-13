@@ -139,6 +139,8 @@
 "detail_preview" = "Preview";
 "detail_filetree" = "File Tree";
 "detail_volume" = "Volume %d";
+"detail_archived_in" = "Part of";
+"no_archived_in" = "Not part of any collection";
 "detail_no_description" = "No description";
 "no_related" = "No related recommendations";
 "syncing" = "Syncing…";

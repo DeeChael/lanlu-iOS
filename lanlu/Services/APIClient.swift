@@ -203,6 +203,54 @@ struct TrendPoint: Codable {
             try? c.encode(updatedAt, forKey: .updatedAt)
         }
 
+        init(
+            type: String? = nil,
+            arcid: String? = nil,
+            tankoubonId: String? = nil,
+            archivetype: String? = nil,
+            filename: String? = nil,
+            title: String? = nil,
+            description: String? = nil,
+            summary: String? = nil,
+            pagecount: Int? = nil,
+            archiveCount: Int? = nil,
+            progress: Int? = nil,
+            size: Int? = nil,
+            tags: String? = nil,
+            isnew: Bool? = nil,
+            isfavorite: Bool? = nil,
+            favoritetime: Int? = nil,
+            lastreadtime: Int? = nil,
+            assets: ArchiveAsset? = nil,
+            children: [String]? = nil,
+            releaseAt: String? = nil,
+            createdAt: String? = nil,
+            updatedAt: String? = nil
+        ) {
+            self.type = type
+            self.arcid = arcid
+            self.tankoubonId = tankoubonId
+            self.archivetype = archivetype
+            self.filename = filename
+            self.title = title
+            self.description = description
+            self.summary = summary
+            self.pagecount = pagecount
+            self.archiveCount = archiveCount
+            self.progress = progress
+            self.size = size
+            self.tags = tags
+            self.isnew = isnew
+            self.isfavorite = isfavorite
+            self.favoritetime = favoritetime
+            self.lastreadtime = lastreadtime
+            self.assets = assets
+            self.children = children
+            self.releaseAt = releaseAt
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+
         private static func decodeInt(from container: KeyedDecodingContainer<SearchResultItem.CodingKeys>, forKey key: SearchResultItem.CodingKeys) -> Int? {
             if let int = try? container.decode(Int.self, forKey: key) { return int }
             if let str = try? container.decode(String.self, forKey: key), let int = Int(str) { return int }
@@ -824,6 +872,57 @@ class APIClient {
         return meta
     }
 
+    struct ArchivedInItem: Decodable {
+        let tankoubonId: String
+        let title: String?
+        let description: String?
+        let tags: String?
+        let assets: ArchiveAsset?
+        let children: [String]?
+        let archiveCount: Int?
+        let pagecount: Int?
+        let progress: Int?
+        let isnew: Bool?
+        let isfavorite: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case title, description, tags, assets, children, pagecount, progress, isnew, isfavorite
+            case tankoubonId = "tankoubon_id"
+            case archiveCount = "archive_count"
+        }
+
+        var asSearchResultItem: SearchResultItem {
+            SearchResultItem(
+                type: "tankoubon",
+                arcid: nil,
+                tankoubonId: tankoubonId,
+                archivetype: nil,
+                filename: nil,
+                title: title,
+                description: description,
+                summary: nil,
+                pagecount: pagecount,
+                archiveCount: archiveCount,
+                progress: progress,
+                size: nil,
+                tags: tags,
+                isnew: isnew,
+                isfavorite: isfavorite,
+                favoritetime: nil,
+                lastreadtime: nil,
+                assets: assets,
+                children: children,
+                releaseAt: nil,
+                createdAt: nil,
+                updatedAt: nil
+            )
+        }
+    }
+
+    struct ArchivedInResponse: Decodable {
+        let result: [ArchivedInItem]
+    }
+
     func fetchFiles(arcid: String) async throws -> [PageFile] {
         var urlString = baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
@@ -850,6 +949,27 @@ class APIClient {
            let result = envelope.data, let pages = result.pages { print("[API] fetchFiles envelope decoded \(pages.count) pages"); return pages }
         print("[API] fetchFiles decode failed, raw: \(bodyStr.prefix(200))")
         return (try? JSONDecoder().decode([PageFile].self, from: data)) ?? []
+    }
+
+    func fetchArchivedIn(arcid: String) async throws -> [ArchivedInItem] {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var components = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/archives/\(arcid)/tankoubons"
+        guard let url = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        let result = try JSONDecoder().decode(ArchivedInResponse.self, from: data)
+        return result.result
     }
 
     func fetchPageImage(arcid: String, path: String) async throws -> Data {
