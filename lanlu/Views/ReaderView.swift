@@ -14,7 +14,10 @@ struct ReaderView: View {
     @State fileprivate var failedPages: Set<Int> = []
     @State fileprivate var isLoading: Set<Int> = []
     @State fileprivate var dragOffset: CGFloat = 0
+    @State fileprivate var verticalDrag: CGFloat = 0
     @State fileprivate var isDragging = false
+    @State fileprivate var isZoomed = false
+    @State fileprivate var currentScale: CGFloat = 1.0
     @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
 
     var maxIndex: Int { max(0, files.count - 1) }
@@ -96,6 +99,20 @@ struct ReaderView: View {
                                 }
                             }
                     )
+                    .highPriorityGesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                let newScale = min(max(1.0, value), 5.0)
+                                currentScale = newScale
+                                isZoomed = newScale > 1.0
+                            }
+                            .onEnded { _ in
+                                if currentScale <= 1.0 {
+                                    currentScale = 1.0
+                                    isZoomed = false
+                                }
+                            }
+                    )
             }
         }
         .ignoresSafeArea()
@@ -130,10 +147,7 @@ struct ReaderView: View {
                 }
                 .disabled(currentIndex <= 0).opacity(currentIndex <= 0 ? 0.5 : 1)
 
-                Slider(
-                    value: Binding(get: { Double(currentIndex) }, set: { currentIndex = Int($0) }),
-                    in: 0...Double(maxIndex), step: 1
-                ).tint(.white)
+                Spacer()
 
                 Button { nextPage() } label: {
                     Image(systemName: "chevron.right")
@@ -143,10 +157,31 @@ struct ReaderView: View {
                 .disabled(currentIndex >= maxIndex).opacity(currentIndex >= maxIndex ? 0.5 : 1)
             }
         }
+        .safeAreaBar(edge: .bottom) {
+            if (isZoomed) {
+                Section {
+                    Button {
+                        currentScale = 1.0
+                        isZoomed = false
+                    } label: {
+                        HStack {
+                            // TODO: 为以下 label 的文本添加翻译值
+                            Label("Reset", systemImage: "arrow.counterclockwise")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                    }
+                    .padding(.horizontal, 16)
+                    .buttonStyle(.glass)
+                }
+            }
+        }
         .statusBarHidden(!showControls)
         .onAppear { loadPage(currentIndex) }
         .onDisappear { cancelAllTasks() }
         .onChange(of: currentIndex) { _, _ in
+            isZoomed = false
+            currentScale = 1.0
             loadPage(currentIndex)
             preloadAdjacent()
         }
@@ -155,10 +190,13 @@ struct ReaderView: View {
     @ViewBuilder
     fileprivate func pageView(for index: Int, size: CGSize) -> some View {
         if let image = images[index] {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ReaderPageView(
+                image: image,
+                scale: $currentScale,
+                isZoomed: $isZoomed,
+                resetId: "\(index)"
+            )
+            .frame(width: size.width, height: size.height)
         } else if isLoading.contains(index) {
             VStack(spacing: 12) {
                 ProgressView().tint(.white).scaleEffect(1.5)
@@ -174,6 +212,24 @@ struct ReaderView: View {
         } else {
             Image(systemName: "photo").font(.largeTitle).foregroundColor(.white.opacity(0.3))
         }
+    }
+}
+
+struct ReaderPageView: View {
+    let image: UIImage
+    @Binding var scale: CGFloat
+    @Binding var isZoomed: Bool
+    let resetId: String
+
+    var body: some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFit()
+            .scaleEffect(scale)
+            .animation(.interactiveSpring(), value: scale)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .id(resetId)
     }
 }
 
