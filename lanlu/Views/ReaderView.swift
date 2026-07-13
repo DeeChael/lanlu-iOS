@@ -18,6 +18,7 @@ struct ReaderView: View {
     @State fileprivate var isDragging = false
     @State fileprivate var isZoomed = false
     @State fileprivate var currentScale: CGFloat = 1.0
+    @State fileprivate var panOffset: CGSize = .zero
     @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
 
     var maxIndex: Int { max(0, files.count - 1) }
@@ -36,6 +37,7 @@ struct ReaderView: View {
             let pageH = geo.size.height
 
             ZStack {
+                // Pages
                 HStack(spacing: 0) {
                     if currentIndex > 0 {
                         pageView(for: currentIndex - 1, size: geo.size)
@@ -56,53 +58,72 @@ struct ReaderView: View {
                 }
                 .offset(x: -pageW + dragOffset)
 
-                // Tap zones
+                // Overlay (tap zones, drag, pinch, double-tap)
                 Color.clear
                     .contentShape(Rectangle())
+                    .highPriorityGesture(
+                        TapGesture(count: 2)
+                            .onEnded {
+                                if currentScale > 1.0 {
+                                    currentScale = 1.0
+                                    isZoomed = false
+                                    panOffset = .zero
+                                } else {
+                                    currentScale = 3.0
+                                    isZoomed = true
+                                }
+                            }
+                    )
                     .onTapGesture { location in
                         let x = location.x
-                        if !isDragging {
-                            if x < pageW * 0.3 {
-                                previousPage()
-                            } else if x > pageW * 0.7 {
-                                nextPage()
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() }
-                            }
+                        if x < pageW * 0.3 {
+                            previousPage()
+                        } else if x > pageW * 0.7 {
+                            nextPage()
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() }
                         }
                     }
                     .gesture(
                         DragGesture()
                             .onChanged { v in
-                                isDragging = true
-                                dragOffset = v.translation.width
+                                if currentScale > 1.0 {
+                                    panOffset = v.translation
+                                } else {
+                                    isDragging = true
+                                    dragOffset = v.translation.width
+                                }
                             }
                             .onEnded { v in
-                                let threshold = pageW * 0.25
-                                let velocity = v.predictedEndLocation.x - v.location.x
-
-                                if v.translation.width > threshold || velocity > 100 {
-                                    withAnimation(.easeOut(duration: 0.25)) { dragOffset = pageW }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                        if currentIndex > 0 { currentIndex -= 1 }
-                                        dragOffset = 0; isDragging = false
-                                    }
-                                } else if v.translation.width < -threshold || velocity < -100 {
-                                    withAnimation(.easeOut(duration: 0.25)) { dragOffset = -pageW }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                        if currentIndex < maxIndex { currentIndex += 1 }
-                                        dragOffset = 0; isDragging = false
-                                    }
+                                if currentScale > 1.0 {
+                                    withAnimation(.spring(response: 0.2)) { panOffset = .zero }
                                 } else {
-                                    withAnimation(.easeOut(duration: 0.25)) { dragOffset = 0 }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { isDragging = false }
+                                    let threshold = pageW * 0.25
+                                    let velocity = v.predictedEndLocation.x - v.location.x
+
+                                    if v.translation.width > threshold || velocity > 100 {
+                                        withAnimation(.easeOut(duration: 0.25)) { dragOffset = pageW }
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                            if currentIndex > 0 { currentIndex -= 1 }
+                                            dragOffset = 0; isDragging = false
+                                        }
+                                    } else if v.translation.width < -threshold || velocity < -100 {
+                                        withAnimation(.easeOut(duration: 0.25)) { dragOffset = -pageW }
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                            if currentIndex < maxIndex { currentIndex += 1 }
+                                            dragOffset = 0; isDragging = false
+                                        }
+                                    } else {
+                                        withAnimation(.easeOut(duration: 0.25)) { dragOffset = 0 }
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { isDragging = false }
+                                    }
                                 }
                             }
                     )
                     .highPriorityGesture(
                         MagnificationGesture()
                             .onChanged { value in
-                                let newScale = min(max(1.0, value), 5.0)
+                                let newScale = min(max(1.0, value), 3.0)
                                 currentScale = newScale
                                 isZoomed = newScale > 1.0
                             }
@@ -163,10 +184,10 @@ struct ReaderView: View {
                     Button {
                         currentScale = 1.0
                         isZoomed = false
+                        panOffset = .zero
                     } label: {
                         HStack {
-                            // TODO: 为以下 label 的文本添加翻译值
-                            Label("Reset", systemImage: "arrow.counterclockwise")
+                            Label(String(localized: "reader_reset_zoom"), systemImage: "arrow.counterclockwise")
                         }
                         .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
@@ -174,6 +195,8 @@ struct ReaderView: View {
                     .padding(.horizontal, 16)
                     .buttonStyle(.glass)
                 }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: isZoomed)
             }
         }
         .statusBarHidden(!showControls)
@@ -182,6 +205,7 @@ struct ReaderView: View {
         .onChange(of: currentIndex) { _, _ in
             isZoomed = false
             currentScale = 1.0
+            panOffset = .zero
             loadPage(currentIndex)
             preloadAdjacent()
         }
@@ -193,6 +217,7 @@ struct ReaderView: View {
             ReaderPageView(
                 image: image,
                 scale: $currentScale,
+                panOffset: $panOffset,
                 isZoomed: $isZoomed,
                 resetId: "\(index)"
             )
@@ -218,6 +243,7 @@ struct ReaderView: View {
 struct ReaderPageView: View {
     let image: UIImage
     @Binding var scale: CGFloat
+    @Binding var panOffset: CGSize
     @Binding var isZoomed: Bool
     let resetId: String
 
@@ -226,10 +252,12 @@ struct ReaderPageView: View {
             .resizable()
             .scaledToFit()
             .scaleEffect(scale)
-            .animation(.interactiveSpring(), value: scale)
+            .offset(panOffset)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
             .id(resetId)
+            .animation(.spring(response: 0.25), value: scale)
+            .animation(.spring(response: 0.2), value: panOffset)
     }
 }
 

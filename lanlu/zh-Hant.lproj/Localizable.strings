@@ -139,6 +139,7 @@
 "detail_preview" = "預覽";
 "detail_filetree" = "文件樹";
 "detail_volume" = "第 %d 卷";
+"reader_reset_zoom" = "重置縮放";
 "reader_tap_reload" = "點擊重新加載";
 "detail_archived_in" = "所屬合集";
 "no_archived_in" = "無所屬合集";
