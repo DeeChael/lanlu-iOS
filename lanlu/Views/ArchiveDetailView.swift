@@ -405,6 +405,10 @@ struct ArchiveDetailView: View {
                     mediaIcon: mediaIcon,
                     badgeIcon: badgeIcon
                 )
+                .onTapGesture {
+                    readerStartIndex = i
+                    showReader = true
+                }
             }
         }
         .padding(16)
