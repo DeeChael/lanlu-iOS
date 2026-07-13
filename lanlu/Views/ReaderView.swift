@@ -1,21 +1,23 @@
 import SwiftUI
 
 struct ReaderView: View {
+    @Environment(\.dismiss) fileprivate var dismiss
+
     let arcid: String
     let files: [APIClient.PageFile]
     let startIndex: Int
     let server: Server
 
-    @Environment(\.dismiss) private var dismiss
+    @State fileprivate var currentIndex: Int
+    @State fileprivate var showControls = false
+    @State fileprivate var images: [Int: UIImage] = [:]
+    @State fileprivate var failedPages: Set<Int> = []
+    @State fileprivate var isLoading: Set<Int> = []
+    @State fileprivate var dragOffset: CGFloat = 0
+    @State fileprivate var isDragging = false
+    @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
 
-    @State private var currentIndex: Int
-    @State private var images: [Int: UIImage] = [:]
-    @State private var failedPages: Set<Int> = []
-    @State private var isLoading: Set<Int> = []
-    @State private var showControls = true
-    @State private var dragOffset: CGFloat = 0
-    @State private var isDragging = false
-    @State private var loadTasks: [Int: Task<Void, Never>] = [:]
+    var maxIndex: Int { max(0, files.count - 1) }
 
     init(arcid: String, files: [APIClient.PageFile], startIndex: Int, server: Server) {
         self.arcid = arcid
@@ -24,8 +26,6 @@ struct ReaderView: View {
         self.server = server
         _currentIndex = State(initialValue: startIndex)
     }
-
-    private var maxIndex: Int { max(0, files.count - 1) }
 
     var body: some View {
         GeometryReader { geo in
@@ -99,13 +99,51 @@ struct ReaderView: View {
             }
         }
         .ignoresSafeArea()
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(showControls ? .visible : .hidden, for: .navigationBar)
+        .toolbar(showControls ? .visible : .hidden, for: .bottomBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                }
+            }
+            ToolbarItem(placement: .principal) {
+                Text("\(currentIndex + 1) / \(files.count)")
+                    .font(.subheadline)
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {} label: {
+                    Image(systemName: "gearshape.fill")
+                }
+            }
+        }
+        .toolbarBackground(.hidden, for: .bottomBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button { previousPage() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .disabled(currentIndex <= 0).opacity(currentIndex <= 0 ? 0.5 : 1)
+
+                Slider(
+                    value: Binding(get: { Double(currentIndex) }, set: { currentIndex = Int($0) }),
+                    in: 0...Double(maxIndex), step: 1
+                ).tint(.white)
+
+                Button { nextPage() } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .disabled(currentIndex >= maxIndex).opacity(currentIndex >= maxIndex ? 0.5 : 1)
+            }
+        }
         .statusBarHidden(!showControls)
-        .safeAreaInset(edge: .top) {
-            topBar.opacity(showControls ? 1 : 0).allowsHitTesting(showControls)
-        }
-        .safeAreaInset(edge: .bottom) {
-            bottomBar.opacity(showControls ? 1 : 0).allowsHitTesting(showControls)
-        }
         .onAppear { loadPage(currentIndex) }
         .onDisappear { cancelAllTasks() }
         .onChange(of: currentIndex) { _, _ in
@@ -115,7 +153,7 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
-    private func pageView(for index: Int, size: CGSize) -> some View {
+    fileprivate func pageView(for index: Int, size: CGSize) -> some View {
         if let image = images[index] {
             Image(uiImage: image)
                 .resizable()
@@ -137,65 +175,20 @@ struct ReaderView: View {
             Image(systemName: "photo").font(.largeTitle).foregroundColor(.white.opacity(0.3))
         }
     }
+}
 
-    private var topBar: some View {
-        HStack {
-            Button { dismiss() } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                    Text(String(localized: "back"))
-                }
-                .foregroundColor(.white)
-            }
-
-            Spacer()
-
-            Text("\(currentIndex + 1) / \(files.count)")
-                .font(.subheadline).foregroundColor(.white)
-
-            Spacer()
-
-            Button {} label: {
-                Image(systemName: "gearshape.fill")
-                    .foregroundColor(.white)
-            }
-        }
-        .padding(.horizontal).padding(.vertical, 12)
-        .background(Color.black.opacity(0.7))
-    }
-
-    private var bottomBar: some View {
-        HStack(spacing: 16) {
-            Button { previousPage() } label: {
-                Image(systemName: "chevron.left").font(.title3).foregroundColor(.white).frame(width: 44, height: 44)
-            }
-            .disabled(currentIndex <= 0).opacity(currentIndex <= 0 ? 0.5 : 1)
-
-            Slider(
-                value: Binding(get: { Double(currentIndex) }, set: { currentIndex = Int($0) }),
-                in: 0...Double(maxIndex), step: 1
-            ).tint(.white)
-
-            Button { nextPage() } label: {
-                Image(systemName: "chevron.right").font(.title3).foregroundColor(.white).frame(width: 44, height: 44)
-            }
-            .disabled(currentIndex >= maxIndex).opacity(currentIndex >= maxIndex ? 0.5 : 1)
-        }
-        .padding(.horizontal).padding(.vertical, 12)
-        .background(Color.black.opacity(0.7))
-    }
-
-    private func previousPage() {
+extension ReaderView {
+    fileprivate func previousPage() {
         guard currentIndex > 0 else { return }
         withAnimation(.easeInOut(duration: 0.15)) { currentIndex -= 1 }
     }
 
-    private func nextPage() {
+    fileprivate func nextPage() {
         guard currentIndex < maxIndex else { return }
         withAnimation(.easeInOut(duration: 0.15)) { currentIndex += 1 }
     }
 
-    private func loadPage(_ index: Int) {
+    fileprivate func loadPage(_ index: Int) {
         guard index >= 0, index < files.count, images[index] == nil, !failedPages.contains(index) else { return }
         let file = files[index]
         let path = file.defaultSource?.path ?? file.path ?? ""
@@ -226,14 +219,14 @@ struct ReaderView: View {
         }
     }
 
-    private func preloadAdjacent() {
+    fileprivate func preloadAdjacent() {
         let nextIndex = currentIndex + 1
         if nextIndex < files.count {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { loadPage(nextIndex) }
         }
     }
 
-    private func cancelAllTasks() {
+    fileprivate func cancelAllTasks() {
         for task in loadTasks.values { task.cancel() }
         loadTasks.removeAll()
     }

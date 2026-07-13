@@ -208,7 +208,9 @@ struct ArchiveDetailView: View {
         .animation(.easeInOut(duration: 0.3), value: selectedTab)
         .task { await loadData() }
         .fullScreenCover(isPresented: $showReader) {
-            ReaderView(arcid: archive.arcid ?? "", files: files, startIndex: readerStartIndex, server: server)
+            NavigationStack {
+                ReaderView(arcid: archive.arcid ?? "", files: files, startIndex: readerStartIndex, server: server)
+            }
         }
     }
 
