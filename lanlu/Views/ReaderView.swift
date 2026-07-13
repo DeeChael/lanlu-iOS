@@ -176,8 +176,9 @@ struct ReaderView: View {
                             Label(String(localized: "reader_reset_zoom"), systemImage: "arrow.counterclockwise")
                         }
                         .frame(maxWidth: .infinity).contentShape(Rectangle())
+                        .padding(.vertical, 8)
                     }
-                    .padding(.horizontal, 16).buttonStyle(.glass)
+                    .padding(.horizontal, 20).buttonStyle(.glass)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeInOut(duration: 0.2), value: isZoomed)
