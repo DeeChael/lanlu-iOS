@@ -139,6 +139,7 @@
 "detail_preview" = "预览";
 "detail_filetree" = "文件树";
 "detail_volume" = "第 %d 卷";
+"reader_tap_reload" = "点击重新加载";
 "detail_archived_in" = "所属合集";
 "no_archived_in" = "无所属合集";
 "detail_no_description" = "没有简介";

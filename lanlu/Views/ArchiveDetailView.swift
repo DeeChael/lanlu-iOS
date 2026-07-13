@@ -95,6 +95,8 @@ struct ArchiveDetailView: View {
     @State private var isDescriptionExpanded = true
     @State private var previewImages: [Int: Data] = [:]
     @State private var previewLoading: [Int: Bool] = [:]
+    @State private var showReader = false
+    @State private var readerStartIndex = 0
 
     init(archive: SearchResultItem, server: Server) {
         self.archive = archive
@@ -164,14 +166,16 @@ struct ArchiveDetailView: View {
                             .clipShape(Circle())
 
                             if !isTankoubon {
-                                Button {} label: {
+                                Button {
+                                    readerStartIndex = 0
+                                    showReader = true
+                                } label: {
                                     Label(String(localized: "detail_start_read"), systemImage: "book.fill")
                                         .font(.subheadline).fontWeight(.semibold)
                                         .frame(maxWidth: .infinity).frame(height: 36)
                                         .background(Color.accentColor).foregroundColor(.white)
                                         .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
-                                .disabled(true)
                             }
                         }
                     }
@@ -203,6 +207,9 @@ struct ArchiveDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .animation(.easeInOut(duration: 0.3), value: selectedTab)
         .task { await loadData() }
+        .fullScreenCover(isPresented: $showReader) {
+            ReaderView(arcid: archive.arcid ?? "", files: files, startIndex: readerStartIndex, server: server)
+        }
     }
 
     @ViewBuilder
