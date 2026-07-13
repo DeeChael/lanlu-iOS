@@ -358,19 +358,24 @@ struct ArchiveDetailView: View {
 
     private var previewGrid: some View {
         let mediaExts = Set(["mp3","wav","flac","aac","ogg","wma","m4a","aiff","mp4","mov","avi","mkv","webm","wmv","m4v","3gp"])
+        let animExts = Set(["gif", "apng", "webp"])
         let cols = [GridItem(.adaptive(minimum: 100), spacing: 8)]
         return LazyVGrid(columns: cols, spacing: 8) {
             ForEach(files.indices, id: \.self) { i in
                 let file = files[i]
                 let path = file.defaultSource?.path ?? file.path ?? ""
                 let ext = (path as NSString).pathExtension.lowercased()
-                let mediaIcon: String? = mediaExts.contains(ext) ? (["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"].contains(ext) ? "video.fill" : "music.note") : nil
+                let isAnim = animExts.contains(ext)
+                let isMedia = mediaExts.contains(ext)
+                let mediaIcon: String? = isMedia ? (["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"].contains(ext) ? "video.fill" : "music.note") : nil
+                let badgeIcon: String? = isAnim ? "livephoto" : mediaIcon
                 ArchivePreviewCell(
                     file: files[i],
                     index: i,
                     imageData: previewImages[i],
                     isLoading: previewLoading[i] ?? false,
-                    mediaIcon: mediaIcon
+                    mediaIcon: mediaIcon,
+                    badgeIcon: badgeIcon
                 )
             }
         }
@@ -661,6 +666,7 @@ struct ArchivePreviewCell: View {
     let imageData: Data?
     let isLoading: Bool
     let mediaIcon: String?
+    let badgeIcon: String?
 
     var body: some View {
         Rectangle().fill(Color(.systemGray5))
@@ -688,7 +694,7 @@ struct ArchivePreviewCell: View {
                     .padding(4)
             }
             .overlay(alignment: .bottomTrailing) {
-                if let icon = mediaIcon, imageData != nil {
+                if let icon = badgeIcon, imageData != nil {
                     Image(systemName: icon)
                         .font(.caption2)
                         .padding(.horizontal, 6)
