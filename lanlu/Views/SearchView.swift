@@ -229,7 +229,7 @@ struct SearchView: View {
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
         do {
             let result = try await server.apiClient.search(
-                favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly,
+                favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly, groupbyTanks: true,
                 filter: currentQuery.isEmpty ? nil : currentQuery,
                 tags: currentTags,
                 sortby: sortField, order: sortOrder,
@@ -238,15 +238,13 @@ struct SearchView: View {
                 page: (nextStart / pageSize) + 1, pageSize: pageSize
             )
             let items = result.data ?? []
-            for item in items {
-                if !results.contains(where: { $0.arcid == item.arcid }) {
-                    results.append(item)
-                }
-            }
-            nextStart = results.count
-            hasMore = items.count == pageSize
-        } catch { hasMore = false }
-        isLoading = false
+            nextStart = items.count
+            results = items
+            hasMore = items.count >= pageSize
+            isLoading = false
+        } catch {
+            isLoading = false
+        }
     }
 
     private func loadSuggestions() async {
@@ -275,7 +273,7 @@ struct SearchView: View {
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
         do {
             let result = try await server.apiClient.search(
-                favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly,
+                favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly, groupbyTanks: true,
                 filter: currentQuery.isEmpty ? nil : currentQuery,
                 tags: currentTags,
                 sortby: sortField, order: sortOrder,
