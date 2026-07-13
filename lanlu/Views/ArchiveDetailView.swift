@@ -97,8 +97,6 @@ struct ArchiveDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            
-
             // Scrollable content
             ScrollView {
                 if selectedTab == 0 { infoTab } else { contentTab }
@@ -167,14 +165,15 @@ struct ArchiveDetailView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
                 
                 if selectedTab != 0 && !isTankoubon {
                     Picker("", selection: $previewMode) {
                         Text(String(localized: "detail_preview")).tag(0)
                         Text(String(localized: "detail_filetree")).tag(1)
                     }
-                    .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
                 }
             }
         }
@@ -294,9 +293,11 @@ struct ArchiveDetailView: View {
              previewGrid
                  .opacity(previewMode == 0 ? 1 : 0)
                  .allowsHitTesting(previewMode == 0)
+                 .frame(height: previewMode == 0 ? nil : 0)
              FileTreeView(files: files)
                  .opacity(previewMode == 1 ? 1 : 0)
                  .allowsHitTesting(previewMode == 1)
+                 .frame(height: previewMode == 1 ? nil : 0)
          }
      }
 
