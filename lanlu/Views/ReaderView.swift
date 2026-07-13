@@ -27,6 +27,25 @@ struct ReaderView: View {
 
     var maxIndex: Int { max(0, files.count - 1) }
 
+    fileprivate var currentFileIsImage: Bool {
+        guard currentIndex >= 0, currentIndex < files.count else { return false }
+        let path = files[currentIndex].defaultSource?.path ?? files[currentIndex].path ?? ""
+        let ext = (path as NSString).pathExtension.lowercased()
+        let mediaExts: Set<String> = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff","mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
+        return !mediaExts.contains(ext)
+    }
+
+    fileprivate func iconForFile(_ path: String) -> String {
+        let ext = (path as NSString).pathExtension.lowercased()
+        let videoExts: Set<String> = ["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
+        if videoExts.contains(ext) { return "video.fill" }
+        let audioExts: Set<String> = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff"]
+        if audioExts.contains(ext) { return "music.note" }
+        let archiveExts: Set<String> = ["zip","rar","7z","tar","gz","bz2","xz","cbz","cbr"]
+        if archiveExts.contains(ext) { return "archivebox.fill" }
+        return "doc.fill"
+    }
+
     init(arcid: String, files: [APIClient.PageFile], startIndex: Int, server: Server) {
         self.arcid = arcid
         self.files = files
@@ -66,6 +85,7 @@ struct ReaderView: View {
                     .highPriorityGesture(
                         TapGesture(count: 2)
                             .onEnded {
+                                guard currentFileIsImage else { return }
                                 if currentScale > 1.001 { resetZoom() }
                                 else {
                                     withAnimation(.smooth(duration: 0.25)) {
@@ -85,7 +105,7 @@ struct ReaderView: View {
                         DragGesture()
                             .onChanged { v in
                                 guard !isPageAnimating else { return }
-                                if currentScale > 1.001 {
+                                if currentFileIsImage, currentScale > 1.001 {
                                     let proposed = CGSize(
                                         width: lastPanOffset.width + v.translation.width,
                                         height: lastPanOffset.height + v.translation.height
@@ -100,7 +120,7 @@ struct ReaderView: View {
                             }
                             .onEnded { v in
                                 guard !isPageAnimating else { return }
-                                if currentScale > 1.001 {
+                                if currentFileIsImage, currentScale > 1.001 {
                                     let proposed = CGSize(
                                         width: lastPanOffset.width + v.translation.width,
                                         height: lastPanOffset.height + v.translation.height
@@ -115,6 +135,7 @@ struct ReaderView: View {
                     .simultaneousGesture(
                         MagnificationGesture()
                             .onChanged { value in
+                                guard currentFileIsImage else { return }
                                 let newScale = min(max(lastScale * value, 1.0), 3.0)
                                 withoutAnimation {
                                     currentScale = newScale
@@ -123,6 +144,7 @@ struct ReaderView: View {
                                 }
                             }
                             .onEnded { value in
+                                guard currentFileIsImage else { return }
                                 let finalScale = min(max(lastScale * value, 1.0), 3.0)
                                 if finalScale <= 1.001 { resetZoom() }
                                 else {
@@ -196,26 +218,32 @@ struct ReaderView: View {
 
     @ViewBuilder
     fileprivate func pageView(for index: Int, size: CGSize) -> some View {
-        if let image = images[index] {
+        if isLoading.contains(index) {
+            VStack(spacing: 12) {
+                ProgressView().tint(.white).scaleEffect(1.5)
+                Text("\(index + 1) / \(files.count)").font(.caption).foregroundColor(.white.opacity(0.6))
+            }
+            .frame(width: size.width, height: size.height)
+        } else if let image = images[index] {
             ReaderPageView(
                 image: image,
                 scale: index == currentIndex ? currentScale : 1.0,
                 panOffset: index == currentIndex ? panOffset : .zero
             )
             .frame(width: size.width, height: size.height)
-        } else if isLoading.contains(index) {
-            VStack(spacing: 12) {
-                ProgressView().tint(.white).scaleEffect(1.5)
-                Text("\(index + 1) / \(files.count)").font(.caption).foregroundColor(.white.opacity(0.6))
-            }
         } else if failedPages.contains(index) {
             VStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundColor(.orange)
                 Text(String(localized: "reader_tap_reload")).font(.subheadline).foregroundColor(.white)
             }
+            .frame(width: size.width, height: size.height)
             .onTapGesture { failedPages.remove(index); loadPage(index) }
-        } else {
-            Image(systemName: "photo").font(.largeTitle).foregroundColor(.white.opacity(0.3))
+        } else if index < files.count {
+            let path = files[index].defaultSource?.path ?? files[index].path ?? ""
+            Image(systemName: iconForFile(path))
+                .font(.system(size: 48))
+                .foregroundColor(.white.opacity(0.3))
+                .frame(width: size.width, height: size.height)
         }
     }
 
