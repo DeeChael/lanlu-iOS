@@ -225,17 +225,17 @@ struct ReaderView: View {
         .onAppear {
             currentPageFileType = fileType(at: currentIndex)
             audioCover = nil
-            if currentPageFileType == .audio, audioAutoplay { startAudio() }
+            if currentPageFileType == .audio { prepareAudio(); if audioAutoplay { startAudio() } }
             loadPage(currentIndex)
             preloadAdjacent()
         }
         .onDisappear { cancelAllTasks(); stopAudio() }
         .onChange(of: currentIndex) { _, newIndex in
             updateBottomToolbar(for: newIndex)
-            
+
             audioCover = nil
             stopAudio()
-            if currentPageFileType == .audio, audioAutoplay { startAudio() }
+            if currentPageFileType == .audio { prepareAudio(); if audioAutoplay { startAudio() } }
             resetZoom(animated: false)
             loadPage(newIndex)
             preloadAdjacent()
@@ -288,8 +288,8 @@ struct ReaderView: View {
         .task { await loadAudioCover() }
     }
 
-    fileprivate func startAudio() {
-        guard audioPlayer == nil else { audioPlayer?.play(); isAudioPlaying = true; return }
+    fileprivate func prepareAudio() {
+        guard audioPlayer == nil else { return }
         guard currentIndex >= 0, currentIndex < files.count else { return }
         let path = filePath(at: currentIndex)
         guard !path.isEmpty else { return }
@@ -303,15 +303,19 @@ struct ReaderView: View {
                 CacheManager.shared.cacheCover(id: cacheKey, data: d)
                 data = d
             }
-            let player = try? AVAudioPlayer(data: data)
+            guard let player = try? AVAudioPlayer(data: data) else { return }
             await MainActor.run {
                 audioPlayer = player
-                audioDuration = player?.duration ?? 0
-                player?.play()
-                isAudioPlaying = true
+                audioDuration = player.duration
+                audioCurrentTime = player.currentTime
                 startAudioTimer()
             }
         }
+    }
+
+    fileprivate func startAudio() {
+        audioPlayer?.play()
+        isAudioPlaying = true
     }
 
     fileprivate func stopAudio() {
