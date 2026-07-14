@@ -171,19 +171,34 @@ struct ReaderView: View {
                                         .font(.title2)
                                         .frame(width: 36)
                                 }
-                                
-                                Slider(value: $audioCurrentTime, in: 0...max(audioDuration, 1)) { editing in
-                                    if !editing { audioPlayer?.currentTime = audioCurrentTime }
+
+                                Slider(
+                                    value: $audioCurrentTime,
+                                    in: 0...max(audioDuration, 1)
+                                ) { editing in
+                                    if !editing {
+                                        audioPlayer?.currentTime = audioCurrentTime
+                                    }
                                 }
-                                .tint(.white)
-                                
-                                Text(timeString(audioCurrentTime) + " / " + timeString(audioDuration))
-                                    .font(.caption).monospacedDigit()
+                                .frame(maxWidth: .infinity)
+
+                                Text(
+                                    timeString(audioCurrentTime)
+                                    + " / "
+                                    + timeString(audioDuration)
+                                )
+                                .font(.caption)
+                                .monospacedDigit()
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .transition(
+                            .move(edge: .trailing)
+                                .combined(with: .opacity)
+                        )
                     }
+                }
+
+                ToolbarItem(placement: .bottomBar) {
                     Button {
                         withAnimation(.easeInOut(duration: 0.22)) {
                             bottomControlFocus = .fileControl
@@ -197,7 +212,10 @@ struct ReaderView: View {
                             )
                     }
                     .id(icon)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(
+                        .move(edge: .trailing)
+                            .combined(with: .opacity)
+                    )
                 }
             }
         }
