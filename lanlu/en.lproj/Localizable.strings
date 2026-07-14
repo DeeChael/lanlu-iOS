@@ -142,6 +142,8 @@
 "reader_audio_artist" = "No artist info";
 "reader_audio_album" = "No album info";
 "reader_settings" = "Reader Settings";
+"reader_settings_playback" = "Playback";
+"reader_settings_audio_autoplay" = "Auto-Play Audio";
 "reader_settings_gesture" = "Gesture";
 "reader_settings_double_tap" = "Double Tap to Zoom";
 "reader_settings_tap_turn" = "Tap Sides to Turn Page";

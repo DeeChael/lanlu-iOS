@@ -56,6 +56,7 @@ struct ReaderView: View {
     @State fileprivate var progressValue: Double
     @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
     @AppStorage("reader_tap_turn_page") fileprivate var tapTurnPage = true
+    @AppStorage("reader_audio_autoplay") fileprivate var audioAutoplay = false
 
     var maxIndex: Int { max(0, files.count - 1) }
 
@@ -216,13 +217,13 @@ struct ReaderView: View {
         }
         .statusBarHidden(!showControls)
         .sheet(isPresented: $showReaderSettings) {
-            ReaderSettingsView(doubleTapZoom: $doubleTapZoom, tapTurnPage: $tapTurnPage)
+            ReaderSettingsView(doubleTapZoom: $doubleTapZoom, tapTurnPage: $tapTurnPage, audioAutoplay: $audioAutoplay)
                 .presentationDetents([.large])
         }
         .onAppear {
             currentPageFileType = fileType(at: currentIndex)
             audioCover = nil
-            if currentPageFileType == .audio { startAudio() }
+            if currentPageFileType == .audio, audioAutoplay { startAudio() }
             loadPage(currentIndex)
             preloadAdjacent()
         }
@@ -231,7 +232,7 @@ struct ReaderView: View {
             currentPageFileType = fileType(at: currentIndex)
             audioCover = nil
             stopAudio()
-            if currentPageFileType == .audio { startAudio() }
+            if currentPageFileType == .audio, audioAutoplay { startAudio() }
             resetZoom(animated: false)
             loadPage(currentIndex)
             preloadAdjacent()
@@ -723,6 +724,7 @@ struct ReaderPageView: View {
 struct ReaderSettingsView: View {
     @Binding var doubleTapZoom: Bool
     @Binding var tapTurnPage: Bool
+    @Binding var audioAutoplay: Bool
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -731,6 +733,9 @@ struct ReaderSettingsView: View {
                 Section(String(localized: "reader_settings_gesture")) {
                     Toggle(String(localized: "reader_settings_double_tap"), isOn: $doubleTapZoom)
                     Toggle(String(localized: "reader_settings_tap_turn"), isOn: $tapTurnPage)
+                }
+                Section(String(localized: "reader_settings_playback")) {
+                    Toggle(String(localized: "reader_settings_audio_autoplay"), isOn: $audioAutoplay)
                 }
             }
             .navigationTitle(String(localized: "reader_settings"))

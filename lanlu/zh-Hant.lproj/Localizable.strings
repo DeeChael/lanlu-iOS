@@ -142,6 +142,8 @@
 "reader_audio_artist" = "無藝術家信息";
 "reader_audio_album" = "無專輯信息";
 "reader_settings" = "閱讀器設置";
+"reader_settings_playback" = "播放";
+"reader_settings_audio_autoplay" = "音頻自動播放";
 "reader_settings_gesture" = "手勢";
 "reader_settings_double_tap" = "雙擊放大";
 "reader_settings_tap_turn" = "點擊兩側翻頁";
