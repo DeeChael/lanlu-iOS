@@ -244,7 +244,7 @@ struct ReaderView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            .frame(width: min(size.width - 64, 300), height: min(size.width - 64, 300))
+            .frame(width: size.width - 64, height: size.width - 64)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(String(localized: "reader_audio_artist"))
