@@ -1,0 +1,52 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and archive
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: List available Xcode versions
+        run: ls /Applications | grep Xcode || true
+
+      - name: Build archive
+        run: |
+          xcodebuild archive \
+            -project lanlu.xcodeproj \
+            -scheme lanlu \
+            -configuration Release \
+            -archivePath build/lanlu.xcarchive \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            -allowProvisioningUpdates
+
+      - name: Export IPA
+        run: |
+          mkdir -p build/ipa
+          xcodebuild -exportArchive \
+            -archivePath build/lanlu.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist export.plist \
+            -allowProvisioningUpdates
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: lanlu-ipa
+          path: build/ipa/lanlu.ipa
