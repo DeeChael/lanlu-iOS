@@ -36,6 +36,7 @@ struct ReaderView: View {
     @State fileprivate var showReaderSettings = false
     @State fileprivate var currentPageFileType: ReaderPageFileType = .unknown
     @State fileprivate var bottomControlFocus: ReaderBottomControlFocus = .bookProgress
+    @State fileprivate var audioCover: UIImage?
     fileprivate var mediaToolbarIcon: String? {
         switch currentPageFileType {
         case .audio:
@@ -96,10 +97,8 @@ struct ReaderView: View {
                 ToolbarItemGroup(placement: .bottomBar) {
                     HStack(spacing: 4) {
                         Button {
-                            if (bottomControlFocus != .bookProgress) {
-                                withAnimation(.easeInOut(duration: 0.22)) {
-                                    bottomControlFocus = .bookProgress
-                                }
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                bottomControlFocus = .bookProgress
                             }
                         } label: {
                             Image(systemName: "book")
@@ -144,7 +143,7 @@ struct ReaderView: View {
                             in: 0...Double(maxIndex),
                             step: 1
                         )
-                        .frame(width: .infinity)
+                        .frame(maxWidth: .infinity)
                         .padding(.trailing, 4)
                         .transition(.move(edge: .leading).combined(with: .opacity))
                     }
@@ -159,12 +158,11 @@ struct ReaderView: View {
                             
                         }
                         .frame(maxWidth: .infinity)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                     Button {
-                        if (bottomControlFocus != .fileControl) {
-                            withAnimation(.easeInOut(duration: 0.22)) {
-                                bottomControlFocus = .fileControl
-                            }
+                        withAnimation(.easeInOut(duration: 0.22)) {
+                            bottomControlFocus = .fileControl
                         }
                     } label: {
                         Image(systemName: icon)
@@ -202,20 +200,19 @@ struct ReaderView: View {
         }
         .onAppear {
             currentPageFileType = fileType(at: currentIndex)
+            bottomControlFocus = .bookProgress
+            
+            audioCover = nil
             loadPage(currentIndex)
             preloadAdjacent()
         }
         .onDisappear { cancelAllTasks() }
-        .onChange(of: currentIndex) { _, _ in
-            let newFileType = fileType(at: currentIndex)
-            withAnimation(.easeInOut(duration: 0.22)) {
-                currentPageFileType = newFileType
-                if (bottomControlFocus != .bookProgress && currentPageFileType == .image) {
-                    bottomControlFocus = .bookProgress
-                }
-            }
+        .onChange(of: currentIndex) { _, newIndex in
+            updateBottomToolbar(for: newIndex)
+            
+            audioCover = nil
             resetZoom(animated: false)
-            loadPage(currentIndex)
+            loadPage(newIndex)
             preloadAdjacent()
         }
     }
@@ -227,57 +224,60 @@ struct ReaderView: View {
         ZStack {
             pageStrip(size: size)
             interactionOverlay(pageWidth: size.width)
-            audioPlayerOverlay(size: size)
         }
     }
 
-    @ViewBuilder
-    fileprivate func audioPlayerOverlay(size: CGSize) -> some View {
-        if currentPageFileType == .audio {
-            let file = currentIndex >= 0 && currentIndex < files.count ? files[currentIndex] : nil
-            VStack(spacing: 16) {
-                Spacer()
-                ZStack(alignment: .center) {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemGray5))
-                    if let coverData = try? fetchAudioCover(file: file) {
-                        Image(uiImage: coverData)
-                            .resizable()
-                            .scaledToFill()
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                    } else {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 60))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .frame(width: min(size.width - 64, 300), height: min(size.width - 64, 300))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "reader_audio_artist"))
-                        .font(.body)
-                        .foregroundColor(.primary)
-                    Text(String(localized: "reader_audio_album"))
-                        .font(.subheadline)
+    fileprivate func audioPageView(size: CGSize) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            ZStack(alignment: .center) {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.systemGray5))
+                if let coverData = audioCover {
+                    Image(uiImage: coverData)
+                        .resizable()
+                        .scaledToFill()
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                } else {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 60))
                         .foregroundColor(.secondary)
-                        .italic()
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 32)
-                Spacer()
             }
+            .frame(width: min(size.width - 64, 300), height: min(size.width - 64, 300))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(localized: "reader_audio_artist"))
+                    .font(.body)
+                    .foregroundColor(.primary)
+                Text(String(localized: "reader_audio_album"))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .italic()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 32)
+            Spacer()
         }
+        .frame(width: size.width, height: size.height)
+        .task { await loadAudioCover() }
     }
 
-    fileprivate func fetchAudioCover(file: APIClient.PageFile?) -> UIImage? {
-        guard let file else { return nil }
+    fileprivate func loadAudioCover() async {
+        guard currentIndex >= 0, currentIndex < files.count else { return }
+        let file = files[currentIndex]
         let thumbId = file.defaultSource?.metadata?.thumbAssetId ?? file.metadata?.thumbAssetId ?? 0
-        guard thumbId > 0 else { return nil }
+        guard thumbId > 0 else { return }
         let cacheKey = "thumb_\(thumbId)"
         if let cached = CacheManager.shared.getCover(id: cacheKey), let img = UIImage(data: cached) {
-            return img
+            audioCover = img
+            return
         }
-        return nil
+        do {
+            let data = try await server.apiClient.fetchAsset(assetId: thumbId)
+            CacheManager.shared.cacheCover(id: cacheKey, data: data)
+            if let img = UIImage(data: data) { audioCover = img }
+        } catch {}
     }
 
     @ViewBuilder
@@ -498,7 +498,9 @@ struct ReaderView: View {
         let path = filePath(at: index)
         let isImage = isImageFile(path)
 
-        if !isImage {
+        if fileType(at: index) == .audio {
+            audioPageView(size: size)
+        } else if !isImage {
             filePlaceholder(path: path, size: size)
         } else if let image = images[index] {
             ReaderPageView(
@@ -552,6 +554,23 @@ struct ReaderView: View {
     }
 
     // MARK: - Animation Helpers
+    fileprivate func updateBottomToolbar(for index: Int) {
+        let newFileType = fileType(at: index)
+
+        // 脱离 currentIndex 的 withoutAnimation 事务
+        DispatchQueue.main.async {
+            guard currentIndex == index else { return }
+
+            withAnimation(.easeInOut(duration: 0.22)) {
+                currentPageFileType = newFileType
+
+                // 当前页面没有文件控制器时，自动回到阅读进度控制
+                if newFileType != .audio && newFileType != .video {
+                    bottomControlFocus = .bookProgress
+                }
+            }
+        }
+    }
 
     fileprivate func withoutAnimation(_ action: () -> Void) {
         var t = Transaction(); t.disablesAnimations = true
