@@ -139,6 +139,10 @@
 "detail_preview" = "Preview";
 "detail_filetree" = "File Tree";
 "detail_volume" = "Volume %d";
+"reader_settings" = "Reader Settings";
+"reader_settings_gesture" = "Gesture";
+"reader_settings_double_tap" = "Double Tap to Zoom";
+"reader_settings_tap_turn" = "Tap Sides to Turn Page";
 "reader_reset_zoom" = "Reset Zoom";
 "reader_tap_reload" = "Tap to reload";
 "detail_archived_in" = "Part of";

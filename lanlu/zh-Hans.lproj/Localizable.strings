@@ -139,6 +139,10 @@
 "detail_preview" = "预览";
 "detail_filetree" = "文件树";
 "detail_volume" = "第 %d 卷";
+"reader_settings" = "阅读器设置";
+"reader_settings_gesture" = "手势";
+"reader_settings_double_tap" = "双击放大";
+"reader_settings_tap_turn" = "点击两侧翻页";
 "reader_reset_zoom" = "重置缩放";
 "reader_tap_reload" = "点击重新加载";
 "detail_archived_in" = "所属合集";

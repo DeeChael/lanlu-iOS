@@ -25,6 +25,9 @@ struct ReaderView: View {
     @State fileprivate var panOffset: CGSize = .zero
     @State fileprivate var lastPanOffset: CGSize = .zero
     @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
+    @State fileprivate var showReaderSettings = false
+    @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
+    @AppStorage("reader_tap_turn_page") fileprivate var tapTurnPage = true
 
     var maxIndex: Int { max(0, files.count - 1) }
 
@@ -62,7 +65,7 @@ struct ReaderView: View {
                 Text("\(currentIndex + 1) / \(files.count)").font(.subheadline)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {} label: { Image(systemName: "gearshape.fill") }
+                Button { showReaderSettings = true } label: { Image(systemName: "gearshape.fill") }
             }
         }
         .toolbarBackground(.hidden, for: .bottomBar)
@@ -129,6 +132,10 @@ struct ReaderView: View {
             }
         }
         .statusBarHidden(!showControls)
+        .sheet(isPresented: $showReaderSettings) {
+            ReaderSettingsView(doubleTapZoom: $doubleTapZoom, tapTurnPage: $tapTurnPage)
+                .presentationDetents([.large])
+        }
         .onAppear {
             loadPage(currentIndex)
             preloadAdjacent()
@@ -215,6 +222,7 @@ struct ReaderView: View {
     }
 
     fileprivate func handleDoubleTap() {
+        guard doubleTapZoom else { return }
         guard currentFileIsImage else { return }
 
         if currentScale > 1.001 {
@@ -233,9 +241,9 @@ struct ReaderView: View {
     fileprivate func handleSingleTap(at location: CGPoint, pageWidth: CGFloat) {
         let x = location.x
 
-        if x < pageWidth * 0.3 {
+        if tapTurnPage, x < pageWidth * 0.3 {
             previousPage()
-        } else if x > pageWidth * 0.7 {
+        } else if tapTurnPage, x > pageWidth * 0.7 {
             nextPage()
         } else {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -474,6 +482,30 @@ struct ReaderPageView: View {
             .scaleEffect(scale).offset(panOffset)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
+    }
+}
+
+struct ReaderSettingsView: View {
+    @Binding var doubleTapZoom: Bool
+    @Binding var tapTurnPage: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(String(localized: "reader_settings_gesture")) {
+                    Toggle(String(localized: "reader_settings_double_tap"), isOn: $doubleTapZoom)
+                    Toggle(String(localized: "reader_settings_tap_turn"), isOn: $tapTurnPage)
+                }
+            }
+            .navigationTitle(String(localized: "reader_settings"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(String(localized: "done")) { dismiss() }
+                }
+            }
+        }
     }
 }
 
