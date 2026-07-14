@@ -1,52 +1,78 @@
-name: Build IPA
+name: Build Unsigned IPA
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build and archive
-    runs-on: macos-15
+    name: Build and package unsigned IPA
+    runs-on: macos-26
+
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      ARCHIVE_PATH: build/lanlu.xcarchive
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-
-      - name: List available Xcode versions
-        run: ls /Applications | grep Xcode || true
-
-      - name: Build archive
+      - name: Verify Xcode and iOS SDK
         run: |
+          xcodebuild -version
+          echo "Developer directory: $DEVELOPER_DIR"
+          echo "iOS SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
+          xcodebuild -showsdks
+
+      - name: Build archive without signing
+        run: |
+          set -o pipefail
+
           xcodebuild archive \
             -project lanlu.xcodeproj \
             -scheme lanlu \
             -configuration Release \
-            -archivePath build/lanlu.xcarchive \
+            -archivePath "$ARCHIVE_PATH" \
             -destination "generic/platform=iOS" \
-            CODE_SIGN_STYLE=Manual \
+            CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            -allowProvisioningUpdates
+            | tee build.log
 
-      - name: Export IPA
+      - name: Package unsigned IPA
         run: |
-          mkdir -p build/ipa
-          xcodebuild -exportArchive \
-            -archivePath build/lanlu.xcarchive \
-            -exportPath build/ipa \
-            -exportOptionsPlist export.plist \
-            -allowProvisioningUpdates
+          set -euo pipefail
 
-      - name: Upload IPA
+          APP_PATH="$(find "$ARCHIVE_PATH/Products/Applications" \
+            -maxdepth 1 -type d -name '*.app' -print -quit)"
+
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app was found in $ARCHIVE_PATH/Products/Applications"
+            exit 1
+          fi
+
+          rm -rf build/Payload
+          mkdir -p build/Payload
+          cp -R "$APP_PATH" build/Payload/
+
+          cd build
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload lanlu-unsigned.ipa
+
+      - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: lanlu-ipa
-          path: build/ipa/lanlu.ipa
+          name: lanlu-unsigned-ipa
+          path: build/lanlu-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Upload build log when failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lanlu-build-log
+          path: build.log
+          if-no-files-found: ignore
