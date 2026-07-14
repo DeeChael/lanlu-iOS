@@ -1,6 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum ReaderPageFileType {
+    case unknown, image, video, audio
+}
+
 struct ReaderView: View {
     @Environment(\.dismiss) fileprivate var dismiss
 
@@ -26,6 +30,7 @@ struct ReaderView: View {
     @State fileprivate var lastPanOffset: CGSize = .zero
     @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
     @State fileprivate var showReaderSettings = false
+    @State fileprivate var currentPageFileType: ReaderPageFileType = .unknown
     @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
     @AppStorage("reader_tap_turn_page") fileprivate var tapTurnPage = true
 
@@ -102,16 +107,27 @@ struct ReaderView: View {
                 }
             }
             
-            if (!currentFileIsImage && currentIndex >= 0 && currentIndex <= maxIndex) {
+            if (currentPageFileType == .audio) {
                 ToolbarSpacer(.fixed, placement: .bottomBar)
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button {
                         // TODO:
                     } label: {
-                        Image(systemName: iconForFile(files[currentIndex].path ?? ""))
+                        Image(systemName: "music.note")
                     }
                     .transition(.move(edge: .trailing).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: !currentFileIsImage && currentIndex >= 0 && currentIndex <= maxIndex)
+                    .animation(.easeInOut(duration: 0.2), value: currentPageFileType == .audio)
+                }
+            } else if (currentPageFileType == .video) {
+                ToolbarSpacer(.fixed, placement: .bottomBar)
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button {
+                        // TODO:
+                    } label: {
+                        Image(systemName: "video")
+                    }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .animation(.easeInOut(duration: 0.2), value: currentPageFileType == .video)
                 }
             }
         }
@@ -137,11 +153,13 @@ struct ReaderView: View {
                 .presentationDetents([.large])
         }
         .onAppear {
+            currentPageFileType = fileType(at: currentIndex)
             loadPage(currentIndex)
             preloadAdjacent()
         }
         .onDisappear { cancelAllTasks() }
         .onChange(of: currentIndex) { _, _ in
+            currentPageFileType = fileType(at: currentIndex)
             resetZoom(animated: false)
             loadPage(currentIndex)
             preloadAdjacent()
@@ -339,6 +357,17 @@ struct ReaderView: View {
         if let type = UTType(filenameExtension: ext) { return type.conforms(to: .image) }
         let fallback: Set<String> = ["jpg","jpeg","png","gif","webp","heic","heif","bmp","tif","tiff","avif"]
         return fallback.contains(ext)
+    }
+
+    fileprivate func fileType(at index: Int) -> ReaderPageFileType {
+        let path = filePath(at: index)
+        if isImageFile(path) { return .image }
+        let ext = (path as NSString).pathExtension.lowercased()
+        let video: Set<String> = ["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
+        if video.contains(ext) { return .video }
+        let audio: Set<String> = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff"]
+        if audio.contains(ext) { return .audio }
+        return .unknown
     }
 
     fileprivate func iconForFile(_ path: String) -> String {
