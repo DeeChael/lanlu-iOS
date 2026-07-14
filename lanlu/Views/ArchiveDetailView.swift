@@ -2,16 +2,37 @@ import SwiftUI
 
 struct DetailTagView: View {
     let tags: [String]
+    let tagTranslations: [String: String]
 
     var body: some View {
         FlowLayout(spacing: 6) {
             ForEach(tags, id: \.self) { tag in
-                Text(tag)
-                    .font(.caption)
+                if tag.hasPrefix("source:") {
+                    let url = String(tag.dropFirst(7))
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.caption2)
+                        Text(url)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(Color(.systemGray5))
                     .clipShape(Capsule())
+                    .onTapGesture {
+                        if let link = URL(string: url) {
+                            UIApplication.shared.open(link)
+                        }
+                    }
+                } else {
+                    Text(tagTranslations[tag] ?? tag)
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color(.systemGray5))
+                        .clipShape(Capsule())
+                }
             }
         }
     }
@@ -253,7 +274,7 @@ struct ArchiveDetailView: View {
                         .font(.subheadline).italic().foregroundColor(.secondary)
                 }
                 let tags = parseTags()
-                if !tags.isEmpty { DetailTagView(tags: tags) }
+                if !tags.isEmpty { DetailTagView(tags: tags, tagTranslations: tagTranslations) }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
@@ -564,8 +585,7 @@ struct ArchiveDetailView: View {
         let raw: [String]
         if let t = meta?.tags ?? tankoubonMeta?.tags, !t.isEmpty { raw = t }
         else { raw = archive.tags?.components(separatedBy: ",").filter { !$0.isEmpty } ?? [] }
-        if tagTranslations.isEmpty { return raw }
-        return raw.map { tagTranslations[$0] ?? $0 }
+        return raw
     }
 
     private func loadPreviewImages() async {
