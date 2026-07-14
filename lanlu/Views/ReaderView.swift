@@ -31,6 +31,16 @@ struct ReaderView: View {
     @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
     @State fileprivate var showReaderSettings = false
     @State fileprivate var currentPageFileType: ReaderPageFileType = .unknown
+    fileprivate var mediaToolbarIcon: String? {
+        switch currentPageFileType {
+        case .audio:
+            return "music.note"
+        case .video:
+            return "video"
+        default:
+            return nil
+        }
+    }
     @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
     @AppStorage("reader_tap_turn_page") fileprivate var tapTurnPage = true
 
@@ -107,27 +117,16 @@ struct ReaderView: View {
                 }
             }
             
-            if (currentPageFileType == .audio) {
+            if let icon = mediaToolbarIcon {
                 ToolbarSpacer(.fixed, placement: .bottomBar)
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button {
                         // TODO:
                     } label: {
-                        Image(systemName: "music.note")
+                        Image(systemName: icon)
                     }
+                    .id(icon)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: currentPageFileType == .audio)
-                }
-            } else if (currentPageFileType == .video) {
-                ToolbarSpacer(.fixed, placement: .bottomBar)
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Button {
-                        // TODO:
-                    } label: {
-                        Image(systemName: "video")
-                    }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: currentPageFileType == .video)
                 }
             }
         }
@@ -159,7 +158,10 @@ struct ReaderView: View {
         }
         .onDisappear { cancelAllTasks() }
         .onChange(of: currentIndex) { _, _ in
-            currentPageFileType = fileType(at: currentIndex)
+            let newFileType = fileType(at: currentIndex)
+            withAnimation(.easeInOut(duration: 0.22)) {
+                currentPageFileType = newFileType
+            }
             resetZoom(animated: false)
             loadPage(currentIndex)
             preloadAdjacent()
