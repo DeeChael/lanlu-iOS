@@ -502,7 +502,7 @@ struct ReaderSettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(String(localized: "done")) { dismiss() }
+                    Button { dismiss() } label: { Image(systemName: "xmark").fontWeight(.semibold) }
                 }
             }
         }
