@@ -162,22 +162,24 @@ struct ReaderView: View {
                 ToolbarItemGroup(placement: .bottomBar) {
                     if (bottomControlFocus == .fileControl) {
                         HStack(spacing: 4) {
-                            Button {
-                                if isAudioPlaying { audioPlayer?.pause() } else { audioPlayer?.play() }
-                                isAudioPlaying.toggle()
-                            } label: {
-                                Image(systemName: isAudioPlaying ? "pause.fill" : "play.fill")
-                                    .font(.title2)
-                                    .frame(width: 36)
+                            if (currentPageFileType == .audio) {
+                                Button {
+                                    if isAudioPlaying { audioPlayer?.pause() } else { audioPlayer?.play() }
+                                    isAudioPlaying.toggle()
+                                } label: {
+                                    Image(systemName: isAudioPlaying ? "pause.fill" : "play.fill")
+                                        .font(.title2)
+                                        .frame(width: 36)
+                                }
+                                
+                                Slider(value: $audioCurrentTime, in: 0...max(audioDuration, 1)) { editing in
+                                    if !editing { audioPlayer?.currentTime = audioCurrentTime }
+                                }
+                                .tint(.white)
+                                
+                                Text(timeString(audioCurrentTime) + " / " + timeString(audioDuration))
+                                    .font(.caption).monospacedDigit()
                             }
-
-                            Slider(value: $audioCurrentTime, in: 0...max(audioDuration, 1)) { editing in
-                                if !editing { audioPlayer?.currentTime = audioCurrentTime }
-                            }
-                            .tint(.white)
-
-                            Text(timeString(audioCurrentTime) + " / " + timeString(audioDuration))
-                                .font(.caption).monospacedDigit()
                         }
                         .frame(maxWidth: .infinity)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -228,20 +230,12 @@ struct ReaderView: View {
             preloadAdjacent()
         }
         .onDisappear { cancelAllTasks(); stopAudio() }
-        .onChange(of: currentIndex) { _, _ in
-            currentPageFileType = fileType(at: currentIndex)
-            audioCover = nil
-            stopAudio()
-            if currentPageFileType == .audio, audioAutoplay { startAudio() }
-            resetZoom(animated: false)
-            loadPage(currentIndex)
-            preloadAdjacent()
-        }
-        .onDisappear { cancelAllTasks() }
         .onChange(of: currentIndex) { _, newIndex in
             updateBottomToolbar(for: newIndex)
             
             audioCover = nil
+            stopAudio()
+            if currentPageFileType == .audio, audioAutoplay { startAudio() }
             resetZoom(animated: false)
             loadPage(newIndex)
             preloadAdjacent()
