@@ -41,6 +41,7 @@ struct ReaderView: View {
             return nil
         }
     }
+    @State fileprivate var progressValue: Double
     @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
     @AppStorage("reader_tap_turn_page") fileprivate var tapTurnPage = true
 
@@ -56,6 +57,7 @@ struct ReaderView: View {
         self.startIndex = startIndex
         self.server = server
         _currentIndex = State(initialValue: startIndex)
+        _progressValue = State(initialValue: Double(startIndex))
     }
 
     var body: some View {
@@ -106,8 +108,18 @@ struct ReaderView: View {
 
                     Slider(
                         value: .init(
-                            get: { Double(currentIndex) },
-                            set: { currentIndex = Int($0) }
+                            get: { progressValue },
+                            set: { newValue in
+                                progressValue = newValue
+                                let newIndex = min(
+                                    max(Int(newValue.rounded()), 0),
+                                    maxIndex
+                                )
+                                
+                                if newIndex != currentIndex {
+                                    currentIndex = newIndex
+                                }
+                            }
                         ),
                         in: 0...Double(maxIndex),
                         step: 1
@@ -473,6 +485,7 @@ struct ReaderView: View {
         isPageAnimating = true; isDragging = true
         withAnimation(.easeOut(duration: 0.25), completionCriteria: .logicallyComplete) {
             dragOffset = targetOffset
+            progressValue = Double(targetIndex)
         } completion: {
             withoutAnimation { currentIndex = targetIndex; dragOffset = 0 }
             isDragging = false; isPageAnimating = false
