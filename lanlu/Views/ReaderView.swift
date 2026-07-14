@@ -43,6 +43,9 @@ struct ReaderView: View {
     @State fileprivate var audioDuration: TimeInterval = 0
     @State fileprivate var audioCurrentTime: TimeInterval = 0
     @State fileprivate var audioTimer: Timer?
+    @State fileprivate var audioTitle: String?
+    @State fileprivate var audioArtist: String?
+    @State fileprivate var audioAlbum: String?
     fileprivate var mediaToolbarIcon: String? {
         switch currentPageFileType {
         case .audio:
@@ -252,6 +255,7 @@ struct ReaderView: View {
             updateBottomToolbar(for: newIndex)
 
             audioCover = nil
+            audioTitle = nil; audioArtist = nil; audioAlbum = nil
             stopAudio()
             if currentPageFileType == .audio { prepareAudio(); if audioAutoplay { startAudio() } }
             resetZoom(animated: false)
@@ -274,14 +278,6 @@ struct ReaderView: View {
         let file = currentIndex >= 0 && currentIndex < files.count ? files[currentIndex] : nil
         let filePath = file?.defaultSource?.path ?? file?.path ?? ""
         let fileName = (filePath as NSString).lastPathComponent
-        let meta = file?.defaultSource?.metadata ?? file?.metadata
-        let songTitle: String
-        if let t = meta?.title, !t.isEmpty { songTitle = t }
-        else if let t = file?.title, !t.isEmpty { songTitle = t }
-        else { songTitle = fileName }
-        let artist: String
-        if let d = meta?.description, !d.isEmpty { artist = d }
-        else { artist = String(localized: "reader_audio_artist") }
         return VStack(spacing: 16) {
             Spacer()
             ZStack(alignment: .center) {
@@ -301,13 +297,18 @@ struct ReaderView: View {
             .frame(width: size.width - 64, height: size.width - 64)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(songTitle)
+                Text(audioTitle ?? fileName)
                     .font(.title2)
                     .foregroundColor(.primary)
                     .lineLimit(1)
-                Text(artist)
+                Text(audioArtist ?? String(localized: "reader_audio_artist"))
                     .font(.body)
                     .foregroundColor(.primary)
+                    .lineLimit(1)
+                Text(audioAlbum ?? String(localized: "reader_audio_album"))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .italic()
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -334,10 +335,44 @@ struct ReaderView: View {
                 data = d
             }
             guard let player = try? AVAudioPlayer(data: data) else { return }
+
+            // Cache audio data and read metadata
+            if CacheManager.shared.getCover(id: cacheKey) == nil {
+                CacheManager.shared.cacheCover(id: cacheKey, data: data)
+            }
+            let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!.appendingPathComponent("image_cache", isDirectory: true)
+            try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            let fileURL = cacheDir.appendingPathComponent(cacheKey)
+            try? data.write(to: fileURL)
+
+            let metaKey = "audio_meta_\(arcid)_\(path)"
+            var title: String?
+            var artist: String?
+            var album: String?
+            if let saved = UserDefaults.standard.dictionary(forKey: metaKey) as? [String: String] {
+                title = saved["title"]; artist = saved["artist"]; album = saved["album"]
+            } else {
+                let asset = AVURLAsset(url: fileURL)
+                let metadata = try? await asset.load(.commonMetadata)
+                for item in metadata ?? [] {
+                    if item.commonKey == .commonKeyTitle { title = try? await item.load(.value) as? String }
+                    if item.commonKey == .commonKeyArtist { artist = try? await item.load(.value) as? String }
+                    if item.commonKey == .commonKeyAlbumName { album = try? await item.load(.value) as? String }
+                }
+                var dict: [String: String] = [:]
+                if let t = title { dict["title"] = t }
+                if let a = artist { dict["artist"] = a }
+                if let a = album { dict["album"] = a }
+                UserDefaults.standard.set(dict, forKey: metaKey)
+            }
+
             await MainActor.run {
                 audioPlayer = player
                 audioDuration = player.duration
                 audioCurrentTime = player.currentTime
+                audioTitle = title
+                audioArtist = artist
+                audioAlbum = album
                 startAudioTimer()
             }
         }
