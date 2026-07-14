@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		BB8B87F62FFF8A1100A67955 /* lanlu.icon in Resources */ = {isa = PBXBuildFile; fileRef = BB8B87F52FFF8A1100A67955 /* lanlu.icon */; };
-		BB8B89B4300649EC00A67955 /* README.md in Sources */ = {isa = PBXBuildFile; fileRef = BB8B89B3300649E600A67955 /* README.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -33,7 +32,6 @@
 		BB1D44C02FFE91D30079F88B /* lanluTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = lanluTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB1D44CA2FFE91D30079F88B /* lanluUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = lanluUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB8B87F52FFF8A1100A67955 /* lanlu.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = lanlu.icon; sourceTree = "<group>"; };
-		BB8B89B3300649E600A67955 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -95,7 +93,6 @@
 		BB1D44A82FFE91D20079F88B = {
 			isa = PBXGroup;
 			children = (
-				BB8B89B3300649E600A67955 /* README.md */,
 				BB1D44B32FFE91D20079F88B /* lanlu */,
 				BB1D44C32FFE91D30079F88B /* lanluTests */,
 				BB1D44CD2FFE91D30079F88B /* lanluUITests */,
@@ -261,7 +258,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BB8B89B4300649EC00A67955 /* README.md in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
