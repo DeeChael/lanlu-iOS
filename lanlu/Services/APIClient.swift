@@ -839,9 +839,12 @@ class APIClient {
     }
 
     struct PageFileMetadata: Decodable {
+        let title: String?
+        let description: String?
         let thumbAssetId: Int
 
         enum CodingKeys: String, CodingKey {
+            case title, description
             case thumbAssetId = "thumb_asset_id"
         }
     }

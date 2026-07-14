@@ -271,7 +271,18 @@ struct ReaderView: View {
     }
 
     fileprivate func audioPageView(size: CGSize) -> some View {
-        VStack(spacing: 16) {
+        let file = currentIndex >= 0 && currentIndex < files.count ? files[currentIndex] : nil
+        let filePath = file?.defaultSource?.path ?? file?.path ?? ""
+        let fileName = (filePath as NSString).lastPathComponent
+        let meta = file?.defaultSource?.metadata ?? file?.metadata
+        let songTitle: String
+        if let t = meta?.title, !t.isEmpty { songTitle = t }
+        else if let t = file?.title, !t.isEmpty { songTitle = t }
+        else { songTitle = fileName }
+        let artist: String
+        if let d = meta?.description, !d.isEmpty { artist = d }
+        else { artist = String(localized: "reader_audio_artist") }
+        return VStack(spacing: 16) {
             Spacer()
             ZStack(alignment: .center) {
                 RoundedRectangle(cornerRadius: 16)
@@ -290,13 +301,14 @@ struct ReaderView: View {
             .frame(width: size.width - 64, height: size.width - 64)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(String(localized: "reader_audio_artist"))
+                Text(songTitle)
+                    .font(.title2)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                Text(artist)
                     .font(.body)
                     .foregroundColor(.primary)
-                Text(String(localized: "reader_audio_album"))
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .italic()
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 32)

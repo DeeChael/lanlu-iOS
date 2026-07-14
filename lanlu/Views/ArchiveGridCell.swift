@@ -120,11 +120,11 @@ struct MarqueeText: View {
     }
 
     private func startMarquee(textWidth: CGFloat) {
-        let fullWidth = CGFloat(text.count) * 10
-        guard fullWidth > textWidth else { return }
+        let estimatedWidth = (text as NSString).size(withAttributes: [.font: UIFont.preferredFont(forTextStyle: .body)]).width
+        guard estimatedWidth > textWidth else { return }
         needsScroll = true
-        withAnimation(.linear(duration: Double(fullWidth) / 30).delay(1).repeatForever(autoreverses: false)) {
-            offset = textWidth - fullWidth - 20
+        withAnimation(.linear(duration: Double(estimatedWidth) / 30).delay(1).repeatForever(autoreverses: false)) {
+            offset = textWidth - estimatedWidth - 20
         }
     }
 }
