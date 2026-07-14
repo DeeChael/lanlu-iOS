@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AVFoundation
 
 enum ReaderPageFileType {
     case unknown, image, video, audio
@@ -37,6 +38,11 @@ struct ReaderView: View {
     @State fileprivate var currentPageFileType: ReaderPageFileType = .unknown
     @State fileprivate var bottomControlFocus: ReaderBottomControlFocus = .bookProgress
     @State fileprivate var audioCover: UIImage?
+    @State fileprivate var audioPlayer: AVAudioPlayer?
+    @State fileprivate var isAudioPlaying = false
+    @State fileprivate var audioDuration: TimeInterval = 0
+    @State fileprivate var audioCurrentTime: TimeInterval = 0
+    @State fileprivate var audioTimer: Timer?
     fileprivate var mediaToolbarIcon: String? {
         switch currentPageFileType {
         case .audio:
@@ -154,8 +160,23 @@ struct ReaderView: View {
                 ToolbarSpacer(.fixed, placement: .bottomBar)
                 ToolbarItemGroup(placement: .bottomBar) {
                     if (bottomControlFocus == .fileControl) {
-                        HStack {
-                            
+                        HStack(spacing: 4) {
+                            Button {
+                                if isAudioPlaying { audioPlayer?.pause() } else { audioPlayer?.play() }
+                                isAudioPlaying.toggle()
+                            } label: {
+                                Image(systemName: isAudioPlaying ? "pause.fill" : "play.fill")
+                                    .font(.title2)
+                                    .frame(width: 36)
+                            }
+
+                            Slider(value: $audioCurrentTime, in: 0...max(audioDuration, 1)) { editing in
+                                if !editing { audioPlayer?.currentTime = audioCurrentTime }
+                            }
+                            .tint(.white)
+
+                            Text(timeString(audioCurrentTime) + " / " + timeString(audioDuration))
+                                .font(.caption).monospacedDigit()
                         }
                         .frame(maxWidth: .infinity)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -200,9 +221,18 @@ struct ReaderView: View {
         }
         .onAppear {
             currentPageFileType = fileType(at: currentIndex)
-            bottomControlFocus = .bookProgress
-            
             audioCover = nil
+            if currentPageFileType == .audio { startAudio() }
+            loadPage(currentIndex)
+            preloadAdjacent()
+        }
+        .onDisappear { cancelAllTasks(); stopAudio() }
+        .onChange(of: currentIndex) { _, _ in
+            currentPageFileType = fileType(at: currentIndex)
+            audioCover = nil
+            stopAudio()
+            if currentPageFileType == .audio { startAudio() }
+            resetZoom(animated: false)
             loadPage(currentIndex)
             preloadAdjacent()
         }
@@ -261,6 +291,58 @@ struct ReaderView: View {
         }
         .frame(width: size.width, height: size.height)
         .task { await loadAudioCover() }
+    }
+
+    fileprivate func startAudio() {
+        guard audioPlayer == nil else { audioPlayer?.play(); isAudioPlaying = true; return }
+        guard currentIndex >= 0, currentIndex < files.count else { return }
+        let path = filePath(at: currentIndex)
+        guard !path.isEmpty else { return }
+        Task {
+            let cacheKey = "page_\(arcid)_\(path)"
+            let data: Data
+            if let cached = CacheManager.shared.getCover(id: cacheKey) {
+                data = cached
+            } else {
+                guard let d = try? await server.apiClient.fetchPageImage(arcid: arcid, path: path) else { return }
+                CacheManager.shared.cacheCover(id: cacheKey, data: d)
+                data = d
+            }
+            let player = try? AVAudioPlayer(data: data)
+            await MainActor.run {
+                audioPlayer = player
+                audioDuration = player?.duration ?? 0
+                player?.play()
+                isAudioPlaying = true
+                startAudioTimer()
+            }
+        }
+    }
+
+    fileprivate func stopAudio() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        isAudioPlaying = false
+        audioTimer?.invalidate()
+        audioTimer = nil
+    }
+
+    fileprivate func startAudioTimer() {
+        audioTimer?.invalidate()
+        audioTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+            Task { @MainActor in
+                audioCurrentTime = audioPlayer?.currentTime ?? 0
+            }
+        }
+    }
+
+    fileprivate func timeString(_ time: TimeInterval) -> String {
+        let totalSeconds = Int(time)
+        let h = totalSeconds / 3600
+        let m = (totalSeconds % 3600) / 60
+        let s = totalSeconds % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        return String(format: "%02d:%02d", m, s)
     }
 
     fileprivate func loadAudioCover() async {
