@@ -24,7 +24,6 @@ struct AccountSecurityView: View {
     @State private var hasLoadedLoginSessions = false
     @State private var loginSessionError: String?
     @State private var showRevokeOthersAlert = false
-    @State private var sessionPendingRevocation: LoginSession?
     @State private var isRevokingLoginSession = false
 
     var body: some View {
@@ -139,6 +138,7 @@ struct AccountSecurityView: View {
                     showRevokeOthersAlert = true
                 } label: {
                     Label(String(localized: "sign_out_other_devices"), systemImage: "ipad.landscape.and.iphone.slash")
+                        .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .disabled(isRevokingLoginSession)
@@ -157,7 +157,7 @@ struct AccountSecurityView: View {
                         .swipeActions(edge: .trailing) {
                             if !session.current {
                                 Button(role: .destructive) {
-                                    sessionPendingRevocation = session
+                                    Task { await revokeLoginSession(session) }
                                 } label: {
                                     Label(String(localized: "revoke_login"), systemImage: "iphone.slash")
                                 }
@@ -208,23 +208,6 @@ struct AccountSecurityView: View {
             }
         } message: {
             Text(String(localized: "sign_out_other_devices_confirm"))
-        }
-        .alert(
-            String(localized: "revoke_login"),
-            isPresented: Binding(
-                get: { sessionPendingRevocation != nil },
-                set: { if !$0 { sessionPendingRevocation = nil } }
-            )
-        ) {
-            Button(String(localized: "cancel"), role: .cancel) {
-                sessionPendingRevocation = nil
-            }
-            Button(String(localized: "confirm_action"), role: .destructive) {
-                guard let session = sessionPendingRevocation else { return }
-                Task { await revokeLoginSession(session) }
-            }
-        } message: {
-            Text(String(localized: "revoke_login_confirm"))
         }
         .sheet(isPresented: $showPasswordSheet) {
             PasswordChangeSheet(server: server)
@@ -392,7 +375,6 @@ struct AccountSecurityView: View {
 
     private func revokeLoginSession(_ session: LoginSession) async {
         guard !isRevokingLoginSession else { return }
-        sessionPendingRevocation = nil
         isRevokingLoginSession = true
         loginSessionError = nil
         do {
