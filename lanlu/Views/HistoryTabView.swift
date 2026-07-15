@@ -30,6 +30,7 @@ struct HistoryTabView: View {
                     }
                     .padding(12)
                 }
+                .refreshable { await loadHistory(reset: true) }
             }
         }
         .navigationDestination(for: SearchResultItem.self) { item in

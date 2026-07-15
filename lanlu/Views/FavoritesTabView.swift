@@ -30,6 +30,7 @@ struct FavoritesTabView: View {
                     }
                     .padding(12)
                 }
+                .refreshable { await loadFavorites(reset: true) }
             }
         }
         .navigationDestination(for: SearchResultItem.self) { item in

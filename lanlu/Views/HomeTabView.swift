@@ -34,6 +34,7 @@ struct HomeTabView: View {
                         .padding(12)
                         .id("top")
                     }
+                    .refreshable { await loadRecommendations(reset: true) }
                     .onChange(of: scrollToTop) { _, _ in
                         withAnimation { proxy.scrollTo("top", anchor: .top) }
                     }
