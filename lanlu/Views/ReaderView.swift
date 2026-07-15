@@ -1533,7 +1533,8 @@ private struct ReaderTableOfContentsOverlay: View {
             if let image = thumbnailImages[index] {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
+                    .scaledToFill()
+                    .frame(width: width, height: height)
                     .padding(4)
             } else if canLoadThumbnail {
                 if thumbnailFailedPages.contains(index) {
