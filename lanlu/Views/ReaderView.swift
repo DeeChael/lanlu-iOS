@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AVFoundation
+import ImageIO
 
 enum ReaderPageFileType {
     case unknown, image, video, audio
@@ -35,6 +36,10 @@ struct ReaderView: View {
     @State fileprivate var lastPanOffset: CGSize = .zero
     @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
     @State fileprivate var showReaderSettings = false
+    @State fileprivate var showTableOfContents = false
+    @State fileprivate var thumbnailImages: [Int: UIImage] = [:]
+    @State fileprivate var thumbnailFailedPages: Set<Int> = []
+    @State fileprivate var thumbnailLoadTasks: [Int: Task<Void, Never>] = [:]
     @State fileprivate var currentPageFileType: ReaderPageFileType = .unknown
     @State fileprivate var bottomControlFocus: ReaderBottomControlFocus = .bookProgress
     @State fileprivate var audioCover: UIImage?
@@ -100,7 +105,7 @@ struct ReaderView: View {
             }
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {
-                    // TODO: 打开目录侧边栏
+                    presentTableOfContents()
                 } label: { Image(systemName: "list.bullet") }
             }
             ToolbarItem(placement: .principal) {
@@ -257,6 +262,35 @@ struct ReaderView: View {
         .sheet(isPresented: $showReaderSettings) {
             ReaderSettingsView(doubleTapZoom: $doubleTapZoom, tapTurnPage: $tapTurnPage, audioAutoplay: $audioAutoplay)
                 .presentationDetents([.large])
+        }
+        .fullScreenCover(isPresented: $showTableOfContents) {
+            ReaderTableOfContentsOverlay(
+                pageCount: files.count,
+                currentIndex: currentIndex,
+                thumbnailImages: thumbnailImages,
+                thumbnailFailedPages: thumbnailFailedPages,
+                pathAt: { index in
+                    filePath(at: index)
+                },
+                hasThumbnailSource: { index in
+                    hasThumbnailSource(at: index)
+                },
+                iconForPath: { path in
+                    iconForFile(path)
+                },
+                loadThumbnail: { index, maxDimension in
+                    loadThumbnail(index, maxDimensionPoints: maxDimension)
+                },
+                selectPage: { index in
+                    selectPageFromTableOfContents(index)
+                    dismissTableOfContents()
+                },
+                dismiss: {
+                    dismissTableOfContents()
+                }
+            )
+            .presentationBackground(.clear)
+            .interactiveDismissDisabled()
         }
         .onAppear {
             currentPageFileType = fileType(at: currentIndex)
@@ -659,6 +693,163 @@ struct ReaderView: View {
         return "doc.fill"
     }
 
+    // MARK: - Table of Contents
+
+    fileprivate func hasThumbnailSource(at index: Int) -> Bool {
+        guard index >= 0, index < files.count else { return false }
+        let file = files[index]
+        let thumbnailAssetId =
+            file.defaultSource?.metadata?.thumbAssetId
+            ?? file.metadata?.thumbAssetId
+            ?? 0
+
+        return thumbnailAssetId > 0 || isImageFile(filePath(at: index))
+    }
+
+    fileprivate func selectPageFromTableOfContents(_ index: Int) {
+        guard index >= 0, index < files.count else { return }
+        guard index != currentIndex else { return }
+
+        withoutAnimation {
+            dragOffset = 0
+            isDragging = false
+            isPageAnimating = false
+            progressValue = Double(index)
+            currentIndex = index
+        }
+    }
+
+    fileprivate func loadThumbnail(_ index: Int, maxDimensionPoints: CGFloat) {
+        guard index >= 0, index < files.count else { return }
+        guard thumbnailImages[index] == nil else { return }
+        guard !thumbnailFailedPages.contains(index) else { return }
+        guard thumbnailLoadTasks[index] == nil else { return }
+
+        let file = files[index]
+        let path = filePath(at: index)
+        let thumbnailAssetId =
+            file.defaultSource?.metadata?.thumbAssetId
+            ?? file.metadata?.thumbAssetId
+            ?? 0
+
+        guard thumbnailAssetId > 0 || isImageFile(path) else { return }
+
+        let requestedPixels = maxDimensionPoints * UIScreen.main.scale
+        let maxPixelSize = min(max(requestedPixels, 384), 1024)
+        let sizeBucket = Int(ceil(maxPixelSize / 128) * 128)
+        let sourceIdentity = thumbnailAssetId > 0
+            ? "asset_\(thumbnailAssetId)"
+            : "page_\(arcid)_\(path)"
+        let thumbnailCacheKey = "reader_toc_\(sizeBucket)_\(sourceIdentity)"
+
+        thumbnailLoadTasks[index] = Task {
+            if let cachedData = CacheManager.shared.getCover(id: thumbnailCacheKey),
+               let cachedImage = UIImage(data: cachedData) {
+                await MainActor.run {
+                    thumbnailImages[index] = cachedImage
+                    thumbnailFailedPages.remove(index)
+                    thumbnailLoadTasks[index] = nil
+                }
+                return
+            }
+
+            do {
+                let sourceData: Data
+
+                if thumbnailAssetId > 0 {
+                    let sourceCacheKey = "thumb_\(thumbnailAssetId)"
+                    if let cachedData = CacheManager.shared.getCover(id: sourceCacheKey) {
+                        sourceData = cachedData
+                    } else {
+                        let data = try await server.apiClient.fetchAsset(assetId: thumbnailAssetId)
+                        CacheManager.shared.cacheCover(id: sourceCacheKey, data: data)
+                        sourceData = data
+                    }
+                } else {
+                    let sourceCacheKey = "page_\(arcid)_\(path)"
+                    if let cachedData = CacheManager.shared.getCover(id: sourceCacheKey) {
+                        sourceData = cachedData
+                    } else {
+                        let data = try await server.apiClient.fetchPageImage(arcid: arcid, path: path)
+                        CacheManager.shared.cacheCover(id: sourceCacheKey, data: data)
+                        sourceData = data
+                    }
+                }
+
+                guard !Task.isCancelled else {
+                    await MainActor.run {
+                        thumbnailLoadTasks[index] = nil
+                    }
+                    return
+                }
+
+                guard let thumbnail = downsampleImage(
+                    data: sourceData,
+                    maxPixelSize: maxPixelSize
+                ) else {
+                    await MainActor.run {
+                        thumbnailFailedPages.insert(index)
+                        thumbnailLoadTasks[index] = nil
+                    }
+                    return
+                }
+
+                if let thumbnailData = thumbnail.jpegData(compressionQuality: 0.84) {
+                    CacheManager.shared.cacheCover(
+                        id: thumbnailCacheKey,
+                        data: thumbnailData
+                    )
+                }
+
+                await MainActor.run {
+                    thumbnailImages[index] = thumbnail
+                    thumbnailFailedPages.remove(index)
+                    thumbnailLoadTasks[index] = nil
+                }
+            } catch {
+                await MainActor.run {
+                    thumbnailLoadTasks[index] = nil
+                    if !Task.isCancelled {
+                        thumbnailFailedPages.insert(index)
+                    }
+                }
+            }
+        }
+    }
+
+    fileprivate func downsampleImage(
+        data: Data,
+        maxPixelSize: CGFloat
+    ) -> UIImage? {
+        let sourceOptions = [
+            kCGImageSourceShouldCache: false
+        ] as CFDictionary
+
+        guard let source = CGImageSourceCreateWithData(
+            data as CFData,
+            sourceOptions
+        ) else {
+            return nil
+        }
+
+        let thumbnailOptions = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ] as CFDictionary
+
+        guard let image = CGImageSourceCreateThumbnailAtIndex(
+            source,
+            0,
+            thumbnailOptions
+        ) else {
+            return nil
+        }
+
+        return UIImage(cgImage: image)
+    }
+
     // MARK: - Page View
 
     @ViewBuilder
@@ -792,6 +983,211 @@ struct ReaderView: View {
     }
 }
 
+private struct ReaderTableOfContentsOverlay: View {
+    let pageCount: Int
+    let currentIndex: Int
+    let thumbnailImages: [Int: UIImage]
+    let thumbnailFailedPages: Set<Int>
+    let pathAt: (Int) -> String
+    let hasThumbnailSource: (Int) -> Bool
+    let iconForPath: (String) -> String
+    let loadThumbnail: (Int, CGFloat) -> Void
+    let selectPage: (Int) -> Void
+    let dismiss: () -> Void
+
+    @State private var isPanelVisible = false
+    @State private var isClosing = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let panelWidth = min(
+                max(geometry.size.width * 0.48, 180),
+                420
+            )
+            let thumbnailWidth = max(
+                72,
+                min(
+                    geometry.size.width / 3,
+                    panelWidth - 32
+                )
+            )
+            let thumbnailHeight = thumbnailWidth * 4 / 3
+
+            ZStack(alignment: .leading) {
+                Color.black
+                    .ignoresSafeArea(.container, edges: .vertical)
+                    .opacity(isPanelVisible ? 0.32 : 0)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        closePanel(completion: dismiss)
+                    }
+
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("目录")
+                                .font(.headline)
+                            Text("\(currentIndex + 1) / \(pageCount)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Button {
+                            closePanel(completion: dismiss)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .fontWeight(.semibold)
+                                .frame(width: 32, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 16)
+
+                    Divider()
+
+                    ScrollViewReader { scrollProxy in
+                        ScrollView(.vertical) {
+                            LazyVStack(spacing: 16) {
+                                ForEach(0..<pageCount, id: \.self) { index in
+                                    Button {
+                                        closePanel {
+                                            selectPage(index)
+                                        }
+                                    } label: {
+                                        thumbnailCell(
+                                            for: index,
+                                            width: thumbnailWidth,
+                                            height: thumbnailHeight
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .id(index)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 18)
+                            .padding(.bottom, 18)
+                        }
+                        .scrollIndicators(.hidden)
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                scrollProxy.scrollTo(currentIndex, anchor: .center)
+                            }
+                        }
+                    }
+                }
+                .frame(width: panelWidth)
+                .frame(maxHeight: .infinity)
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
+                }
+                .shadow(radius: 24, y: 8)
+                .padding(.leading, 12)
+                .offset(x: isPanelVisible ? 0 : -(panelWidth + 32))
+            }
+            .onAppear {
+                DispatchQueue.main.async {
+                    withAnimation(.easeOut(duration: 0.24)) {
+                        isPanelVisible = true
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func thumbnailCell(
+        for index: Int,
+        width: CGFloat,
+        height: CGFloat
+    ) -> some View {
+        let path = pathAt(index)
+        let canLoadThumbnail = hasThumbnailSource(index)
+        let isCurrentPage = index == currentIndex
+
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.quaternary)
+
+            if let image = thumbnailImages[index] {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(4)
+            } else if canLoadThumbnail {
+                if thumbnailFailedPages.contains(index) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ProgressView()
+                }
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: iconForPath(path))
+                        .font(.system(size: 30))
+                    Text((path as NSString).lastPathComponent)
+                        .font(.caption2)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                }
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(alignment: .bottomTrailing) {
+            Text("\(index + 1)")
+                .font(.caption2)
+                .monospacedDigit()
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                // .background(.regularMaterial, in: Capsule())
+                .glassEffect(.regular, in: Capsule())
+                .padding(7)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(
+                    isCurrentPage ? Color.accentColor : Color.clear,
+                    lineWidth: 3
+                )
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onAppear {
+            if canLoadThumbnail,
+               thumbnailImages[index] == nil,
+               !thumbnailFailedPages.contains(index) {
+                loadThumbnail(index, max(width, height))
+            }
+        }
+    }
+
+    private func closePanel(completion: @escaping () -> Void) {
+        guard !isClosing else { return }
+        isClosing = true
+
+        withAnimation(.easeIn(duration: 0.2)) {
+            isPanelVisible = false
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            completion()
+        }
+    }
+}
+
 struct ReaderPageView: View {
     let image: UIImage
     let scale: CGFloat
@@ -835,6 +1231,28 @@ struct ReaderSettingsView: View {
 }
 
 extension ReaderView {
+    /// 禁用 fullScreenCover 自带的底部呈现动画，只保留目录面板内部的左侧滑入动画。
+    fileprivate func presentTableOfContents() {
+        var transaction = Transaction()
+        transaction.animation = nil
+        transaction.disablesAnimations = true
+
+        withTransaction(transaction) {
+            showTableOfContents = true
+        }
+    }
+
+    /// 面板自身完成左滑退出后，立即移除透明的 fullScreenCover 容器。
+    fileprivate func dismissTableOfContents() {
+        var transaction = Transaction()
+        transaction.animation = nil
+        transaction.disablesAnimations = true
+
+        withTransaction(transaction) {
+            showTableOfContents = false
+        }
+    }
+
     fileprivate func previousPage() {
         animatePageChange(to: currentIndex - 1, pageWidth: pageWidth)
     }
@@ -900,5 +1318,8 @@ extension ReaderView {
     fileprivate func cancelAllTasks() {
         for task in loadTasks.values { task.cancel() }
         loadTasks.removeAll()
+
+        for task in thumbnailLoadTasks.values { task.cancel() }
+        thumbnailLoadTasks.removeAll()
     }
 }
