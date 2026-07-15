@@ -80,6 +80,7 @@ struct ReaderView: View {
     @State fileprivate var currentPageFileType: ReaderPageFileType = .unknown
     @State fileprivate var bottomControlFocus: ReaderBottomControlFocus = .bookProgress
     @State fileprivate var audioCover: UIImage?
+    @State fileprivate var audioCovers: [Int: UIImage] = [:]
     @State fileprivate var audioPlayer: AVAudioPlayer?
     @State fileprivate var isAudioPlaying = false
     @State fileprivate var audioDuration: TimeInterval = 0
@@ -555,19 +556,10 @@ struct ReaderView: View {
                 }
             }
         } else {
-            VStack(spacing: 14) {
-                Image(systemName: iconForFile(path))
-                    .font(.system(size: 52))
-                let name = (path as NSString).lastPathComponent
-                if !name.isEmpty {
-                    Text(name)
-                        .font(.caption)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .truncationMode(.middle)
-                        .padding(.horizontal, 32)
-                }
-            }
+            pageView(
+                for: index,
+                size: CGSize(width: width, height: height)
+            )
             .frame(width: width, height: height)
         }
     }
@@ -599,7 +591,7 @@ struct ReaderView: View {
             return width * 4 / 3
         }
 
-        return min(max(width * 0.9, 240), viewportHeight * 0.65)
+        return viewportHeight
     }
 
     fileprivate func updateVerticalCurrentPage(
@@ -631,17 +623,22 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func audioPageView(size: CGSize) -> some View {
-        let file = currentIndex >= 0 && currentIndex < files.count ? files[currentIndex] : nil
+    fileprivate func audioPageView(for index: Int, size: CGSize) -> some View {
+        let file = index >= 0 && index < files.count ? files[index] : nil
         let filePath = file?.defaultSource?.path ?? file?.path ?? ""
         let fileName = (filePath as NSString).lastPathComponent
+        let cover = audioCovers[index] ?? (index == currentIndex ? audioCover : nil)
+        let title = index == currentIndex ? audioTitle : nil
+        let artist = index == currentIndex ? audioArtist : nil
+        let album = index == currentIndex ? audioAlbum : nil
+
         return VStack(spacing: 16) {
             Spacer()
             ZStack(alignment: .center) {
                 RoundedRectangle(cornerRadius: 16)
                     .fill(Color(.systemGray5))
-                if let coverData = audioCover {
-                    Image(uiImage: coverData)
+                if let cover {
+                    Image(uiImage: cover)
                         .resizable()
                         .scaledToFill()
                         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -654,15 +651,15 @@ struct ReaderView: View {
             .frame(width: size.width - 64, height: size.width - 64)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(audioTitle ?? fileName)
+                Text(title ?? fileName)
                     .font(.title2)
                     .foregroundColor(.primary)
                     .lineLimit(1)
-                Text(audioArtist ?? String(localized: "reader_audio_artist"))
+                Text(artist ?? String(localized: "reader_audio_artist"))
                     .font(.body)
                     .foregroundColor(.primary)
                     .lineLimit(1)
-                Text(audioAlbum ?? String(localized: "reader_audio_album"))
+                Text(album ?? String(localized: "reader_audio_album"))
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .italic()
@@ -673,7 +670,9 @@ struct ReaderView: View {
             Spacer()
         }
         .frame(width: size.width, height: size.height)
-        .task { await loadAudioCover() }
+        .task(id: index) {
+            await loadAudioCover(at: index)
+        }
     }
 
     fileprivate func prepareAudio() {
@@ -766,20 +765,41 @@ struct ReaderView: View {
         return String(format: "%02d:%02d", m, s)
     }
 
-    fileprivate func loadAudioCover() async {
-        guard currentIndex >= 0, currentIndex < files.count else { return }
-        let file = files[currentIndex]
-        let thumbId = file.defaultSource?.metadata?.thumbAssetId ?? file.metadata?.thumbAssetId ?? 0
+    fileprivate func loadAudioCover(at index: Int) async {
+        guard index >= 0, index < files.count else { return }
+        guard audioCovers[index] == nil else { return }
+
+        let file = files[index]
+        let thumbId = file.defaultSource?.metadata?.thumbAssetId
+            ?? file.metadata?.thumbAssetId
+            ?? 0
         guard thumbId > 0 else { return }
+
         let cacheKey = "thumb_\(thumbId)"
-        if let cached = CacheManager.shared.getCover(id: cacheKey), let img = UIImage(data: cached) {
-            audioCover = img
+
+        if let cached = CacheManager.shared.getCover(id: cacheKey),
+           let image = UIImage(data: cached) {
+            await MainActor.run {
+                audioCovers[index] = image
+                if index == currentIndex {
+                    audioCover = image
+                }
+            }
             return
         }
+
         do {
             let data = try await server.apiClient.fetchAsset(assetId: thumbId)
+            guard !Task.isCancelled else { return }
             CacheManager.shared.cacheCover(id: cacheKey, data: data)
-            if let img = UIImage(data: data) { audioCover = img }
+
+            guard let image = UIImage(data: data) else { return }
+            await MainActor.run {
+                audioCovers[index] = image
+                if index == currentIndex {
+                    audioCover = image
+                }
+            }
         } catch {}
     }
 
@@ -1211,7 +1231,7 @@ struct ReaderView: View {
         let isImage = isImageFile(path)
 
         if fileType(at: index) == .audio {
-            audioPageView(size: size)
+            audioPageView(for: index, size: size)
         } else if !isImage {
             filePlaceholder(path: path, size: size)
         } else if let image = images[index] {
