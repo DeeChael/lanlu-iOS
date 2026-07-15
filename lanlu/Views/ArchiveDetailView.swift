@@ -255,6 +255,31 @@ struct ArchiveDetailView: View {
                 }
             }
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .readerProgressDidChange)
+        ) { notification in
+            applyReaderProgressChange(notification)
+        }
+    }
+
+    private func applyReaderProgressChange(_ notification: Notification) {
+        guard notification.userInfo?["serverId"] as? String == server.baseURL,
+              let arcid = notification.userInfo?["arcid"] as? String,
+              arcid == archive.arcid,
+              let page = notification.userInfo?["page"] as? Int else {
+            return
+        }
+
+        if meta != nil {
+            meta?.progress = page
+        } else if let cached = CacheManager.shared.getArchiveMetadata(arcid: arcid),
+                  var cachedMeta = try? JSONDecoder().decode(
+                    APIClient.ArchiveMetadata.self,
+                    from: cached
+                  ) {
+            cachedMeta.progress = page
+            meta = cachedMeta
+        }
     }
 
     @ViewBuilder

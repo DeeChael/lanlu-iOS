@@ -127,7 +127,7 @@ struct TrendPoint: Codable {
         let summary: String?
         let pagecount: Int?
         let archiveCount: Int?
-        let progress: Int?
+        var progress: Int?
         let size: Int?
         let tags: String?
         let isnew: Bool?

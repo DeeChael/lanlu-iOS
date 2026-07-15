@@ -22,6 +22,7 @@ struct FavoritesTabView: View {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(items, id: \.displayId) { item in
                             ArchiveGridCell(archive: item, server: server)
+                                .id("\(item.displayId)-\(item.progress ?? 0)")
                                 .onAppear { loadMoreIfNeeded(item) }
                         }
                         if isLoading {
@@ -37,6 +38,38 @@ struct FavoritesTabView: View {
             ArchiveDetailView(archive: item, server: server)
         }
         .task { await checkForUpdates() }
+        .onAppear { syncProgressFromCache() }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .readerProgressDidChange)
+        ) { notification in
+            applyReaderProgressChange(notification)
+        }
+    }
+
+    private func syncProgressFromCache() {
+        for index in items.indices {
+            guard let arcid = items[index].arcid,
+                  let cached = CacheManager.shared.getArchiveMetadata(arcid: arcid),
+                  let meta = try? JSONDecoder().decode(
+                    APIClient.ArchiveMetadata.self,
+                    from: cached
+                  ) else {
+                continue
+            }
+
+            items[index].progress = meta.progress
+        }
+    }
+
+    private func applyReaderProgressChange(_ notification: Notification) {
+        guard notification.userInfo?["serverId"] as? String == server.baseURL,
+              let arcid = notification.userInfo?["arcid"] as? String,
+              let page = notification.userInfo?["page"] as? Int,
+              let index = items.firstIndex(where: { $0.arcid == arcid }) else {
+            return
+        }
+
+        items[index].progress = page
     }
 
     private func checkForUpdates() async {

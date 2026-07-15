@@ -3,6 +3,10 @@ import UniformTypeIdentifiers
 import AVFoundation
 import ImageIO
 
+extension Notification.Name {
+    static let readerProgressDidChange = Notification.Name("readerProgressDidChange")
+}
+
 enum ReaderPageFileType {
     case unknown, image, video, audio
 }
@@ -1829,6 +1833,16 @@ extension ReaderView {
                 CacheManager.shared.cacheArchiveMetadata(arcid: arcid, data: encoded)
             }
         }
+
+        NotificationCenter.default.post(
+            name: .readerProgressDidChange,
+            object: nil,
+            userInfo: [
+                "serverId": server.baseURL,
+                "arcid": arcid,
+                "page": page
+            ]
+        )
     }
 
     fileprivate func cancelAllTasks() {
