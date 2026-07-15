@@ -92,6 +92,12 @@ struct UserInfoData: Decodable {
     let user: UserData
 }
 
+struct TOTPStatusData: Decodable {
+    let enabled: Bool
+    let recoveryCodesRemaining: Int
+    let credentialName: String?
+}
+
 enum PasswordChangeResult {
     case changed
     case requiresStepUp
@@ -515,6 +521,28 @@ class APIClient {
 
     func verifyStepUpTOTP(_ code: String) async throws {
         try await verifyStepUp(path: "/api/auth/step-up/totp", body: ["code": code])
+    }
+
+    func fetchTOTPStatus() async throws -> TOTPStatusData {
+        LogManager.shared.log("GET /api/auth/totp/status")
+        let url = try makeURL("/api/auth/totp/status")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        let envelope = try JSONDecoder().decode(ApiEnvelope<TOTPStatusData>.self, from: data)
+        guard let status = envelope.data else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return status
     }
 
     private func verifyStepUp(path: String, body: [String: String]) async throws {

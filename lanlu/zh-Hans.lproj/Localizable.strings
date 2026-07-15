@@ -96,6 +96,14 @@
 "operation_failed" = "操作失败";
 "credentials_updated_title" = "用户凭证已更新";
 "credentials_updated_message" = "用户凭证已更新，请重新登录。";
+"totp_section" = "双重验证";
+"totp_disabled" = "双重验证未启用";
+"totp_enabled" = "双重验证已启用";
+"authenticator_name" = "认证器名称";
+"authenticator_name_label" = "验证器名称：";
+"authenticator_unnamed" = "无名称";
+"add" = "添加";
+"remove" = "移除";
 "badge_admin" = "管理员";
 "tab_search" = "搜索";
 "search_prompt" = "搜索档案…";

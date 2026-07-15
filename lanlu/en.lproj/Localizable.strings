@@ -96,6 +96,14 @@
 "operation_failed" = "Operation Failed";
 "credentials_updated_title" = "Credentials Updated";
 "credentials_updated_message" = "Your credentials have been updated. Please log in again.";
+"totp_section" = "TOTP";
+"totp_disabled" = "Two-factor authentication is not enabled";
+"totp_enabled" = "Two-factor authentication is enabled";
+"authenticator_name" = "Authenticator Name";
+"authenticator_name_label" = "Authenticator Name:";
+"authenticator_unnamed" = "Unnamed";
+"add" = "Add";
+"remove" = "Remove";
 "badge_admin" = "Admin";
 "tab_search" = "Search";
 "search_prompt" = "Search archives…";

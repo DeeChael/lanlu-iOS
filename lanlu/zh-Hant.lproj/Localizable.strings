@@ -96,6 +96,14 @@
 "operation_failed" = "操作失敗";
 "credentials_updated_title" = "用戶憑證已更新";
 "credentials_updated_message" = "用戶憑證已更新，請重新登錄。";
+"totp_section" = "雙重驗證";
+"totp_disabled" = "雙重驗證未啟用";
+"totp_enabled" = "雙重驗證已啟用";
+"authenticator_name" = "認證器名稱";
+"authenticator_name_label" = "驗證器名稱：";
+"authenticator_unnamed" = "無名稱";
+"add" = "添加";
+"remove" = "移除";
 "badge_admin" = "管理員";
 "tab_search" = "搜索";
 "search_prompt" = "搜索檔案…";

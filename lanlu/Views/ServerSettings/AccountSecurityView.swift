@@ -11,6 +11,9 @@ struct AccountSecurityView: View {
     @State private var isChangingUsername = false
     @State private var errorMessage: String?
     @State private var showError = false
+    @State private var totpStatus: TOTPStatusData?
+    @State private var isLoadingTOTPStatus = true
+    @State private var totpStatusError: String?
 
     var body: some View {
         List {
@@ -36,6 +39,34 @@ struct AccountSecurityView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Section(String(localized: "totp_section")) {
+                if isLoadingTOTPStatus {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                } else if let totpStatusError {
+                    Text(totpStatusError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else if let totpStatus, totpStatus.enabled {
+                    totpSettingRow(
+                        title: String(localized: "totp_enabled"),
+                        systemImage: "checkmark.shield",
+                        actionTitle: String(localized: "remove"),
+                        actionColor: .red
+                    )
+                } else {
+                    totpSettingRow(
+                        title: String(localized: "totp_disabled"),
+                        systemImage: "shield.slash",
+                        actionTitle: String(localized: "add"),
+                        actionColor: .accentColor
+                    )
+                }
+            }
         }
         .alert(String(localized: "change_username"), isPresented: $showUsernamePrompt) {
             TextField(String(localized: "new_username"), text: $username)
@@ -57,12 +88,33 @@ struct AccountSecurityView: View {
             PasswordChangeSheet(server: server)
                 .presentationDetents([.large])
         }
+        .task {
+            await loadTOTPStatus()
+        }
     }
 
     private func settingRow(title: String, systemImage: String) -> some View {
         HStack {
             Label(title, systemImage: systemImage)
             Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func totpSettingRow(
+        title: String,
+        systemImage: String,
+        actionTitle: String,
+        actionColor: Color
+    ) -> some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+            Spacer()
+            Text(actionTitle)
+                .foregroundStyle(actionColor)
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -86,6 +138,17 @@ struct AccountSecurityView: View {
             showError = true
         }
         isChangingUsername = false
+    }
+
+    private func loadTOTPStatus() async {
+        isLoadingTOTPStatus = true
+        totpStatusError = nil
+        do {
+            totpStatus = try await server.apiClient.fetchTOTPStatus()
+        } catch {
+            totpStatusError = error.localizedDescription
+        }
+        isLoadingTOTPStatus = false
     }
 }
 
