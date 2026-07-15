@@ -125,24 +125,7 @@ private struct CategoryManagementRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let coverImage {
-                Image(uiImage: coverImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 180, height: 72, alignment: .leading)
-                    .clipped()
-                    .mask {
-                        LinearGradient(
-                            stops: [
-                                .init(color: .black, location: 0),
-                                .init(color: .black, location: 0.68),
-                                .init(color: .clear, location: 1)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    }
-            } else {
+            if coverImage == nil {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(category.name)
@@ -171,6 +154,32 @@ private struct CategoryManagementRow: View {
                 .labelsHidden()
         }
         .frame(minHeight: 72)
+        .background(alignment: .leading) {
+            if let coverImage {
+                GeometryReader { proxy in
+                    Image(uiImage: coverImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            width: proxy.size.width * 2 / 3,
+                            height: proxy.size.height,
+                            alignment: .leading
+                        )
+                        .clipped()
+                        .mask {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black, location: 0),
+                                    .init(color: .black, location: 0.5),
+                                    .init(color: .clear, location: 1)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        }
+                }
+            }
+        }
         .task(id: category.coverAssetId) {
             await loadCover()
         }
@@ -181,7 +190,7 @@ private struct CategoryManagementRow: View {
             .font(.caption2)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(.secondary.opacity(0.12), in: Capsule())
+            .glassEffect(.regular, in: Capsule())
     }
 
     private func loadCover() async {
