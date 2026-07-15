@@ -238,6 +238,7 @@ struct TOTPRecoveryResetView: View {
     let onCompleted: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
     @State private var code = ""
     @State private var recoveryCodes: [String] = []
     @State private var isLoading = false
@@ -248,7 +249,11 @@ struct TOTPRecoveryResetView: View {
             Group {
                 if recoveryCodes.isEmpty {
                     Form {
-                        Section {
+                        Section(String(localized: "password_verification")) {
+                            SecureField(String(localized: "password"), text: $password)
+                                .textContentType(.password)
+                        }
+                        Section(String(localized: "totp_verification")) {
                             TextField(String(localized: "totp_code"), text: $code)
                                 .keyboardType(.numberPad)
                                 .textContentType(.oneTimeCode)
@@ -267,7 +272,7 @@ struct TOTPRecoveryResetView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                             }
-                            .disabled(code.isEmpty || isLoading)
+                            .disabled(password.isEmpty || code.isEmpty || isLoading)
                         }
                     }
                 } else {
@@ -297,7 +302,7 @@ struct TOTPRecoveryResetView: View {
         isLoading = true
         errorMessage = nil
         do {
-            try await server.apiClient.verifyStepUpTOTP(code: code)
+            try await server.apiClient.verifyStepUpPassword(password)
             recoveryCodes = try await server.apiClient.regenerateTOTPRecoveryCodes(code: code)
         } catch {
             errorMessage = error.localizedDescription
