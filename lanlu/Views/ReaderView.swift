@@ -11,6 +11,40 @@ enum ReaderBottomControlFocus {
     case bookProgress, fileControl
 }
 
+enum ReaderReadingDirection: String, CaseIterable, Identifiable {
+    case leftToRight
+    case rightToLeft
+    case vertical
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .leftToRight: return "从左到右"
+        case .rightToLeft: return "从右到左"
+        case .vertical: return "条漫"
+        }
+    }
+}
+
+
+fileprivate struct ReaderVerticalScrollRequest: Equatable {
+    let token = UUID()
+    let index: Int
+    let animated: Bool
+}
+
+fileprivate struct ReaderVerticalPageFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [Int: CGRect] = [:]
+
+    static func reduce(
+        value: inout [Int: CGRect],
+        nextValue: () -> [Int: CGRect]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
+    }
+}
+
 struct ReaderView: View {
     @Environment(\.dismiss) fileprivate var dismiss
 
@@ -35,6 +69,9 @@ struct ReaderView: View {
     @State fileprivate var panOffset: CGSize = .zero
     @State fileprivate var lastPanOffset: CGSize = .zero
     @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
+    @State fileprivate var imageAspectRatios: [Int: CGFloat] = [:]
+    @State fileprivate var verticalScrollRequest: ReaderVerticalScrollRequest?
+    @State fileprivate var isProgrammaticVerticalScroll = false
     @State fileprivate var showReaderSettings = false
     @State fileprivate var showTableOfContents = false
     @State fileprivate var thumbnailImages: [Int: UIImage] = [:]
@@ -69,6 +106,11 @@ struct ReaderView: View {
     @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
     @AppStorage("reader_tap_turn_page") fileprivate var tapTurnPage = true
     @AppStorage("reader_audio_autoplay") fileprivate var audioAutoplay = false
+    @AppStorage("reader_reading_direction") fileprivate var readingDirectionRaw = ReaderReadingDirection.leftToRight.rawValue
+
+    fileprivate var readingDirection: ReaderReadingDirection {
+        ReaderReadingDirection(rawValue: readingDirectionRaw) ?? .leftToRight
+    }
 
     var maxIndex: Int { max(0, files.count - 1) }
 
@@ -138,13 +180,21 @@ struct ReaderView: View {
                         }
                         if (bottomControlFocus == .bookProgress) {
                             Button { previousPage() } label: {
-                                Image(systemName: "chevron.left")
+                                Image(
+                                    systemName: readingDirection == .vertical
+                                    ? "chevron.up"
+                                    : "chevron.left"
+                                )
                             }
                             .disabled(currentIndex <= 0)
                             .opacity(currentIndex <= 0 ? 0.5 : 1)
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             Button { nextPage() } label: {
-                                Image(systemName: "chevron.right")
+                                Image(
+                                    systemName: readingDirection == .vertical
+                                    ? "chevron.down"
+                                    : "chevron.right"
+                                )
                             }
                             .disabled(currentIndex >= maxIndex)
                             .opacity(currentIndex >= maxIndex ? 0.5 : 1)
@@ -164,7 +214,14 @@ struct ReaderView: View {
                                     )
                                     
                                     if newIndex != currentIndex {
-                                        currentIndex = newIndex
+                                        if readingDirection == .vertical {
+                                            requestVerticalPage(
+                                                newIndex,
+                                                animated: false
+                                            )
+                                        } else {
+                                            currentIndex = newIndex
+                                        }
                                     }
                                 }
                             ),
@@ -260,7 +317,12 @@ struct ReaderView: View {
         }
         .statusBarHidden(!showControls)
         .sheet(isPresented: $showReaderSettings) {
-            ReaderSettingsView(doubleTapZoom: $doubleTapZoom, tapTurnPage: $tapTurnPage, audioAutoplay: $audioAutoplay)
+            ReaderSettingsView(
+                doubleTapZoom: $doubleTapZoom,
+                tapTurnPage: $tapTurnPage,
+                audioAutoplay: $audioAutoplay,
+                readingDirection: $readingDirectionRaw
+            )
                 .presentationDetents([.large])
         }
         .fullScreenCover(isPresented: $showTableOfContents) {
@@ -298,21 +360,56 @@ struct ReaderView: View {
                 bottomControlFocus = .fileControl
             }
             audioCover = nil
-            if currentPageFileType == .audio { prepareAudio(); if audioAutoplay { startAudio() } }
-            loadPage(currentIndex)
-            preloadAdjacent()
+            if currentPageFileType == .audio {
+                prepareAudio()
+                if audioAutoplay { startAudio() }
+            }
+
+            if readingDirection == .vertical {
+                preloadVerticalPages(around: currentIndex)
+            } else {
+                loadPage(currentIndex)
+                preloadAdjacent()
+            }
         }
         .onDisappear { cancelAllTasks(); stopAudio() }
         .onChange(of: currentIndex) { _, newIndex in
             updateBottomToolbar(for: newIndex)
 
             audioCover = nil
-            audioTitle = nil; audioArtist = nil; audioAlbum = nil
+            audioTitle = nil
+            audioArtist = nil
+            audioAlbum = nil
             stopAudio()
-            if currentPageFileType == .audio { prepareAudio(); if audioAutoplay { startAudio() } }
+            if fileType(at: newIndex) == .audio {
+                prepareAudio()
+                if audioAutoplay { startAudio() }
+            }
             resetZoom(animated: false)
-            loadPage(newIndex)
-            preloadAdjacent()
+
+            if readingDirection == .vertical {
+                preloadVerticalPages(around: newIndex)
+            } else {
+                loadPage(newIndex)
+                preloadAdjacent()
+            }
+        }
+        .onChange(of: readingDirectionRaw) { _, _ in
+            resetZoom(animated: false)
+            withoutAnimation {
+                dragOffset = 0
+                isDragging = false
+                isPageAnimating = false
+                progressValue = Double(currentIndex)
+            }
+
+            if readingDirection == .vertical {
+                preloadVerticalPages(around: currentIndex)
+                requestVerticalPage(currentIndex, animated: false)
+            } else {
+                loadPage(currentIndex)
+                preloadAdjacent()
+            }
         }
     }
 
@@ -320,9 +417,221 @@ struct ReaderView: View {
 
     @ViewBuilder
     fileprivate func readerCanvas(size: CGSize) -> some View {
-        ZStack {
-            pageStrip(size: size)
-            interactionOverlay(pageWidth: size.width)
+        switch readingDirection {
+        case .vertical:
+            verticalReaderCanvas(size: size)
+        default:
+            ZStack {
+                pageStrip(size: size)
+                interactionOverlay(pageWidth: size.width)
+            }
+        }
+    }
+
+    @ViewBuilder
+    fileprivate func verticalReaderCanvas(size: CGSize) -> some View {
+        ScrollViewReader { scrollProxy in
+            ScrollView(.vertical) {
+                LazyVStack(spacing: 0) {
+                    ForEach(files.indices, id: \.self) { index in
+                        verticalPageView(
+                            for: index,
+                            width: size.width,
+                            viewportHeight: size.height
+                        )
+                        .id(index)
+                        .background {
+                            GeometryReader { pageGeometry in
+                                Color.clear.preference(
+                                    key: ReaderVerticalPageFramePreferenceKey.self,
+                                    value: [
+                                        index: pageGeometry.frame(
+                                            in: .named("reader_vertical_scroll")
+                                        )
+                                    ]
+                                )
+                            }
+                        }
+                        .onAppear {
+                            preloadVerticalPages(around: index)
+                        }
+                    }
+                }
+            }
+            .coordinateSpace(name: "reader_vertical_scroll")
+            .scrollIndicators(.hidden)
+            .background(Color.black)
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showControls.toggle()
+                }
+            }
+            .onPreferenceChange(
+                ReaderVerticalPageFramePreferenceKey.self
+            ) { frames in
+                updateVerticalCurrentPage(
+                    from: frames,
+                    viewportHeight: size.height
+                )
+            }
+            .onAppear {
+                preloadVerticalPages(around: currentIndex)
+                DispatchQueue.main.async {
+                    withoutAnimation {
+                        scrollProxy.scrollTo(currentIndex, anchor: .top)
+                    }
+                    isProgrammaticVerticalScroll = false
+                }
+            }
+            .onChange(of: verticalScrollRequest) { _, request in
+                guard let request else { return }
+
+                DispatchQueue.main.async {
+                    if request.animated {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            scrollProxy.scrollTo(request.index, anchor: .top)
+                        }
+                    } else {
+                        withoutAnimation {
+                            scrollProxy.scrollTo(request.index, anchor: .top)
+                        }
+                    }
+
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + (request.animated ? 0.34 : 0.05)
+                    ) {
+                        isProgrammaticVerticalScroll = false
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    fileprivate func verticalPageView(
+        for index: Int,
+        width: CGFloat,
+        viewportHeight: CGFloat
+    ) -> some View {
+        let path = filePath(at: index)
+        let height = verticalPageHeight(
+            index: index,
+            width: width,
+            viewportHeight: viewportHeight
+        )
+
+        if isImageFile(path) {
+            if let image = images[index] {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: width, height: height)
+                    .background(Color.black)
+            } else if failedPages.contains(index) {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundStyle(.orange)
+                    Text(String(localized: "reader_tap_reload"))
+                        .font(.subheadline)
+                }
+                .frame(width: width, height: height)
+                .background(Color.black)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    failedPages.remove(index)
+                    loadPage(index)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .scaleEffect(1.4)
+                    Text("\(index + 1) / \(files.count)")
+                        .font(.caption)
+                        .monospacedDigit()
+                }
+                .frame(width: width, height: height)
+                .foregroundStyle(.white)
+                .tint(.white)
+                .background(Color.black)
+                .task(id: path) {
+                    loadPage(index)
+                }
+            }
+        } else {
+            VStack(spacing: 14) {
+                Image(systemName: iconForFile(path))
+                    .font(.system(size: 52))
+                let name = (path as NSString).lastPathComponent
+                if !name.isEmpty {
+                    Text(name)
+                        .font(.caption)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .truncationMode(.middle)
+                        .padding(.horizontal, 32)
+                }
+            }
+            .frame(width: width, height: height)
+            .foregroundStyle(.white)
+            .background(Color.black)
+        }
+    }
+
+    fileprivate func verticalPageHeight(
+        index: Int,
+        width: CGFloat,
+        viewportHeight: CGFloat
+    ) -> CGFloat {
+        if fileType(at: index) == .image {
+            if let aspectRatio = imageAspectRatios[index],
+               aspectRatio.isFinite,
+               aspectRatio > 0 {
+                return width * aspectRatio
+            }
+
+            if let image = images[index],
+               image.size.width > 0,
+               image.size.height > 0 {
+                return width * image.size.height / image.size.width
+            }
+
+            if let thumbnail = thumbnailImages[index],
+               thumbnail.size.width > 0,
+               thumbnail.size.height > 0 {
+                return width * thumbnail.size.height / thumbnail.size.width
+            }
+
+            return width * 4 / 3
+        }
+
+        return min(max(width * 0.9, 240), viewportHeight * 0.65)
+    }
+
+    fileprivate func updateVerticalCurrentPage(
+        from frames: [Int: CGRect],
+        viewportHeight: CGFloat
+    ) {
+        guard readingDirection == .vertical,
+              !isProgrammaticVerticalScroll,
+              viewportHeight > 0 else { return }
+
+        let viewportCenter = viewportHeight / 2
+        let visibleFrames = frames.filter { _, frame in
+            frame.maxY > 0 && frame.minY < viewportHeight
+        }
+
+        guard let nearestPage = visibleFrames.min(by: { lhs, rhs in
+            abs(lhs.value.midY - viewportCenter)
+                < abs(rhs.value.midY - viewportCenter)
+        })?.key,
+              nearestPage != currentIndex else {
+            return
+        }
+
+        withoutAnimation {
+            currentIndex = nearestPage
+            progressValue = Double(nearestPage)
         }
     }
 
@@ -500,7 +809,11 @@ struct ReaderView: View {
                     .frame(width: size.width, height: size.height)
             }
         }
-        .offset(x: -size.width + dragOffset)
+        .offset(
+            x: readingDirection == .rightToLeft
+                ? size.width - dragOffset
+                : -size.width + dragOffset
+        )
     }
 
     fileprivate func interactionOverlay(pageWidth: CGFloat) -> some View {
@@ -562,9 +875,17 @@ struct ReaderView: View {
         let x = location.x
 
         if tapTurnPage, x < pageWidth * 0.3 {
-            previousPage()
+            if readingDirection == .rightToLeft {
+                nextPage()
+            } else {
+                previousPage()
+            }
         } else if tapTurnPage, x > pageWidth * 0.7 {
-            nextPage()
+            if readingDirection == .rightToLeft {
+                previousPage()
+            } else {
+                nextPage()
+            }
         } else {
             withAnimation(.easeInOut(duration: 0.2)) {
                 showControls.toggle()
@@ -708,12 +1029,18 @@ struct ReaderView: View {
 
     fileprivate func selectPageFromTableOfContents(_ index: Int) {
         guard index >= 0, index < files.count else { return }
+
+        if readingDirection == .vertical {
+            requestVerticalPage(index, animated: false)
+            return
+        }
+
         guard index != currentIndex else { return }
-        
+
         withAnimation(.easeOut(duration: 0.25)) {
             progressValue = Double(index)
         }
-        
+
         withoutAnimation {
             dragOffset = 0
             isDragging = false
@@ -966,10 +1293,17 @@ struct ReaderView: View {
     fileprivate func finishPageDrag(_ value: DragGesture.Value, pageWidth w: CGFloat) {
         let t = value.translation.width
         let pred = value.predictedEndLocation.x - value.location.x
-        if (t > w * 0.25 || pred > 100), currentIndex > 0 {
-            animatePageChange(to: currentIndex - 1, pageWidth: w)
-        } else if (t < -w * 0.25 || pred < -100), currentIndex < maxIndex {
-            animatePageChange(to: currentIndex + 1, pageWidth: w)
+        let previous = readingDirection == .rightToLeft
+            ? currentIndex + 1
+            : currentIndex - 1
+        let next = readingDirection == .rightToLeft
+            ? currentIndex - 1
+            : currentIndex + 1
+
+        if (t > w * 0.25 || pred > 100), previous >= 0 {
+            animatePageChange(to: previous, pageWidth: w)
+        } else if (t < -w * 0.25 || pred < -100), next <= maxIndex {
+            animatePageChange(to: next, pageWidth: w)
         } else {
             withAnimation(.easeOut(duration: 0.2)) { dragOffset = 0 }
             isDragging = false
@@ -1210,11 +1544,22 @@ struct ReaderSettingsView: View {
     @Binding var doubleTapZoom: Bool
     @Binding var tapTurnPage: Bool
     @Binding var audioAutoplay: Bool
+    @Binding var readingDirection: String
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("阅读方向") {
+                    Picker("阅读方向", selection: $readingDirection) {
+                        ForEach(ReaderReadingDirection.allCases) { direction in
+                            Text(direction.title)
+                                .tag(direction.rawValue)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
                 Section(String(localized: "reader_settings_gesture")) {
                     Toggle(String(localized: "reader_settings_double_tap"), isOn: $doubleTapZoom)
                     Toggle(String(localized: "reader_settings_tap_turn"), isOn: $tapTurnPage)
@@ -1258,11 +1603,43 @@ extension ReaderView {
     }
 
     fileprivate func previousPage() {
-        animatePageChange(to: currentIndex - 1, pageWidth: pageWidth)
+        let targetIndex = currentIndex - 1
+        guard targetIndex >= 0 else { return }
+
+        if readingDirection == .vertical {
+            requestVerticalPage(targetIndex, animated: true)
+        } else {
+            animatePageChange(to: targetIndex, pageWidth: pageWidth)
+        }
     }
 
     fileprivate func nextPage() {
-        animatePageChange(to: currentIndex + 1, pageWidth: pageWidth)
+        let targetIndex = currentIndex + 1
+        guard targetIndex <= maxIndex else { return }
+
+        if readingDirection == .vertical {
+            requestVerticalPage(targetIndex, animated: true)
+        } else {
+            animatePageChange(to: targetIndex, pageWidth: pageWidth)
+        }
+    }
+
+    fileprivate func requestVerticalPage(
+        _ index: Int,
+        animated: Bool
+    ) {
+        guard index >= 0, index <= maxIndex else { return }
+
+        isProgrammaticVerticalScroll = true
+        withoutAnimation {
+            currentIndex = index
+            progressValue = Double(index)
+        }
+        preloadVerticalPages(around: index)
+        verticalScrollRequest = ReaderVerticalScrollRequest(
+            index: index,
+            animated: animated
+        )
     }
 
     fileprivate func loadPage(_ index: Int) {
@@ -1284,7 +1661,13 @@ extension ReaderView {
             if let cached = CacheManager.shared.getCover(id: cacheKey),
                let img = UIImage(data: cached) {
                 await MainActor.run {
-                    images[index] = img; failedPages.remove(index); isLoading.remove(index); loadTasks[index] = nil
+                    images[index] = img
+                    if img.size.width > 0, img.size.height > 0 {
+                        imageAspectRatios[index] = img.size.height / img.size.width
+                    }
+                    failedPages.remove(index)
+                    isLoading.remove(index)
+                    loadTasks[index] = nil
                 }
                 return
             }
@@ -1301,7 +1684,13 @@ extension ReaderView {
                 }
                 CacheManager.shared.cacheCover(id: cacheKey, data: data)
                 await MainActor.run {
-                    images[index] = img; failedPages.remove(index); isLoading.remove(index); loadTasks[index] = nil
+                    images[index] = img
+                    if img.size.width > 0, img.size.height > 0 {
+                        imageAspectRatios[index] = img.size.height / img.size.width
+                    }
+                    failedPages.remove(index)
+                    isLoading.remove(index)
+                    loadTasks[index] = nil
                 }
             } catch {
                 await MainActor.run {
@@ -1315,7 +1704,40 @@ extension ReaderView {
     fileprivate func preloadAdjacent() {
         let nextIndex = currentIndex + 1
         if nextIndex < files.count {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { loadPage(nextIndex) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                loadPage(nextIndex)
+            }
+        }
+    }
+
+    fileprivate func preloadVerticalPages(around index: Int) {
+        guard readingDirection == .vertical,
+              !files.isEmpty else { return }
+
+        let preloadRange = max(0, index - 2)...min(maxIndex, index + 3)
+        for pageIndex in preloadRange where fileType(at: pageIndex) == .image {
+            loadPage(pageIndex)
+        }
+
+        trimVerticalPageCache(around: index)
+    }
+
+    fileprivate func trimVerticalPageCache(around index: Int) {
+        let keepRange = max(0, index - 5)...min(maxIndex, index + 6)
+        let imageIndexesToRemove = images.keys.filter {
+            !keepRange.contains($0)
+        }
+        for pageIndex in imageIndexesToRemove {
+            images.removeValue(forKey: pageIndex)
+        }
+
+        let taskIndexesToCancel = loadTasks.keys.filter {
+            !keepRange.contains($0)
+        }
+        for pageIndex in taskIndexesToCancel {
+            // 只发出取消信号，由任务自身统一清理状态，避免快速跳页时
+            // 旧任务覆盖同一页的新任务状态。
+            loadTasks[pageIndex]?.cancel()
         }
     }
 
