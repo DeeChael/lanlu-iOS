@@ -98,6 +98,19 @@ struct TOTPStatusData: Decodable {
     let credentialName: String?
 }
 
+struct TOTPEnrollmentData: Decodable {
+    let challengeId: String
+    let secret: String
+    let manualEntryKey: String
+    let otpauthUri: String
+    let issuer: String
+    let accountName: String
+}
+
+struct TOTPRecoveryCodesData: Decodable {
+    let recoveryCodes: [String]
+}
+
 struct PasskeyCredential: Decodable, Identifiable {
     let id: Int
     let name: String
@@ -650,6 +663,85 @@ class APIClient {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
         return status
+    }
+
+    func startTOTPEnrollment(name: String) async throws -> TOTPEnrollmentData {
+        LogManager.shared.log("POST /api/auth/totp/enroll/start")
+        let url = try makeURL("/api/auth/totp/enroll/start")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["name": name])
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        let envelope = try JSONDecoder().decode(ApiEnvelope<TOTPEnrollmentData>.self, from: data)
+        guard let enrollment = envelope.data else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return enrollment
+    }
+
+    func confirmTOTPEnrollment(challengeId: String, code: String, name: String) async throws -> [String] {
+        LogManager.shared.log("POST /api/auth/totp/enroll/confirm")
+        let url = try makeURL("/api/auth/totp/enroll/confirm")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode([
+            "challengeId": challengeId,
+            "code": code,
+            "name": name
+        ])
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        let envelope = try JSONDecoder().decode(ApiEnvelope<TOTPRecoveryCodesData>.self, from: data)
+        guard let recoveryCodes = envelope.data?.recoveryCodes else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return recoveryCodes
+    }
+
+    func regenerateTOTPRecoveryCodes(code: String) async throws -> [String] {
+        LogManager.shared.log("POST /api/auth/totp/recovery-codes/regenerate")
+        let url = try makeURL("/api/auth/totp/recovery-codes/regenerate")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        guard let numericCode = Int(code) else {
+            throw AuthError.invalidCode
+        }
+        request.httpBody = try JSONEncoder().encode(["code": numericCode])
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        let envelope = try JSONDecoder().decode(ApiEnvelope<TOTPRecoveryCodesData>.self, from: data)
+        guard let recoveryCodes = envelope.data?.recoveryCodes else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return recoveryCodes
     }
 
     func fetchPasskeyCredentials() async throws -> [PasskeyCredential] {

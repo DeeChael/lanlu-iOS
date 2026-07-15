@@ -14,6 +14,8 @@ struct AccountSecurityView: View {
     @State private var totpStatus: TOTPStatusData?
     @State private var isLoadingTOTPStatus = true
     @State private var totpStatusError: String?
+    @State private var showTOTPEnrollment = false
+    @State private var showTOTPRecoveryReset = false
     @State private var passkeys: [PasskeyCredential] = []
     @State private var isRefreshingPasskeys = false
     @State private var hasLoadedPasskeys = false
@@ -86,19 +88,46 @@ struct AccountSecurityView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 } else if let totpStatus, totpStatus.enabled {
-                    totpSettingRow(
-                        title: String(localized: "totp_enabled"),
-                        systemImage: "checkmark.shield",
-                        actionTitle: String(localized: "remove"),
-                        actionColor: .red
-                    )
+                    HStack {
+                        Text(String(localized: "status"))
+                        Spacer()
+                        Label(String(localized: "enabled"), systemImage: "checkmark.shield")
+                            .foregroundStyle(.green)
+                    }
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+
+                    Button {
+                        showTOTPRecoveryReset = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(localized: "reset_recovery_codes"))
+                                Text(String(format: String(localized: "recovery_codes_remaining"), totpStatus.recoveryCodesRemaining))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 } else {
-                    totpSettingRow(
-                        title: String(localized: "totp_disabled"),
-                        systemImage: "shield.slash",
-                        actionTitle: String(localized: "add"),
-                        actionColor: .accentColor
-                    )
+                    HStack {
+                        Text(String(localized: "status"))
+                        Spacer()
+                        Label(String(localized: "disabled"), systemImage: "shield.slash")
+                            .foregroundStyle(.red)
+                    }
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+
+                    Button {
+                        showTOTPEnrollment = true
+                    } label: {
+                        Label(String(localized: "add_authenticator"), systemImage: "plus")
+                            .foregroundStyle(Color.accentColor)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
             }
 
@@ -326,6 +355,20 @@ struct AccountSecurityView: View {
             PasswordChangeSheet(server: server)
                 .presentationDetents([.large])
         }
+        .sheet(isPresented: $showTOTPEnrollment) {
+            TOTPEnrollmentView(server: server) {
+                server.cachedTOTPEnabled = true
+                try? modelContext.save()
+                Task { await loadTOTPStatus() }
+            }
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showTOTPRecoveryReset) {
+            TOTPRecoveryResetView(server: server) {
+                Task { await loadTOTPStatus() }
+            }
+            .presentationDetents([.large])
+        }
         .task {
             async let totp: Void = loadTOTPStatus()
             async let passkeys: Void = loadPasskeys()
@@ -339,24 +382,6 @@ struct AccountSecurityView: View {
         HStack {
             Label(title, systemImage: systemImage)
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .contentShape(Rectangle())
-    }
-
-    private func totpSettingRow(
-        title: String,
-        systemImage: String,
-        actionTitle: String,
-        actionColor: Color
-    ) -> some View {
-        HStack {
-            Label(title, systemImage: systemImage)
-            Spacer()
-            Text(actionTitle)
-                .foregroundStyle(actionColor)
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundStyle(.secondary)
