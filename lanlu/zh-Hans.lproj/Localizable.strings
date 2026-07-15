@@ -104,6 +104,11 @@
 "authenticator_unnamed" = "无名称";
 "add" = "添加";
 "remove" = "移除";
+"passkey_section" = "通行密钥";
+"passkey_unnamed" = "未命名通行密钥";
+"verified" = "已验证";
+"unverified" = "未验证";
+"add_passkey" = "添加通行密钥";
 "badge_admin" = "管理员";
 "tab_search" = "搜索";
 "search_prompt" = "搜索档案…";

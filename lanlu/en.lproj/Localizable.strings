@@ -104,6 +104,11 @@
 "authenticator_unnamed" = "Unnamed";
 "add" = "Add";
 "remove" = "Remove";
+"passkey_section" = "Passkeys";
+"passkey_unnamed" = "Unnamed Passkey";
+"verified" = "Verified";
+"unverified" = "Unverified";
+"add_passkey" = "Add Passkey";
 "badge_admin" = "Admin";
 "tab_search" = "Search";
 "search_prompt" = "Search archives…";

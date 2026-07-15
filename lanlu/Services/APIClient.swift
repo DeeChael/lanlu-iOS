@@ -98,6 +98,42 @@ struct TOTPStatusData: Decodable {
     let credentialName: String?
 }
 
+struct PasskeyCredential: Decodable, Identifiable {
+    let id: Int
+    let name: String
+    let credentialId: String
+    let algorithm: String
+    let transports: [String]
+    let userVerified: Bool
+    let backupEligible: Bool
+    let createdAt: String
+    let lastUsedAt: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, credentialId, algorithm, transports, userVerified, userVerfied
+        case backupEligible, createdAt, lastUsedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        credentialId = try container.decodeIfPresent(String.self, forKey: .credentialId) ?? ""
+        algorithm = try container.decodeIfPresent(String.self, forKey: .algorithm) ?? ""
+        transports = try container.decodeIfPresent([String].self, forKey: .transports) ?? []
+        userVerified = try container.decodeIfPresent(Bool.self, forKey: .userVerified)
+            ?? container.decodeIfPresent(Bool.self, forKey: .userVerfied)
+            ?? false
+        backupEligible = try container.decodeIfPresent(Bool.self, forKey: .backupEligible) ?? false
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
+        lastUsedAt = try container.decodeIfPresent(String.self, forKey: .lastUsedAt) ?? ""
+    }
+}
+
+private struct PasskeyCredentialsData: Decodable {
+    let credentials: [PasskeyCredential]
+}
+
 enum PasswordChangeResult {
     case changed
     case requiresStepUp
@@ -543,6 +579,44 @@ class APIClient {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
         return status
+    }
+
+    func fetchPasskeyCredentials() async throws -> [PasskeyCredential] {
+        LogManager.shared.log("GET /api/auth/webauthn/credentials")
+        let url = try makeURL("/api/auth/webauthn/credentials")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        let envelope = try JSONDecoder().decode(ApiEnvelope<PasskeyCredentialsData>.self, from: data)
+        guard let credentials = envelope.data?.credentials else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return credentials
+    }
+
+    func deletePasskeyCredential(id: Int) async throws {
+        LogManager.shared.log("DELETE /api/auth/webauthn/credentials/\(id)")
+        let url = try makeURL("/api/auth/webauthn/credentials/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
     }
 
     private func verifyStepUp(path: String, body: [String: String]) async throws {

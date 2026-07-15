@@ -14,6 +14,11 @@ struct AccountSecurityView: View {
     @State private var totpStatus: TOTPStatusData?
     @State private var isLoadingTOTPStatus = true
     @State private var totpStatusError: String?
+    @State private var passkeys: [PasskeyCredential] = []
+    @State private var isRefreshingPasskeys = false
+    @State private var hasLoadedPasskeys = false
+    @State private var passkeyError: String?
+    @State private var deletingPasskeyIds: Set<Int> = []
 
     var body: some View {
         List {
@@ -67,6 +72,60 @@ struct AccountSecurityView: View {
                     )
                 }
             }
+
+            Section {
+                if !hasLoadedPasskeys && isRefreshingPasskeys {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                }
+
+                ForEach(passkeys) { credential in
+                    HStack {
+                        Label(
+                            credential.name.isEmpty ? String(localized: "passkey_unnamed") : credential.name,
+                            systemImage: "person.badge.key"
+                        )
+                        Spacer()
+                        Text(credential.userVerified ? String(localized: "verified") : String(localized: "unverified"))
+                            .foregroundStyle(.secondary)
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            Task { await deletePasskey(credential) }
+                        } label: {
+                            Label(String(localized: "delete"), systemImage: "trash")
+                        }
+                        .disabled(deletingPasskeyIds.contains(credential.id))
+                    }
+                }
+                
+                if let passkeyError {
+                    Text(passkeyError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                Button {} label: {
+                    Label(String(localized: "add_passkey"), systemImage: "plus")
+                        .foregroundStyle(Color.accentColor)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+            } header: {
+                HStack {
+                    Text(String(localized: "passkey_section"))
+                    Spacer()
+                    Button {
+                        Task { await loadPasskeys() }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshingPasskeys)
+                }
+            }
         }
         .alert(String(localized: "change_username"), isPresented: $showUsernamePrompt) {
             TextField(String(localized: "new_username"), text: $username)
@@ -89,7 +148,9 @@ struct AccountSecurityView: View {
                 .presentationDetents([.large])
         }
         .task {
-            await loadTOTPStatus()
+            async let totp: Void = loadTOTPStatus()
+            async let passkeys: Void = loadPasskeys()
+            _ = await (totp, passkeys)
         }
     }
 
@@ -149,6 +210,33 @@ struct AccountSecurityView: View {
             totpStatusError = error.localizedDescription
         }
         isLoadingTOTPStatus = false
+    }
+
+    private func loadPasskeys() async {
+        guard !isRefreshingPasskeys else { return }
+        isRefreshingPasskeys = true
+        passkeyError = nil
+        do {
+            let refreshedPasskeys = try await server.apiClient.fetchPasskeyCredentials()
+            passkeys = refreshedPasskeys
+            hasLoadedPasskeys = true
+        } catch {
+            passkeyError = error.localizedDescription
+        }
+        isRefreshingPasskeys = false
+    }
+
+    private func deletePasskey(_ credential: PasskeyCredential) async {
+        guard !deletingPasskeyIds.contains(credential.id) else { return }
+        deletingPasskeyIds.insert(credential.id)
+        passkeyError = nil
+        do {
+            try await server.apiClient.deletePasskeyCredential(id: credential.id)
+            passkeys.removeAll { $0.id == credential.id }
+        } catch {
+            passkeyError = error.localizedDescription
+        }
+        deletingPasskeyIds.remove(credential.id)
     }
 }
 
