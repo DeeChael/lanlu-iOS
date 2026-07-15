@@ -51,7 +51,11 @@ struct ReaderView: View {
         case .audio:
             return "music.note"
         case .video:
-            return "video"
+            if bottomControlFocus == .fileControl {
+                return "video.fill"
+            } else {
+                return "video"
+            }
         default:
             return nil
         }
@@ -111,7 +115,11 @@ struct ReaderView: View {
                                 bottomControlFocus = .bookProgress
                             }
                         } label: {
-                            Image(systemName: "book")
+                            Image(
+                                systemName: bottomControlFocus == .bookProgress
+                                ? "book.fill"
+                                : "book"
+                            )
                                 .foregroundStyle(
                                     bottomControlFocus == .bookProgress
                                     ? AnyShapeStyle(.tint)
@@ -161,7 +169,9 @@ struct ReaderView: View {
             }
             
             if let icon = mediaToolbarIcon {
-                ToolbarSpacer(.fixed, placement: .bottomBar)
+                if (files.count > 1) {
+                    ToolbarSpacer(.fixed, placement: .bottomBar)
+                }
                 ToolbarItemGroup(placement: .bottomBar) {
                     if (bottomControlFocus == .fileControl) {
                         HStack(spacing: 4) {
@@ -230,9 +240,9 @@ struct ReaderView: View {
                             Label(String(localized: "reader_reset_zoom"), systemImage: "arrow.counterclockwise")
                         }
                         .frame(maxWidth: .infinity).contentShape(Rectangle())
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
                     }
-                    .padding(.horizontal, 20).buttonStyle(.glass)
+                    .padding(.horizontal, 16).buttonStyle(.glass)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeInOut(duration: 0.2), value: isZoomed)
@@ -245,6 +255,9 @@ struct ReaderView: View {
         }
         .onAppear {
             currentPageFileType = fileType(at: currentIndex)
+            if files.count <= 1 && mediaToolbarIcon != nil  {
+                bottomControlFocus = .fileControl
+            }
             audioCover = nil
             if currentPageFileType == .audio { prepareAudio(); if audioAutoplay { startAudio() } }
             loadPage(currentIndex)
@@ -561,6 +574,8 @@ struct ReaderView: View {
     }
 
     fileprivate func handleMagnificationChanged(_ value: CGFloat) {
+        guard !isPageAnimating else { return }
+        guard !isDragging else { return }
         guard currentFileIsImage else { return }
 
         let newScale = min(max(lastScale * value, 1.0), 3.0)
@@ -575,6 +590,8 @@ struct ReaderView: View {
     }
 
     fileprivate func handleMagnificationEnded(_ value: CGFloat) {
+        guard !isPageAnimating else { return }
+        guard !isDragging else { return }
         guard currentFileIsImage else { return }
 
         let finalScale = min(max(lastScale * value, 1.0), 3.0)
