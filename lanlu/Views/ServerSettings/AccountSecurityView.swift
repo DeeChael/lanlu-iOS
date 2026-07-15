@@ -25,6 +25,15 @@ struct AccountSecurityView: View {
     @State private var loginSessionError: String?
     @State private var showRevokeOthersAlert = false
     @State private var isRevokingLoginSession = false
+    @State private var apiTokens: [APITokenCredential] = []
+    @State private var isRefreshingAPITokens = false
+    @State private var hasLoadedAPITokens = false
+    @State private var apiTokenError: String?
+    @State private var deletingAPITokenIds: Set<Int> = []
+    @State private var showCreateTokenAlert = false
+    @State private var newTokenName = ""
+    @State private var isCreatingAPIToken = false
+    @State private var createdAPIToken: APITokenCredential?
 
     var body: some View {
         List {
@@ -184,6 +193,69 @@ struct AccountSecurityView: View {
                     .disabled(isRefreshingLoginSessions)
                 }
             }
+
+            Section {
+                Button {
+                    newTokenName = ""
+                    showCreateTokenAlert = true
+                } label: {
+                    Label(String(localized: "create_token"), systemImage: "plus")
+                        .foregroundStyle(Color.accentColor)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+
+                if !hasLoadedAPITokens && isRefreshingAPITokens {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                }
+
+                ForEach(apiTokens) { token in
+                    HStack {
+                        Text(token.name.isEmpty ? String(localized: "unnamed_token") : token.name)
+                            .fontWeight(.medium)
+                        Text(token.prefix)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .overlay {
+                                Capsule().stroke(.secondary, lineWidth: 1)
+                            }
+                        Spacer()
+                    }
+                    .swipeActions(edge: .trailing) {
+                        if !token.current {
+                            Button(role: .destructive) {
+                                Task { await deleteAPIToken(token) }
+                            } label: {
+                                Label(String(localized: "delete"), systemImage: "trash")
+                            }
+                            .disabled(deletingAPITokenIds.contains(token.id))
+                        }
+                    }
+                }
+
+                if let apiTokenError {
+                    Text(apiTokenError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                HStack {
+                    Text(String(localized: "token_management"))
+                    Spacer()
+                    Button {
+                        Task { await loadAPITokens() }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshingAPITokens)
+                }
+            }
         }
         .alert(String(localized: "change_username"), isPresented: $showUsernamePrompt) {
             TextField(String(localized: "new_username"), text: $username)
@@ -209,6 +281,33 @@ struct AccountSecurityView: View {
         } message: {
             Text(String(localized: "sign_out_other_devices_confirm"))
         }
+        .alert(String(localized: "create_token"), isPresented: $showCreateTokenAlert) {
+            TextField(String(localized: "token_name"), text: $newTokenName)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+            Button(String(localized: "cancel"), role: .cancel) {}
+            Button(String(localized: "confirm_action")) {
+                Task { await createAPIToken() }
+            }
+            .disabled(newTokenName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreatingAPIToken)
+        }
+        .alert(
+            String(localized: "token_created_title"),
+            isPresented: Binding(
+                get: { createdAPIToken != nil },
+                set: { if !$0 { createdAPIToken = nil } }
+            ),
+            presenting: createdAPIToken
+        ) { token in
+            Button(String(localized: "copy")) {
+                UIPasteboard.general.string = token.token
+            }
+            Button(String(localized: "close"), role: .cancel) {
+                createdAPIToken = nil
+            }
+        } message: { token in
+            Text("\(String(localized: "token_created_message"))\n\n\(token.token ?? "")\n\n\(String(localized: "token_one_time_warning"))")
+        }
         .sheet(isPresented: $showPasswordSheet) {
             PasswordChangeSheet(server: server)
                 .presentationDetents([.large])
@@ -217,7 +316,8 @@ struct AccountSecurityView: View {
             async let totp: Void = loadTOTPStatus()
             async let passkeys: Void = loadPasskeys()
             async let sessions: Void = loadLoginSessions()
-            _ = await (totp, passkeys, sessions)
+            async let tokens: Void = loadAPITokens()
+            _ = await (totp, passkeys, sessions, tokens)
         }
     }
 
@@ -384,6 +484,48 @@ struct AccountSecurityView: View {
             loginSessionError = error.localizedDescription
         }
         isRevokingLoginSession = false
+    }
+
+    private func loadAPITokens() async {
+        guard !isRefreshingAPITokens else { return }
+        isRefreshingAPITokens = true
+        apiTokenError = nil
+        do {
+            let refreshedTokens = try await server.apiClient.fetchAPITokens()
+            apiTokens = refreshedTokens
+            hasLoadedAPITokens = true
+        } catch {
+            apiTokenError = error.localizedDescription
+        }
+        isRefreshingAPITokens = false
+    }
+
+    private func deleteAPIToken(_ token: APITokenCredential) async {
+        guard !deletingAPITokenIds.contains(token.id) else { return }
+        deletingAPITokenIds.insert(token.id)
+        apiTokenError = nil
+        do {
+            try await server.apiClient.deleteAPIToken(id: token.id)
+            apiTokens.removeAll { $0.id == token.id }
+        } catch {
+            apiTokenError = error.localizedDescription
+        }
+        deletingAPITokenIds.remove(token.id)
+    }
+
+    private func createAPIToken() async {
+        let name = newTokenName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !isCreatingAPIToken else { return }
+        isCreatingAPIToken = true
+        apiTokenError = nil
+        do {
+            let token = try await server.apiClient.createAPIToken(name: name)
+            createdAPIToken = token
+            await loadAPITokens()
+        } catch {
+            apiTokenError = error.localizedDescription
+        }
+        isCreatingAPIToken = false
     }
 
     private func relativeSessionDate(_ value: String) -> String {

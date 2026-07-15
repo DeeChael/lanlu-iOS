@@ -123,6 +123,16 @@
 "yesterday" = "Yesterday";
 "day_before_yesterday" = "The day before yesterday";
 "days_ago" = "%d days ago";
+"token_management" = "Token Management";
+"create_token" = "Create Token";
+"token_name" = "Token Name";
+"unnamed_token" = "Unnamed Token";
+"token_created_title" = "Token Created";
+"token_created_message" = "Your new token was created successfully.";
+"token_one_time_warning" = "Copy and store this token securely now. For security, it cannot be shown again after you close this window.";
+"copy" = "Copy";
+"copied" = "Copied";
+"close" = "Close";
 "badge_admin" = "Admin";
 "tab_search" = "Search";
 "search_prompt" = "Search archives…";

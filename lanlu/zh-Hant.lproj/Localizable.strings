@@ -123,6 +123,16 @@
 "yesterday" = "昨天";
 "day_before_yesterday" = "前天";
 "days_ago" = "%d 天前";
+"token_management" = "Token 管理";
+"create_token" = "創建 Token";
+"token_name" = "Token 名稱";
+"unnamed_token" = "未命名 Token";
+"token_created_title" = "Token 創建成功";
+"token_created_message" = "新的 Token 已成功創建。";
+"token_one_time_warning" = "請立即複製並妥善保存此 Token。為了安全，關閉此窗口後將無法再次查看。";
+"copy" = "複製";
+"copied" = "已複製";
+"close" = "關閉";
 "badge_admin" = "管理員";
 "tab_search" = "搜索";
 "search_prompt" = "搜索檔案…";

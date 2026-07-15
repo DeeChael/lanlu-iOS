@@ -150,6 +150,48 @@ private struct LoginSessionsData: Decodable {
     let sessions: [LoginSession]
 }
 
+struct APITokenCredential: Decodable, Identifiable {
+    let id: Int
+    let name: String
+    let prefix: String
+    let token: String?
+    let createdAt: String
+    let lastUsedAt: String
+    let revokedAt: String
+    let current: Bool
+    let lastUsedIp: String
+    let userAgent: String
+    let expiresAt: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, prefix, token, createdAt, lastUsedAt, revokedAt
+        case current, lastUsedIp, userAgent, expiresAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        prefix = try container.decodeIfPresent(String.self, forKey: .prefix) ?? ""
+        token = try container.decodeIfPresent(String.self, forKey: .token)
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
+        lastUsedAt = try container.decodeIfPresent(String.self, forKey: .lastUsedAt) ?? ""
+        revokedAt = try container.decodeIfPresent(String.self, forKey: .revokedAt) ?? ""
+        current = try container.decodeIfPresent(Bool.self, forKey: .current) ?? false
+        lastUsedIp = try container.decodeIfPresent(String.self, forKey: .lastUsedIp) ?? ""
+        userAgent = try container.decodeIfPresent(String.self, forKey: .userAgent) ?? ""
+        expiresAt = try container.decodeIfPresent(String.self, forKey: .expiresAt) ?? ""
+    }
+}
+
+private struct APITokensData: Decodable {
+    let tokens: [APITokenCredential]
+}
+
+private struct CreatedAPITokenData: Decodable {
+    let token: APITokenCredential
+}
+
 enum PasswordChangeResult {
     case changed
     case requiresStepUp
@@ -670,6 +712,74 @@ class APIClient {
         let url = try makeURL(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
+    func fetchAPITokens() async throws -> [APITokenCredential] {
+        LogManager.shared.log("GET /api/auth/tokens")
+        let url = try makeURL("/api/auth/tokens")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        let envelope = try JSONDecoder().decode(ApiEnvelope<APITokensData>.self, from: data)
+        guard let tokens = envelope.data?.tokens else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return tokens
+    }
+
+    func createAPIToken(name: String) async throws -> APITokenCredential {
+        LogManager.shared.log("POST /api/auth/tokens")
+        let url = try makeURL("/api/auth/tokens")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["name": name])
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        if let envelope = try? JSONDecoder().decode(ApiEnvelope<CreatedAPITokenData>.self, from: data),
+           let token = envelope.data?.token,
+           token.token?.isEmpty == false {
+            return token
+        }
+        if let envelope = try? JSONDecoder().decode(ApiEnvelope<APITokenCredential>.self, from: data),
+           let token = envelope.data,
+           token.token?.isEmpty == false {
+            return token
+        }
+        throw AuthError.networkError(String(localized: "connection_failed"))
+    }
+
+    func deleteAPIToken(id: Int) async throws {
+        LogManager.shared.log("DELETE /api/auth/tokens/\(id)")
+        let url = try makeURL("/api/auth/tokens/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
         applyAuthHeader(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
