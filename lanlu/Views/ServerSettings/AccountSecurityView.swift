@@ -565,13 +565,25 @@ struct AccountSecurityView: View {
     }
 
     private func sessionDate(from value: String) -> Date? {
-        let formats = ["yyyy-MM-dd HH:mm:ss.SSSSSS", "yyyy-MM-dd HH:mm:ss"]
+        // Normalize: strip timezone (+08, +0800, etc.) and truncate microseconds to milliseconds
+        var cleaned = value
+        if let tzRange = cleaned.range(of: "[+-]\\d{2}$", options: .regularExpression) {
+            cleaned.removeSubrange(tzRange)
+        }
+        if let dot = cleaned.firstIndex(of: ".") {
+            let fractionalEnd = cleaned[dot...].prefix(4)
+            cleaned = String(cleaned[..<dot]) + fractionalEnd
+        }
+        let formats = [
+            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ss"
+        ]
         for format in formats {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.timeZone = TimeZone.current
             formatter.dateFormat = format
-            if let date = formatter.date(from: value) {
+            if let date = formatter.date(from: cleaned) {
                 return date
             }
         }
