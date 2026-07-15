@@ -1157,8 +1157,9 @@ private struct ReaderTableOfContentsOverlay: View {
                 .glassEffect(.regular, in: Capsule())
                 .padding(7)
         }
+        .padding(4)
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(
                     isCurrentPage ? Color.accentColor : Color.clear,
                     lineWidth: 3
