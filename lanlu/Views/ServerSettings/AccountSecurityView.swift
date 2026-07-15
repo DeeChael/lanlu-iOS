@@ -15,14 +15,26 @@ struct AccountSecurityView: View {
     var body: some View {
         List {
             Section(String(localized: "account_credentials")) {
-                Button(String(localized: "change_username")) {
+                Button {
                     username = server.cachedUsername ?? ""
                     showUsernamePrompt = true
+                } label: {
+                    settingRow(
+                        title: String(localized: "change_username"),
+                        systemImage: "pencil.line"
+                    )
                 }
+                .buttonStyle(.plain)
 
-                Button(String(localized: "change_password")) {
+                Button {
                     showPasswordSheet = true
+                } label: {
+                    settingRow(
+                        title: String(localized: "change_password"),
+                        systemImage: "key"
+                    )
                 }
+                .buttonStyle(.plain)
             }
         }
         .alert(String(localized: "change_username"), isPresented: $showUsernamePrompt) {
@@ -45,6 +57,17 @@ struct AccountSecurityView: View {
             PasswordChangeSheet(server: server)
                 .presentationDetents([.large])
         }
+    }
+
+    private func settingRow(title: String, systemImage: String) -> some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
     }
 
     private func changeUsername() async {

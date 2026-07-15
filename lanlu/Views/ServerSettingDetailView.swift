@@ -31,16 +31,16 @@ enum ServerSetting: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .accountSecurity: "shield.fill"
-        case .category: "folder.fill"
-        case .tags: "tag.fill"
+        case .accountSecurity: "shield"
+        case .category: "folder"
+        case .tags: "tag"
         case .smartFilters: "line.3.horizontal.decrease"
-        case .userManagement: "person.2.fill"
+        case .userManagement: "person.2"
         case .systemSettings: "server.rack"
         case .backgroundTasks: "calendar.badge.clock"
-        case .scheduledTasks: "clock.fill"
-        case .pluginManagement: "puzzlepiece.fill"
-        case .statistics: "chart.bar.fill"
+        case .scheduledTasks: "clock"
+        case .pluginManagement: "puzzlepiece"
+        case .statistics: "chart.bar"
         }
     }
 }

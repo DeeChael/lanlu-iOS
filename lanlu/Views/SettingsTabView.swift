@@ -162,7 +162,7 @@ struct SettingsTabView: View {
 
             Section(String(localized: "client_settings")) {
                 HStack {
-                    Label(String(localized: "setting_theme"), systemImage: "paintpalette.fill")
+                    Label(String(localized: "setting_theme"), systemImage: "paintpalette")
                     Spacer()
                     NativeSegmentedControl(
                         selection: $themeMode,
@@ -198,7 +198,7 @@ struct SettingsTabView: View {
                     showDiagnostics = true
                 } label: {
                     HStack {
-                        Label(String(localized: "setting_diagnostics"), systemImage: "ant.fill")
+                        Label(String(localized: "setting_diagnostics"), systemImage: "ant")
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption)
@@ -216,7 +216,7 @@ struct SettingsTabView: View {
                     showClearCacheAlert = true
                 } label: {
                     HStack {
-                        Label(String(localized: "setting_clear_cache"), systemImage: "trash.fill")
+                        Label(String(localized: "setting_clear_cache"), systemImage: "trash")
                         Spacer()
                     }
                     .contentShape(Rectangle())
