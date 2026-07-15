@@ -129,6 +129,7 @@
 "search_clear_history" = "Clear All History";
 "detail_total_pages" = "%d pages";
 "detail_favorite" = "Favorite";
+"detail_continue_read" = "Continue Reading";
 "detail_start_read" = "Start Reading";
 "detail_info" = "Details";
 "detail_content" = "Content";

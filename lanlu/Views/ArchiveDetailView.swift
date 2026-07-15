@@ -187,11 +187,12 @@ struct ArchiveDetailView: View {
                             .clipShape(Circle())
 
                             if !isTankoubon {
+                                let hasProgress = (meta?.progress ?? archive.progress ?? 0) > 0
                                 Button {
-                                    readerStartIndex = 0
+                                    readerStartIndex = hasProgress ? (meta?.progress ?? archive.progress ?? 0) - 1 : 0
                                     showReader = true
                                 } label: {
-                                    Label(String(localized: "detail_start_read"), systemImage: "book.fill")
+                                    Label(String(localized: hasProgress ? "detail_continue_read" : "detail_start_read"), systemImage: "book.fill")
                                         .font(.subheadline).fontWeight(.semibold)
                                         .frame(maxWidth: .infinity).frame(height: 36)
                                         .background(Color.accentColor).foregroundColor(.white)
