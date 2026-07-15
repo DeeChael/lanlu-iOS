@@ -28,6 +28,7 @@
 "invalid_credentials" = "Invalid username or password";
 "token_expired" = "Session expired, please log in again";
 "invalid_code" = "Invalid verification code";
+"passkey_setup_description" = "Passkey authentication will be set up when connecting to the server.";
 "passkey_unavailable" = "Passkey authentication is not yet supported by this server.";
 "just_now" = "just now";
 "tab_home" = "Home";
@@ -142,6 +143,11 @@
 "reader_audio_artist" = "No artist info";
 "reader_audio_album" = "No album info";
 "reader_settings" = "Reader Settings";
+"reader_dir_section" = "Reading Direction";
+"reader_dir_picker" = "Direction";
+"reader_dir_ltr" = "Left to Right";
+"reader_dir_rtl" = "Right to Left";
+"reader_dir_vertical" = "Vertical";
 "reader_settings_playback" = "Playback";
 "reader_settings_audio_autoplay" = "Auto-Play Audio";
 "reader_settings_gesture" = "Gesture";

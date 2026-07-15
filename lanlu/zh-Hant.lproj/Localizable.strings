@@ -28,6 +28,7 @@
 "invalid_credentials" = "用戶名或密碼錯誤";
 "token_expired" = "登錄已過期，請重新登錄";
 "invalid_code" = "驗證碼錯誤";
+"passkey_setup_description" = "連接伺服器時將設置 Passkey 身份驗證。";
 "passkey_unavailable" = "伺服器暫不支援 Passkey 登錄。";
 "just_now" = "剛剛";
 "tab_home" = "首頁";
@@ -142,6 +143,11 @@
 "reader_audio_artist" = "無藝術家信息";
 "reader_audio_album" = "無專輯信息";
 "reader_settings" = "閱讀器設置";
+"reader_dir_section" = "閱讀方向";
+"reader_dir_picker" = "方向";
+"reader_dir_ltr" = "從左到右";
+"reader_dir_rtl" = "從右到左";
+"reader_dir_vertical" = "條漫";
 "reader_settings_playback" = "播放";
 "reader_settings_audio_autoplay" = "音頻自動播放";
 "reader_settings_gesture" = "手勢";

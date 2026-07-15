@@ -20,9 +20,9 @@ enum ReaderReadingDirection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .leftToRight: return "从左到右"
-        case .rightToLeft: return "从右到左"
-        case .vertical: return "条漫"
+        case .leftToRight: return String(localized: "reader_dir_ltr")
+        case .rightToLeft: return String(localized: "reader_dir_rtl")
+        case .vertical: return String(localized: "reader_dir_vertical")
         }
     }
 }
@@ -1604,8 +1604,8 @@ struct ReaderSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("阅读方向") {
-                    Picker("阅读方向", selection: $readingDirection) {
+                Section(String(localized: "reader_dir_section")) {
+                    Picker(String(localized: "reader_dir_picker"), selection: $readingDirection) {
                         ForEach(ReaderReadingDirection.allCases) { direction in
                             Text(direction.title)
                                 .tag(direction.rawValue)

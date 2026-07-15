@@ -28,6 +28,7 @@
 "invalid_credentials" = "用户名或密码错误";
 "token_expired" = "登录已过期，请重新登录";
 "invalid_code" = "验证码错误";
+"passkey_setup_description" = "连接服务器时将设置 Passkey 身份验证。";
 "passkey_unavailable" = "服务器暂不支持 Passkey 登录。";
 "just_now" = "刚刚";
 "tab_home" = "首页";
@@ -142,6 +143,11 @@
 "reader_audio_artist" = "无艺术家信息";
 "reader_audio_album" = "无专辑信息";
 "reader_settings" = "阅读器设置";
+"reader_dir_section" = "阅读方向";
+"reader_dir_picker" = "方向";
+"reader_dir_ltr" = "从左到右";
+"reader_dir_rtl" = "从右到左";
+"reader_dir_vertical" = "条漫";
 "reader_settings_playback" = "播放";
 "reader_settings_audio_autoplay" = "音频自动播放";
 "reader_settings_gesture" = "手势";

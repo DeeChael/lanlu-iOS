@@ -11,7 +11,7 @@ struct PasskeyAuthView: View {
                 .font(.system(size: 48))
                 .foregroundColor(.accentColor)
 
-            Text("Passkey authentication will be set up when connecting to the server.")
+            Text(String(localized: "passkey_setup_description"))
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
 
