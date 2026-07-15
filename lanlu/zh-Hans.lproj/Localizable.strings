@@ -129,7 +129,7 @@
 "search_clear_history" = "清除所有记录";
 "detail_total_pages" = "%d 页";
 "detail_favorite" = "收藏";
-"detail_continue_read" = "继续阅读";
+"detail_continue_read" = "继续阅读 %d%%";
 "detail_start_read" = "开始阅读";
 "detail_info" = "详细";
 "detail_content" = "内容";
