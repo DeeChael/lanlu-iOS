@@ -450,7 +450,7 @@ class APIClient {
         request.httpBody = try JSONEncoder().encode([
             "username": username,
             "password": password,
-            "tokenName": "lanlu-ios"
+            "tokenName": "lanlu-iOS"
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
