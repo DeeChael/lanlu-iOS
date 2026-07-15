@@ -98,6 +98,11 @@ struct ReaderView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button { dismiss() } label: { Image(systemName: "chevron.left") }
             }
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    // TODO: 打开目录侧边栏
+                } label: { Image(systemName: "list.bullet") }
+            }
             ToolbarItem(placement: .principal) {
                 Text("\(currentIndex + 1) / \(files.count)").font(.subheadline)
             }
