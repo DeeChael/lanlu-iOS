@@ -620,8 +620,14 @@ class APIClient {
         try await verifyStepUp(path: "/api/auth/step-up/password", body: ["password": password])
     }
 
-    func verifyStepUpTOTP(_ code: String) async throws {
-        try await verifyStepUp(path: "/api/auth/step-up/totp", body: ["code": code])
+    func verifyStepUpTOTP(code: String? = nil, recoveryCode: String? = nil) async throws {
+        var body: [String: String] = [:]
+        if let recoveryCode {
+            body["recoveryCode"] = recoveryCode
+        } else if let code {
+            body["code"] = code
+        }
+        try await verifyStepUp(path: "/api/auth/step-up/totp", body: body)
     }
 
     func fetchTOTPStatus() async throws -> TOTPStatusData {

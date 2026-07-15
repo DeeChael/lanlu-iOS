@@ -595,6 +595,7 @@ private struct PasswordChangeSheet: View {
     @State private var confirmedPassword = ""
     @State private var verificationPassword = ""
     @State private var totpCode = ""
+    @State private var useStepUpRecoveryCode = false
     @State private var isLoading = false
     @State private var errorMessage: String?
 
@@ -688,14 +689,29 @@ private struct PasswordChangeSheet: View {
     private var totpVerification: some View {
         Form {
             Section(String(localized: "totp_verification")) {
-                TextField(String(localized: "totp_code"), text: $totpCode)
-                    .keyboardType(.numberPad)
-                    .textContentType(.oneTimeCode)
+                TextField(
+                    String(localized: useStepUpRecoveryCode ? "recovery_code" : "totp_code"),
+                    text: $totpCode
+                )
+                    .keyboardType(useStepUpRecoveryCode ? .asciiCapable : .numberPad)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+
+                Button(String(localized: useStepUpRecoveryCode ? "use_verification_code" : "use_recovery_code")) {
+                    useStepUpRecoveryCode.toggle()
+                    totpCode = ""
+                    errorMessage = nil
+                }
+                .disabled(isLoading)
             }
             errorSection
             Section {
                 submitButton(String(localized: "verify"), disabled: totpCode.isEmpty) {
-                    try await server.apiClient.verifyStepUpTOTP(totpCode)
+                    if useStepUpRecoveryCode {
+                        try await server.apiClient.verifyStepUpTOTP(recoveryCode: totpCode)
+                    } else {
+                        try await server.apiClient.verifyStepUpTOTP(code: totpCode)
+                    }
                     try await retryPasswordChange()
                 }
             }
