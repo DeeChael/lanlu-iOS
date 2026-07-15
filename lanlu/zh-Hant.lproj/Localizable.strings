@@ -99,9 +99,9 @@
 "operation_failed" = "操作失敗";
 "credentials_updated_title" = "用戶憑證已更新";
 "credentials_updated_message" = "用戶憑證已更新，請重新登錄。";
-"totp_section" = "雙重驗證";
-"totp_disabled" = "雙重驗證未啟用";
-"totp_enabled" = "雙重驗證已啟用";
+"totp_section" = "兩步驗證";
+"totp_disabled" = "兩步驗證未啟用";
+"totp_enabled" = "兩步驗證已啟用";
 "authenticator_name" = "認證器名稱";
 "authenticator_name_label" = "驗證器名稱：";
 "authenticator_unnamed" = "無名稱";
