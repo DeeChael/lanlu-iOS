@@ -129,6 +129,13 @@ struct ArchiveDetailView: View {
             _coverData = State(initialValue: data)
         }
 
+        // Load cached metadata
+        if let id = archive.arcid,
+           let cached = CacheManager.shared.getArchiveMetadata(arcid: id),
+           let cachedMeta = try? JSONDecoder().decode(APIClient.ArchiveMetadata.self, from: cached) {
+            _meta = State(initialValue: cachedMeta)
+        }
+
         // Load cached tag translations
         let sid = server.baseURL
         if let cached = CacheManager.shared.getTagTranslations(serverId: sid),
@@ -235,6 +242,17 @@ struct ArchiveDetailView: View {
         .fullScreenCover(isPresented: $showReader) {
             NavigationStack {
                 ReaderView(arcid: archive.arcid ?? "", files: files, startIndex: readerStartIndex, server: server)
+            }
+        }
+        .onChange(of: showReader) { _, showing in
+            if !showing {
+                // Refresh meta from cache (updated by ReaderView.saveProgress)
+                if let id = archive.arcid,
+                   let cached = CacheManager.shared.getArchiveMetadata(arcid: id),
+                   let cachedMeta = try? JSONDecoder().decode(APIClient.ArchiveMetadata.self, from: cached) {
+                    meta = cachedMeta
+                    isFavorite = cachedMeta.isfavorite ?? isFavorite
+                }
             }
         }
     }
