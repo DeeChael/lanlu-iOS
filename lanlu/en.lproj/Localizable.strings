@@ -148,6 +148,7 @@
 "reader_settings_double_tap" = "Double Tap to Zoom";
 "reader_settings_tap_turn" = "Tap Sides to Turn Page";
 "reader_reset_zoom" = "Reset Zoom";
+"reader_toc_title" = "Pages";
 "reader_tap_reload" = "Tap to reload";
 "detail_archived_in" = "Part of";
 "no_archived_in" = "Not part of any collection";

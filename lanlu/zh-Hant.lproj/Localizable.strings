@@ -148,6 +148,7 @@
 "reader_settings_double_tap" = "雙擊放大";
 "reader_settings_tap_turn" = "點擊兩側翻頁";
 "reader_reset_zoom" = "重置縮放";
+"reader_toc_title" = "目錄";
 "reader_tap_reload" = "點擊重新加載";
 "detail_archived_in" = "所屬合集";
 "no_archived_in" = "無所屬合集";

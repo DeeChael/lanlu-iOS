@@ -1025,7 +1025,7 @@ private struct ReaderTableOfContentsOverlay: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("目录")
+                            Text(String(localized: "reader_toc_title"))
                                 .font(.headline)
                             Text("\(currentIndex + 1) / \(pageCount)")
                                 .font(.caption)
