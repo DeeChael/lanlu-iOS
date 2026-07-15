@@ -709,12 +709,15 @@ struct ReaderView: View {
     fileprivate func selectPageFromTableOfContents(_ index: Int) {
         guard index >= 0, index < files.count else { return }
         guard index != currentIndex else { return }
-
+        
+        withAnimation(.easeOut(duration: 0.25)) {
+            progressValue = Double(index)
+        }
+        
         withoutAnimation {
             dragOffset = 0
             isDragging = false
             isPageAnimating = false
-            progressValue = Double(index)
             currentIndex = index
         }
     }
