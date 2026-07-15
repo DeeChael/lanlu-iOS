@@ -25,6 +25,9 @@
 "edit_server" = "Edit Server";
 "totp_title" = "Two-Factor Authentication";
 "totp_code" = "Verification Code";
+"recovery_code" = "Recovery Code";
+"use_recovery_code" = "Use Recovery Code";
+"use_verification_code" = "Use Verification Code";
 "invalid_credentials" = "Invalid username or password";
 "token_expired" = "Session expired, please log in again";
 "invalid_code" = "Invalid verification code";

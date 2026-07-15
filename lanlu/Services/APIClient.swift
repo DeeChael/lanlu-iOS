@@ -489,16 +489,23 @@ class APIClient {
 
     // MARK: - Auth: TOTP Verify
 
-    func verifyTOTP(challengeId: String, code: String) async throws -> LoginSuccessData {
+    func verifyTOTP(
+        challengeId: String,
+        code: String? = nil,
+        recoveryCode: String? = nil
+    ) async throws -> LoginSuccessData {
         LogManager.shared.log("POST /api/auth/login/totp/verify")
         let url = try makeURL("/api/auth/login/totp/verify")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode([
-            "challengeId": challengeId,
-            "code": code
-        ])
+        var body = ["challengeId": challengeId]
+        if let recoveryCode {
+            body["recoveryCode"] = recoveryCode
+        } else if let code {
+            body["code"] = code
+        }
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {

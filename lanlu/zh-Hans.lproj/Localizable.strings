@@ -25,6 +25,9 @@
 "edit_server" = "编辑服务器";
 "totp_title" = "两步验证";
 "totp_code" = "验证码";
+"recovery_code" = "恢复码";
+"use_recovery_code" = "使用恢复码";
+"use_verification_code" = "使用验证码";
 "invalid_credentials" = "用户名或密码错误";
 "token_expired" = "登录已过期，请重新登录";
 "invalid_code" = "验证码错误";

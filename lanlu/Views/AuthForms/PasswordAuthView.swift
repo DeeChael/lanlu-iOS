@@ -15,6 +15,7 @@ struct PasswordAuthView: View {
 
     @State private var challengeId: String?
     @State private var totpCode = ""
+    @State private var useRecoveryCode = false
 
     init(serverName: String, serverURL: String, onSave: @escaping (String?) -> Void) {
         self.serverName = serverName
@@ -51,9 +52,21 @@ struct PasswordAuthView: View {
 
             if let challengeId {
                 Section(String(localized: "totp_title")) {
-                    TextField(String(localized: "totp_code"), text: $totpCode)
-                        .keyboardType(.numberPad)
+                    TextField(
+                        String(localized: useRecoveryCode ? "recovery_code" : "totp_code"),
+                        text: $totpCode
+                    )
+                        .keyboardType(useRecoveryCode ? .asciiCapable : .numberPad)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled(true)
                         .disabled(isLoading)
+
+                    Button(String(localized: useRecoveryCode ? "use_verification_code" : "use_recovery_code")) {
+                        useRecoveryCode.toggle()
+                        totpCode = ""
+                        errorMessage = nil
+                    }
+                    .disabled(isLoading)
                 }
             }
 
@@ -98,7 +111,11 @@ struct PasswordAuthView: View {
 
         if let challengeId {
             do {
-                let result = try await client.verifyTOTP(challengeId: challengeId, code: totpCode)
+                let result = if useRecoveryCode {
+                    try await client.verifyTOTP(challengeId: challengeId, recoveryCode: totpCode)
+                } else {
+                    try await client.verifyTOTP(challengeId: challengeId, code: totpCode)
+                }
                 let data = [
                     "username": username,
                     "password": password,

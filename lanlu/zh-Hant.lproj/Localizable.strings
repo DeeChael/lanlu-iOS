@@ -25,6 +25,9 @@
 "edit_server" = "編輯伺服器";
 "totp_title" = "兩步驗證";
 "totp_code" = "驗證碼";
+"recovery_code" = "恢復碼";
+"use_recovery_code" = "使用恢復碼";
+"use_verification_code" = "使用驗證碼";
 "invalid_credentials" = "用戶名或密碼錯誤";
 "token_expired" = "登錄已過期，請重新登錄";
 "invalid_code" = "驗證碼錯誤";
