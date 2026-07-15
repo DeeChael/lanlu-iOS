@@ -94,6 +94,7 @@
 "verify" = "驗證";
 "step_up_verification" = "步進認證";
 "step_up_required_message" = "修改密碼前需要完成額外的身份驗證。";
+"security_verification_required" = "需要安全驗證";
 "password_verification" = "密碼驗證";
 "totp_verification" = "TOTP 驗證";
 "operation_failed" = "操作失敗";

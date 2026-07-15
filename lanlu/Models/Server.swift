@@ -12,6 +12,7 @@ final class Server {
     var cachedUsername: String?
     var cachedAvatarAssetId: Int?
     var cachedIsAdmin: Bool?
+    var cachedTOTPEnabled: Bool?
 
     init(name: String, baseURL: String, authMethod: String, authData: String? = nil) {
         self.name = name

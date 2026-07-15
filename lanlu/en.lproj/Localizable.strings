@@ -94,6 +94,7 @@
 "verify" = "Verify";
 "step_up_verification" = "Additional Verification";
 "step_up_required_message" = "Additional verification is required before changing your password.";
+"security_verification_required" = "Security Verification Required";
 "password_verification" = "Password Verification";
 "totp_verification" = "TOTP Verification";
 "operation_failed" = "Operation Failed";

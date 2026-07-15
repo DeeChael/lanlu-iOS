@@ -35,6 +35,20 @@ struct AccountSecurityView: View {
     @State private var isCreatingAPIToken = false
     @State private var createdAPIToken: APITokenCredential?
 
+    init(server: Server) {
+        self.server = server
+        if let cachedTOTPEnabled = server.cachedTOTPEnabled {
+            _totpStatus = State(
+                initialValue: TOTPStatusData(
+                    enabled: cachedTOTPEnabled,
+                    recoveryCodesRemaining: 0,
+                    credentialName: nil
+                )
+            )
+            _isLoadingTOTPStatus = State(initialValue: false)
+        }
+    }
+
     var body: some View {
         List {
             Section(String(localized: "account_credentials")) {
@@ -409,10 +423,13 @@ struct AccountSecurityView: View {
     }
 
     private func loadTOTPStatus() async {
-        isLoadingTOTPStatus = true
+        isLoadingTOTPStatus = totpStatus == nil
         totpStatusError = nil
         do {
-            totpStatus = try await server.apiClient.fetchTOTPStatus()
+            let status = try await server.apiClient.fetchTOTPStatus()
+            totpStatus = status
+            server.cachedTOTPEnabled = status.enabled
+            try? modelContext.save()
         } catch {
             totpStatusError = error.localizedDescription
         }
@@ -651,11 +668,7 @@ private struct PasswordChangeSheet: View {
                     guard newPassword == confirmedPassword else {
                         throw AuthError.networkError(String(localized: "passwords_do_not_match"))
                     }
-                    let result = try await server.apiClient.changePassword(
-                        currentPassword: currentPassword,
-                        newPassword: newPassword
-                    )
-                    handlePasswordChangeResult(result)
+                    try await changePasswordWithAutomaticStepUp()
                 }
             }
         }
@@ -681,19 +694,19 @@ private struct PasswordChangeSheet: View {
 
     private var passwordVerification: some View {
         Form {
-            Section(String(localized: "password_verification")) {
+            Section(String(localized: "security_verification_required")) {
                 SecureField(String(localized: "password"), text: $verificationPassword)
                     .textContentType(.password)
             }
             errorSection
             Section {
-                submitButton(String(localized: "verify"), disabled: verificationPassword.isEmpty) {
+                submitButton(String(localized: "confirm_action"), disabled: verificationPassword.isEmpty) {
                     try await server.apiClient.verifyStepUpPassword(verificationPassword)
                     try await retryPasswordChange()
                 }
             }
         }
-        .navigationTitle(String(localized: "password_verification"))
+        .navigationTitle(String(localized: "security_verification_required"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { closeToolbar }
     }
@@ -789,6 +802,27 @@ private struct PasswordChangeSheet: View {
         handlePasswordChangeResult(result)
     }
 
+    private func changePasswordWithAutomaticStepUp() async throws {
+        let result = try await server.apiClient.changePassword(
+            currentPassword: currentPassword,
+            newPassword: newPassword
+        )
+
+        if case .requiresStepUp = result {
+            try await server.apiClient.verifyStepUpPassword(currentPassword)
+            let retriedResult = try await server.apiClient.changePassword(
+                currentPassword: currentPassword,
+                newPassword: newPassword
+            )
+            guard case .changed = retriedResult else {
+                throw AuthError.networkError(String(localized: "step_up_required_message"))
+            }
+        }
+
+        NotificationCenter.default.post(name: .serverCredentialsUpdated, object: server)
+        dismiss()
+    }
+
     private func handlePasswordChangeResult(_ result: PasswordChangeResult) {
         switch result {
         case .changed:
@@ -796,7 +830,11 @@ private struct PasswordChangeSheet: View {
             dismiss()
         case .requiresStepUp:
             errorMessage = nil
-            path = [.stepUpOptions]
+            if server.cachedTOTPEnabled == false {
+                path = [.passwordVerification]
+            } else {
+                path = [.stepUpOptions]
+            }
         }
     }
 

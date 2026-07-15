@@ -94,6 +94,7 @@
 "verify" = "验证";
 "step_up_verification" = "步进认证";
 "step_up_required_message" = "修改密码前需要完成额外的身份验证。";
+"security_verification_required" = "需要安全验证";
 "password_verification" = "密码验证";
 "totp_verification" = "TOTP 验证";
 "operation_failed" = "操作失败";
