@@ -50,12 +50,18 @@ struct ServerSettingDetailView: View {
     let setting: ServerSetting
 
     var body: some View {
-        List {
-            Section {
-                ContentUnavailableView {
-                    Label(setting.title, systemImage: setting.systemImage)
-                } description: {
-                    Text("server_setting_detail_placeholder")
+        Group {
+            if setting == .accountSecurity {
+                AccountSecurityView(server: server)
+            } else {
+                List {
+                    Section {
+                        ContentUnavailableView {
+                            Label(setting.title, systemImage: setting.systemImage)
+                        } description: {
+                            Text("server_setting_detail_placeholder")
+                        }
+                    }
                 }
             }
         }

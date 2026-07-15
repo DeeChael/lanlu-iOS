@@ -69,9 +69,9 @@ struct SettingsTabView: View {
                             ProgressView()
                         } else {
                             HStack(spacing: 6) {
-                                Text(user?.username ?? server.cachedUsername ?? "---")
+                                Text(server.cachedUsername ?? user?.username ?? "---")
                                     .font(.headline)
-                                if user?.isAdmin == true {
+                                if (server.cachedIsAdmin ?? user?.isAdmin) == true {
                                     Text("badge_admin")
                                         .font(.caption2)
                                         .fontWeight(.semibold)
@@ -233,7 +233,7 @@ struct SettingsTabView: View {
             Section(String(localized: "server_settings")) {
                 serverSettingLink(.accountSecurity)
 
-                if user?.isAdmin == true {
+                if (server.cachedIsAdmin ?? user?.isAdmin) == true {
                     serverSettingLink(.category)
                     serverSettingLink(.tags)
                     serverSettingLink(.smartFilters)

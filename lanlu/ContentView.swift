@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var serverToEdit: Server?
     @State private var activeServer: Server?
+    @State private var showCredentialsUpdatedAlert = false
 
     var body: some View {
         NavigationStack {
@@ -51,6 +52,23 @@ struct ContentView: View {
             }
             .fullScreenCover(item: $activeServer) { server in
                 ServerHomeView(server: server)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .serverCredentialsUpdated)) { notification in
+                if let server = notification.object as? Server {
+                    server.authData = nil
+                    try? modelContext.save()
+                }
+                UserDefaults.standard.removeObject(forKey: "last_server_url")
+                activeServer = nil
+                Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    showCredentialsUpdatedAlert = true
+                }
+            }
+            .alert(String(localized: "credentials_updated_title"), isPresented: $showCredentialsUpdatedAlert) {
+                Button(String(localized: "ok")) {}
+            } message: {
+                Text(String(localized: "credentials_updated_message"))
             }
             .task {
                 try? await Task.sleep(nanoseconds: 100_000_000)

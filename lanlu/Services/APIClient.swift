@@ -92,6 +92,11 @@ struct UserInfoData: Decodable {
     let user: UserData
 }
 
+enum PasswordChangeResult {
+    case changed
+    case requiresStepUp
+}
+
 struct UserStatsData: Codable {
     let favoriteCount: Int?
     let readCount: Int?
@@ -448,6 +453,85 @@ class APIClient {
         default:
             LogManager.shared.log("Token verify failed: HTTP \(httpResponse.statusCode)")
             throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+    }
+
+    // MARK: - Account Security
+
+    func changeUsername(_ username: String) async throws -> UserData {
+        LogManager.shared.log("POST /api/auth/username")
+        let url = try makeURL("/api/auth/username")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["newUsername": username])
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        let envelope = try JSONDecoder().decode(ApiEnvelope<UserInfoData>.self, from: data)
+        guard let user = envelope.data?.user else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return user
+    }
+
+    func changePassword(currentPassword: String, newPassword: String) async throws -> PasswordChangeResult {
+        LogManager.shared.log("POST /api/auth/password")
+        let url = try makeURL("/api/auth/password")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode([
+            "currentPassword": currentPassword,
+            "newPassword": newPassword
+        ])
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            return .changed
+        case 428:
+            return .requiresStepUp
+        default:
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
+    func verifyStepUpPassword(_ password: String) async throws {
+        try await verifyStepUp(path: "/api/auth/step-up/password", body: ["password": password])
+    }
+
+    func verifyStepUpTOTP(_ code: String) async throws {
+        try await verifyStepUp(path: "/api/auth/step-up/totp", body: ["code": code])
+    }
+
+    private func verifyStepUp(path: String, body: [String: String]) async throws {
+        LogManager.shared.log("POST \(path)")
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
         }
     }
 
@@ -1172,5 +1256,14 @@ class APIClient {
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+    }
+
+    private func apiMessage(from data: Data) -> String {
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = object["message"] as? String,
+           !message.isEmpty {
+            return message
+        }
+        return String(localized: "connection_failed")
     }
 }
