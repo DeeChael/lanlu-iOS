@@ -396,11 +396,13 @@ struct ReaderView: View {
         }
         .onChange(of: readingDirectionRaw) { _, _ in
             resetZoom(animated: false)
+            withAnimation(.easeOut(duration: 0.25)) {
+                progressValue = Double(currentIndex)
+            }
             withoutAnimation {
                 dragOffset = 0
                 isDragging = false
                 isPageAnimating = false
-                progressValue = Double(currentIndex)
             }
 
             if readingDirection == .vertical {
@@ -460,7 +462,6 @@ struct ReaderView: View {
             }
             .coordinateSpace(name: "reader_vertical_scroll")
             .scrollIndicators(.hidden)
-            .background(Color.black)
             .onTapGesture {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showControls.toggle()
@@ -526,7 +527,6 @@ struct ReaderView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: width, height: height)
-                    .background(Color.black)
             } else if failedPages.contains(index) {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
@@ -536,7 +536,6 @@ struct ReaderView: View {
                         .font(.subheadline)
                 }
                 .frame(width: width, height: height)
-                .background(Color.black)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     failedPages.remove(index)
@@ -551,9 +550,6 @@ struct ReaderView: View {
                         .monospacedDigit()
                 }
                 .frame(width: width, height: height)
-                .foregroundStyle(.white)
-                .tint(.white)
-                .background(Color.black)
                 .task(id: path) {
                     loadPage(index)
                 }
@@ -573,8 +569,6 @@ struct ReaderView: View {
                 }
             }
             .frame(width: width, height: height)
-            .foregroundStyle(.white)
-            .background(Color.black)
         }
     }
 
@@ -628,10 +622,12 @@ struct ReaderView: View {
               nearestPage != currentIndex else {
             return
         }
-
+        
+        withAnimation(.easeOut(duration: 0.25)) {
+            progressValue = Double(nearestPage)
+        }
         withoutAnimation {
             currentIndex = nearestPage
-            progressValue = Double(nearestPage)
         }
     }
 
@@ -790,30 +786,48 @@ struct ReaderView: View {
     @ViewBuilder
     fileprivate func pageStrip(size: CGSize) -> some View {
         HStack(spacing: 0) {
-            if currentIndex > 0 {
-                pageView(for: currentIndex - 1, size: size)
-                    .frame(width: size.width, height: size.height)
+            if readingDirection == .rightToLeft {
+                // 右到左时，高页码位于当前页左侧，低页码位于右侧。
+                if currentIndex < maxIndex {
+                    pageView(for: currentIndex + 1, size: size)
+                        .frame(width: size.width, height: size.height)
+                } else {
+                    Color.black
+                        .frame(width: size.width, height: size.height)
+                }
             } else {
-                Color.black
-                    .frame(width: size.width, height: size.height)
+                if currentIndex > 0 {
+                    pageView(for: currentIndex - 1, size: size)
+                        .frame(width: size.width, height: size.height)
+                } else {
+                    Color.black
+                        .frame(width: size.width, height: size.height)
+                }
             }
 
             pageView(for: currentIndex, size: size)
                 .frame(width: size.width, height: size.height)
 
-            if currentIndex < maxIndex {
-                pageView(for: currentIndex + 1, size: size)
-                    .frame(width: size.width, height: size.height)
+            if readingDirection == .rightToLeft {
+                if currentIndex > 0 {
+                    pageView(for: currentIndex - 1, size: size)
+                        .frame(width: size.width, height: size.height)
+                } else {
+                    Color.black
+                        .frame(width: size.width, height: size.height)
+                }
             } else {
-                Color.black
-                    .frame(width: size.width, height: size.height)
+                if currentIndex < maxIndex {
+                    pageView(for: currentIndex + 1, size: size)
+                        .frame(width: size.width, height: size.height)
+                } else {
+                    Color.black
+                        .frame(width: size.width, height: size.height)
+                }
             }
         }
-        .offset(
-            x: readingDirection == .rightToLeft
-                ? size.width - dragOffset
-                : -size.width + dragOffset
-        )
+        // 无论阅读方向如何，当前页都始终位于三页容器的中间。
+        .offset(x: -size.width + dragOffset)
     }
 
     fileprivate func interactionOverlay(pageWidth: CGFloat) -> some View {
@@ -907,9 +921,18 @@ struct ReaderView: View {
         } else {
             isDragging = true
             let translation = value.translation.width
-            let needsDamping =
-                (currentIndex == 0 && translation > 0) ||
-                (currentIndex == maxIndex && translation < 0)
+            let needsDamping: Bool
+
+            if readingDirection == .rightToLeft {
+                // 右滑进入更高页码；左滑进入更低页码。
+                needsDamping =
+                    (currentIndex == maxIndex && translation > 0) ||
+                    (currentIndex == 0 && translation < 0)
+            } else {
+                needsDamping =
+                    (currentIndex == 0 && translation > 0) ||
+                    (currentIndex == maxIndex && translation < 0)
+            }
 
             withoutAnimation {
                 dragOffset = needsDamping ? translation * 0.2 : translation
@@ -1278,34 +1301,65 @@ struct ReaderView: View {
     }
 
     fileprivate func animatePageChange(to targetIndex: Int, pageWidth w: CGFloat) {
-        guard w > 0, targetIndex >= 0, targetIndex <= maxIndex, targetIndex != currentIndex, !isPageAnimating else { return }
-        let targetOffset: CGFloat = targetIndex < currentIndex ? w : -w
-        isPageAnimating = true; isDragging = true
+        guard w > 0,
+              targetIndex >= 0,
+              targetIndex <= maxIndex,
+              targetIndex != currentIndex,
+              !isPageAnimating else { return }
+
+        let movesToHigherIndex = targetIndex > currentIndex
+        let targetOffset: CGFloat
+
+        if readingDirection == .rightToLeft {
+            // 右到左：更高页码在左侧，因此容器向右移动。
+            targetOffset = movesToHigherIndex ? w : -w
+        } else {
+            targetOffset = movesToHigherIndex ? -w : w
+        }
+
+        isPageAnimating = true
+        isDragging = true
         withAnimation(.easeOut(duration: 0.25), completionCriteria: .logicallyComplete) {
             dragOffset = targetOffset
             progressValue = Double(targetIndex)
         } completion: {
-            withoutAnimation { currentIndex = targetIndex; dragOffset = 0 }
-            isDragging = false; isPageAnimating = false
+            withoutAnimation {
+                currentIndex = targetIndex
+                dragOffset = 0
+            }
+            isDragging = false
+            isPageAnimating = false
         }
     }
 
     fileprivate func finishPageDrag(_ value: DragGesture.Value, pageWidth w: CGFloat) {
-        let t = value.translation.width
-        let pred = value.predictedEndLocation.x - value.location.x
-        let previous = readingDirection == .rightToLeft
+        let translation = value.translation.width
+        let predictedTranslation =
+            value.predictedEndLocation.x - value.location.x
+        let swipedRight =
+            translation > w * 0.25 || predictedTranslation > 100
+        let swipedLeft =
+            translation < -w * 0.25 || predictedTranslation < -100
+
+        let rightSwipeTarget = readingDirection == .rightToLeft
             ? currentIndex + 1
             : currentIndex - 1
-        let next = readingDirection == .rightToLeft
+        let leftSwipeTarget = readingDirection == .rightToLeft
             ? currentIndex - 1
             : currentIndex + 1
 
-        if (t > w * 0.25 || pred > 100), previous >= 0 {
-            animatePageChange(to: previous, pageWidth: w)
-        } else if (t < -w * 0.25 || pred < -100), next <= maxIndex {
-            animatePageChange(to: next, pageWidth: w)
+        if swipedRight,
+           rightSwipeTarget >= 0,
+           rightSwipeTarget <= maxIndex {
+            animatePageChange(to: rightSwipeTarget, pageWidth: w)
+        } else if swipedLeft,
+                  leftSwipeTarget >= 0,
+                  leftSwipeTarget <= maxIndex {
+            animatePageChange(to: leftSwipeTarget, pageWidth: w)
         } else {
-            withAnimation(.easeOut(duration: 0.2)) { dragOffset = 0 }
+            withAnimation(.easeOut(duration: 0.2)) {
+                dragOffset = 0
+            }
             isDragging = false
         }
     }
@@ -1631,9 +1685,11 @@ extension ReaderView {
         guard index >= 0, index <= maxIndex else { return }
 
         isProgrammaticVerticalScroll = true
+        withAnimation(.easeOut(duration: 0.25)) {
+            progressValue = Double(index)
+        }
         withoutAnimation {
             currentIndex = index
-            progressValue = Double(index)
         }
         preloadVerticalPages(around: index)
         verticalScrollRequest = ReaderVerticalScrollRequest(
