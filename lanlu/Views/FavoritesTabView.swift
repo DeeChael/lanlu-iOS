@@ -52,7 +52,6 @@ struct FavoritesTabView: View {
                     items.append(item)
                 }
             }
-            items.sort { ($0.favoritetime ?? 0) > ($1.favoritetime ?? 0) }
             print("[Favorites] checkForUpdates: total=\(items.count)")
         }
         isLoading = false
