@@ -78,6 +78,7 @@
 "ss_scheduled_tasks" = "定时任务";
 "ss_plugin_management" = "插件管理";
 "ss_statistics" = "统计信息";
+"server_setting_detail_placeholder" = "在这里调整这项服务端设置。";
 "badge_admin" = "管理员";
 "tab_search" = "搜索";
 "search_prompt" = "搜索档案…";

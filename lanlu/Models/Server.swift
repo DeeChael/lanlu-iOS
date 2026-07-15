@@ -11,6 +11,7 @@ final class Server {
     var createdAt: Date
     var cachedUsername: String?
     var cachedAvatarAssetId: Int?
+    var cachedIsAdmin: Bool?
 
     init(name: String, baseURL: String, authMethod: String, authData: String? = nil) {
         self.name = name

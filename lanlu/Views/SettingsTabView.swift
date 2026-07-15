@@ -231,126 +231,18 @@ struct SettingsTabView: View {
             }
 
             Section(String(localized: "server_settings")) {
-                Button {} label: {
-                    HStack {
-                        Label(String(localized: "ss_account_security"), systemImage: "shield.fill")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                serverSettingLink(.accountSecurity)
 
                 if user?.isAdmin == true {
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_category"), systemImage: "folder.fill")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_tags"), systemImage: "tag.fill")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_smart_filters"), systemImage: "line.3.horizontal.decrease")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_user_management"), systemImage: "person.2.fill")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_system_settings"), systemImage: "server.rack")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_background_tasks"), systemImage: "calendar.badge.clock")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_scheduled_tasks"), systemImage: "clock.fill")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_plugin_management"), systemImage: "puzzlepiece.fill")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {} label: {
-                        HStack {
-                            Label(String(localized: "ss_statistics"), systemImage: "chart.bar.fill")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    serverSettingLink(.category)
+                    serverSettingLink(.tags)
+                    serverSettingLink(.smartFilters)
+                    serverSettingLink(.userManagement)
+                    serverSettingLink(.systemSettings)
+                    serverSettingLink(.backgroundTasks)
+                    serverSettingLink(.scheduledTasks)
+                    serverSettingLink(.pluginManagement)
+                    serverSettingLink(.statistics)
                 }
             }
         }
@@ -381,6 +273,14 @@ struct SettingsTabView: View {
         }
     }
 
+    private func serverSettingLink(_ setting: ServerSetting) -> some View {
+        NavigationLink {
+            ServerSettingDetailView(server: server, setting: setting)
+        } label: {
+            Label(setting.title, systemImage: setting.systemImage)
+        }
+    }
+
     private func clearCache() {
         URLCache.shared.removeAllCachedResponses()
         CacheManager.shared.clearAll()
@@ -389,7 +289,12 @@ struct SettingsTabView: View {
 
     private func loadUserInfo() async {
         if let cached = server.cachedUsername {
-            user = UserData(id: 0, username: cached, isAdmin: false, avatarAssetId: server.cachedAvatarAssetId)
+            user = UserData(
+                id: 0,
+                username: cached,
+                isAdmin: server.cachedIsAdmin ?? false,
+                avatarAssetId: server.cachedAvatarAssetId
+            )
             if let assetId = server.cachedAvatarAssetId {
                 avatarData = try? await loadAvatar(assetId: assetId)
             }
@@ -401,6 +306,7 @@ struct SettingsTabView: View {
             user = userData
             server.cachedUsername = userData.username
             server.cachedAvatarAssetId = userData.avatarAssetId
+            server.cachedIsAdmin = userData.isAdmin
             try? modelContext.save()
 
             if let assetId = userData.avatarAssetId {

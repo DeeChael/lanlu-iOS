@@ -78,6 +78,7 @@
 "ss_scheduled_tasks" = "Scheduled Tasks";
 "ss_plugin_management" = "Plugin Management";
 "ss_statistics" = "Statistics";
+"server_setting_detail_placeholder" = "Adjust this server setting here.";
 "badge_admin" = "Admin";
 "tab_search" = "Search";
 "search_prompt" = "Search archives…";
