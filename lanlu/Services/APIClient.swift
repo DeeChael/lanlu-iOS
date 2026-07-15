@@ -134,6 +134,22 @@ private struct PasskeyCredentialsData: Decodable {
     let credentials: [PasskeyCredential]
 }
 
+struct LoginSession: Decodable, Identifiable {
+    let id: Int
+    let name: String
+    let prefix: String
+    let createdAt: String
+    let lastUsedAt: String
+    let current: Bool
+    let lastUsedIp: String
+    let userAgent: String
+    let expiresAt: String
+}
+
+private struct LoginSessionsData: Decodable {
+    let sessions: [LoginSession]
+}
+
 enum PasswordChangeResult {
     case changed
     case requiresStepUp
@@ -608,6 +624,52 @@ class APIClient {
         let url = try makeURL("/api/auth/webauthn/credentials/\(id)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
+    func fetchLoginSessions() async throws -> [LoginSession] {
+        LogManager.shared.log("GET /api/auth/sessions")
+        let url = try makeURL("/api/auth/sessions")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+
+        let envelope = try JSONDecoder().decode(ApiEnvelope<LoginSessionsData>.self, from: data)
+        guard let sessions = envelope.data?.sessions else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return sessions
+    }
+
+    func revokeOtherLoginSessions() async throws {
+        try await performSessionRevocation(path: "/api/auth/sessions/revoke-others", method: "POST")
+    }
+
+    func revokeLoginSession(id: Int) async throws {
+        try await performSessionRevocation(path: "/api/auth/sessions/\(id)", method: "DELETE")
+    }
+
+    private func performSessionRevocation(path: String, method: String) async throws {
+        LogManager.shared.log("\(method) \(path)")
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
         applyAuthHeader(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)

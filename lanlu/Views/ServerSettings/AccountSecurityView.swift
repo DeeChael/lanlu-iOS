@@ -19,6 +19,13 @@ struct AccountSecurityView: View {
     @State private var hasLoadedPasskeys = false
     @State private var passkeyError: String?
     @State private var deletingPasskeyIds: Set<Int> = []
+    @State private var loginSessions: [LoginSession] = []
+    @State private var isRefreshingLoginSessions = false
+    @State private var hasLoadedLoginSessions = false
+    @State private var loginSessionError: String?
+    @State private var showRevokeOthersAlert = false
+    @State private var sessionPendingRevocation: LoginSession?
+    @State private var isRevokingLoginSession = false
 
     var body: some View {
         List {
@@ -126,6 +133,57 @@ struct AccountSecurityView: View {
                     .disabled(isRefreshingPasskeys)
                 }
             }
+
+            Section {
+                Button(role: .destructive) {
+                    showRevokeOthersAlert = true
+                } label: {
+                    Label(String(localized: "sign_out_other_devices"), systemImage: "ipad.landscape.and.iphone.slash")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .disabled(isRevokingLoginSession)
+                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+
+                if !hasLoadedLoginSessions && isRefreshingLoginSessions {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                }
+
+                ForEach(loginSessions) { session in
+                    loginSessionRow(session)
+                        .swipeActions(edge: .trailing) {
+                            if !session.current {
+                                Button(role: .destructive) {
+                                    sessionPendingRevocation = session
+                                } label: {
+                                    Label(String(localized: "revoke_login"), systemImage: "iphone.slash")
+                                }
+                                .disabled(isRevokingLoginSession)
+                            }
+                        }
+                }
+
+                if let loginSessionError {
+                    Text(loginSessionError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                HStack {
+                    Text(String(localized: "login_device_management"))
+                    Spacer()
+                    Button {
+                        Task { await loadLoginSessions() }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshingLoginSessions)
+                }
+            }
         }
         .alert(String(localized: "change_username"), isPresented: $showUsernamePrompt) {
             TextField(String(localized: "new_username"), text: $username)
@@ -143,6 +201,31 @@ struct AccountSecurityView: View {
         } message: {
             Text(errorMessage ?? String(localized: "connection_failed"))
         }
+        .alert(String(localized: "sign_out_other_devices"), isPresented: $showRevokeOthersAlert) {
+            Button(String(localized: "cancel"), role: .cancel) {}
+            Button(String(localized: "confirm_action"), role: .destructive) {
+                Task { await revokeOtherLoginSessions() }
+            }
+        } message: {
+            Text(String(localized: "sign_out_other_devices_confirm"))
+        }
+        .alert(
+            String(localized: "revoke_login"),
+            isPresented: Binding(
+                get: { sessionPendingRevocation != nil },
+                set: { if !$0 { sessionPendingRevocation = nil } }
+            )
+        ) {
+            Button(String(localized: "cancel"), role: .cancel) {
+                sessionPendingRevocation = nil
+            }
+            Button(String(localized: "confirm_action"), role: .destructive) {
+                guard let session = sessionPendingRevocation else { return }
+                Task { await revokeLoginSession(session) }
+            }
+        } message: {
+            Text(String(localized: "revoke_login_confirm"))
+        }
         .sheet(isPresented: $showPasswordSheet) {
             PasswordChangeSheet(server: server)
                 .presentationDetents([.large])
@@ -150,7 +233,8 @@ struct AccountSecurityView: View {
         .task {
             async let totp: Void = loadTOTPStatus()
             async let passkeys: Void = loadPasskeys()
-            _ = await (totp, passkeys)
+            async let sessions: Void = loadLoginSessions()
+            _ = await (totp, passkeys, sessions)
         }
     }
 
@@ -181,6 +265,46 @@ struct AccountSecurityView: View {
                 .foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
+    }
+
+    private func loginSessionRow(_ session: LoginSession) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(session.name.isEmpty ? String(localized: "unnamed_device") : session.name)
+                        .fontWeight(.medium)
+                    Text(session.prefix)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay {
+                            Capsule().stroke(.secondary, lineWidth: 1)
+                        }
+                }
+
+                Text(String(format: String(localized: "last_active_format"), relativeSessionDate(session.lastUsedAt)))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(String(format: String(localized: "ip_format"), session.lastUsedIp))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if session.current {
+                Text("current_device")
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .overlay {
+                        Capsule().stroke(Color.accentColor, lineWidth: 1)
+                    }
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private func changeUsername() async {
@@ -237,6 +361,97 @@ struct AccountSecurityView: View {
             passkeyError = error.localizedDescription
         }
         deletingPasskeyIds.remove(credential.id)
+    }
+
+    private func loadLoginSessions() async {
+        guard !isRefreshingLoginSessions else { return }
+        isRefreshingLoginSessions = true
+        loginSessionError = nil
+        do {
+            let refreshedSessions = try await server.apiClient.fetchLoginSessions()
+            loginSessions = refreshedSessions
+            hasLoadedLoginSessions = true
+        } catch {
+            loginSessionError = error.localizedDescription
+        }
+        isRefreshingLoginSessions = false
+    }
+
+    private func revokeOtherLoginSessions() async {
+        guard !isRevokingLoginSession else { return }
+        isRevokingLoginSession = true
+        loginSessionError = nil
+        do {
+            try await server.apiClient.revokeOtherLoginSessions()
+            loginSessions.removeAll { !$0.current }
+        } catch {
+            loginSessionError = error.localizedDescription
+        }
+        isRevokingLoginSession = false
+    }
+
+    private func revokeLoginSession(_ session: LoginSession) async {
+        guard !isRevokingLoginSession else { return }
+        sessionPendingRevocation = nil
+        isRevokingLoginSession = true
+        loginSessionError = nil
+        do {
+            try await server.apiClient.revokeLoginSession(id: session.id)
+            loginSessions.removeAll { $0.id == session.id }
+        } catch {
+            loginSessionError = error.localizedDescription
+        }
+        isRevokingLoginSession = false
+    }
+
+    private func relativeSessionDate(_ value: String) -> String {
+        guard let date = sessionDate(from: value) else { return value }
+
+        let now = Date()
+        let interval = max(0, now.timeIntervalSince(date))
+        let calendar = Calendar.current
+
+        if interval < 60 {
+            return String(localized: "just_now")
+        }
+        if interval < 60 * 60 {
+            return String(format: String(localized: "minutes_ago"), Int(interval / 60))
+        }
+        if calendar.isDateInToday(date) {
+            return String(format: String(localized: "hours_ago"), max(1, Int(interval / 3600)))
+        }
+        if calendar.isDateInYesterday(date) {
+            return String(localized: "yesterday")
+        }
+        if let daysAgo = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day,
+           daysAgo == 2 {
+            return String(localized: "day_before_yesterday")
+        }
+        if let daysAgo = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day,
+           daysAgo < 7 {
+            return String(format: String(localized: "days_ago"), daysAgo)
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate(
+            calendar.isDate(date, equalTo: now, toGranularity: .year) ? "Md" : "yMd"
+        )
+        return formatter.string(from: date)
+    }
+
+    private func sessionDate(from value: String) -> Date? {
+        let formats = ["yyyy-MM-dd HH:mm:ss.SSSSSS", "yyyy-MM-dd HH:mm:ss"]
+        for format in formats {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone.current
+            formatter.dateFormat = format
+            if let date = formatter.date(from: value) {
+                return date
+            }
+        }
+        return nil
     }
 }
 
