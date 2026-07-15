@@ -73,6 +73,10 @@
 "server_settings" = "Server Settings";
 "ss_account_security" = "Account Security";
 "ss_category" = "Categories";
+"create_category" = "Create Category";
+"category_archive_count" = "%d archives";
+"scan" = "Scan";
+"edit" = "Edit";
 "ss_tags" = "Tags";
 "ss_smart_filters" = "Smart Filters";
 "ss_user_management" = "User Management";

@@ -53,6 +53,8 @@ struct ServerSettingDetailView: View {
         Group {
             if setting == .accountSecurity {
                 AccountSecurityView(server: server)
+            } else if setting == .category {
+                CategoryManagementView(server: server)
             } else {
                 List {
                     Section {

@@ -73,6 +73,10 @@
 "server_settings" = "服務端設置";
 "ss_account_security" = "賬戶安全";
 "ss_category" = "分類";
+"create_category" = "創建分類";
+"category_archive_count" = "%d 個檔案";
+"scan" = "掃描";
+"edit" = "編輯";
 "ss_tags" = "標籤";
 "ss_smart_filters" = "智能篩選";
 "ss_user_management" = "用戶管理";

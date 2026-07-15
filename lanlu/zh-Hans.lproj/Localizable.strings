@@ -73,6 +73,10 @@
 "server_settings" = "服务端设置";
 "ss_account_security" = "账户安全";
 "ss_category" = "分类";
+"create_category" = "创建分类";
+"category_archive_count" = "%d 个档案";
+"scan" = "扫描";
+"edit" = "编辑";
 "ss_tags" = "标签";
 "ss_smart_filters" = "智能筛选";
 "ss_user_management" = "用户管理";
