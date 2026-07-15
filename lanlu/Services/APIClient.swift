@@ -756,7 +756,7 @@ class APIClient {
         let tags: [String]?
         let assets: [ArchiveMetadataAsset]?
         let pagecount: Int?
-        let progress: Int?
+        var progress: Int?
         let filename: String?
         let fileSize: Int?
         let archivetype: String?
@@ -1049,6 +1049,25 @@ class APIClient {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
         return d
+    }
+
+    func updateProgress(arcid: String, page: Int) async throws {
+        var urlString = baseURL
+        if !urlString.contains("://") { urlString = "https://" + urlString }
+        guard var components = URLComponents(string: urlString) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        components.path = (components.path.hasSuffix("/") ? "" : "/") + "api/archives/\(arcid)/progress/\(page)"
+        guard let url = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        applyAuthHeader(&request)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
     }
 
     // MARK: - Favorites

@@ -373,7 +373,7 @@ struct ReaderView: View {
                 preloadAdjacent()
             }
         }
-        .onDisappear { cancelAllTasks(); stopAudio() }
+        .onDisappear { cancelAllTasks(); stopAudio(); saveProgress() }
         .onChange(of: currentIndex) { _, newIndex in
             updateBottomToolbar(for: newIndex)
 
@@ -1815,6 +1815,19 @@ extension ReaderView {
             // 只发出取消信号，由任务自身统一清理状态，避免快速跳页时
             // 旧任务覆盖同一页的新任务状态。
             loadTasks[pageIndex]?.cancel()
+        }
+    }
+
+    fileprivate func saveProgress() {
+        let page = currentIndex + 1
+        Task { try? await server.apiClient.updateProgress(arcid: arcid, page: page) }
+        // Update cached metadata progress
+        if var data = CacheManager.shared.getArchiveMetadata(arcid: arcid),
+           var meta = try? JSONDecoder().decode(APIClient.ArchiveMetadata.self, from: data) {
+            meta.progress = page
+            if let encoded = try? JSONEncoder().encode(meta) {
+                CacheManager.shared.cacheArchiveMetadata(arcid: arcid, data: encoded)
+            }
         }
     }
 
