@@ -1470,6 +1470,21 @@ class APIClient {
 
     func fetchPageImage(arcid: String, path: String) async throws -> Data {
         LogManager.shared.log("[API] fetchPageImage arcid=\(arcid) path=\(path)")
+        let request = try pageRequest(arcid: arcid, path: path)
+        LogManager.shared.log("[API] fetchPageImage url=\(request.url?.absoluteString ?? "nil")")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            LogManager.shared.log("[API] fetchPageImage no HTTP response for \(request.url?.absoluteString ?? "nil")")
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        LogManager.shared.log("[API] fetchPageImage status=\(httpResponse.statusCode) size=\(data.count) for arcid=\(arcid) path=\(path)")
+        guard httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return data
+    }
+
+    func pageRequest(arcid: String, path: String) throws -> URLRequest {
         var urlString = baseURL
         if !urlString.contains("://") { urlString = "https://" + urlString }
         guard var components = URLComponents(string: urlString) else {
@@ -1482,20 +1497,10 @@ class APIClient {
             LogManager.shared.log("[API] fetchPageImage components failed for arcid=\(arcid) path=\(path)")
             throw AuthError.networkError(String(localized: "invalid_url"))
         }
-        LogManager.shared.log("[API] fetchPageImage url=\(url.absoluteString)")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyAuthHeader(&request)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            LogManager.shared.log("[API] fetchPageImage no HTTP response for \(url.absoluteString)")
-            throw AuthError.networkError(String(localized: "connection_failed"))
-        }
-        LogManager.shared.log("[API] fetchPageImage status=\(httpResponse.statusCode) size=\(data.count) for arcid=\(arcid) path=\(path)")
-        guard httpResponse.statusCode == 200 else {
-            throw AuthError.networkError(String(localized: "connection_failed"))
-        }
-        return data
+        return request
     }
 
     func fetchAsset(assetId: Int) async throws -> Data {

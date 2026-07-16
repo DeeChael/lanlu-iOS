@@ -105,6 +105,7 @@ struct ReaderView: View {
     @State fileprivate var videoTimeObserver: Any?
     @State fileprivate var videoEndObserver: NSObjectProtocol?
     @State fileprivate var videoLoadTask: Task<Void, Never>?
+    @State fileprivate var videoCacheTask: Task<Void, Never>?
     fileprivate var mediaToolbarIcon: String? {
         switch currentPageFileType {
         case .audio:
@@ -818,10 +819,15 @@ struct ReaderView: View {
         videoPlayerIndex = index
         videoLoadTask = Task {
             do {
-                let url = try await cachedMediaURL(path: path)
+                let source = try videoSource(path: path)
                 guard !Task.isCancelled, currentIndex == index else { return }
 
-                let asset = AVURLAsset(url: url)
+                let asset = AVURLAsset(
+                    url: source.url,
+                    options: source.headers.map {
+                        ["AVURLAssetHTTPHeaderFieldsKey": $0]
+                    }
+                )
                 let tracks = try await asset.loadTracks(withMediaType: .video)
                 var aspectRatio: CGFloat = 16 / 9
                 if let track = tracks.first {
@@ -846,6 +852,10 @@ struct ReaderView: View {
                         isVideoPlaying = true
                     }
                 }
+
+                if !source.isCached {
+                    cacheVideoInBackground(path: path, destination: source.cacheURL)
+                }
             } catch {
                 await MainActor.run {
                     if currentIndex == index {
@@ -857,7 +867,12 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func cachedMediaURL(path: String) async throws -> URL {
+    fileprivate func videoSource(path: String) throws -> (
+        url: URL,
+        headers: [String: String]?,
+        cacheURL: URL,
+        isCached: Bool
+    ) {
         let digest = SHA256.hash(data: Data("\(arcid)|\(path)".utf8))
             .map { String(format: "%02x", $0) }
             .joined()
@@ -865,12 +880,44 @@ struct ReaderView: View {
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("reader_media", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(digest).appendingPathExtension(ext)
-        if FileManager.default.fileExists(atPath: url.path) { return url }
+        let cacheURL = directory.appendingPathComponent(digest).appendingPathExtension(ext)
+        if FileManager.default.fileExists(atPath: cacheURL.path) {
+            return (cacheURL, nil, cacheURL, true)
+        }
 
-        let data = try await server.apiClient.fetchPageImage(arcid: arcid, path: path)
-        try data.write(to: url, options: .atomic)
-        return url
+        let request = try server.apiClient.pageRequest(arcid: arcid, path: path)
+        guard let url = request.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        let headers = request.allHTTPHeaderFields?.isEmpty == false
+            ? request.allHTTPHeaderFields
+            : nil
+        return (url, headers, cacheURL, false)
+    }
+
+    fileprivate func cacheVideoInBackground(path: String, destination: URL) {
+        videoCacheTask?.cancel()
+        videoCacheTask = Task {
+            do {
+                let request = try server.apiClient.pageRequest(arcid: arcid, path: path)
+                let (temporaryURL, response) = try await URLSession.shared.download(for: request)
+                guard !Task.isCancelled,
+                      let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else { return }
+
+                let stagedURL = destination.appendingPathExtension("download")
+                try? FileManager.default.removeItem(at: stagedURL)
+                try FileManager.default.moveItem(at: temporaryURL, to: stagedURL)
+                if FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.removeItem(at: destination)
+                }
+                try FileManager.default.moveItem(at: stagedURL, to: destination)
+            } catch {
+                if !Task.isCancelled {
+                    LogManager.shared.log("[Reader] video cache failed: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     fileprivate func installVideoObservers(on player: AVPlayer, item: AVPlayerItem) {
@@ -918,6 +965,8 @@ struct ReaderView: View {
     fileprivate func stopVideo() {
         videoLoadTask?.cancel()
         videoLoadTask = nil
+        videoCacheTask?.cancel()
+        videoCacheTask = nil
         videoPlayer?.pause()
         if let observer = videoTimeObserver, let videoPlayer {
             videoPlayer.removeTimeObserver(observer)
