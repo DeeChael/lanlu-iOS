@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct DetailTagView: View {
     let tags: [String]
@@ -676,7 +677,8 @@ struct ArchiveDetailView: View {
         let file = files[index]
         let path = file.defaultSource?.path ?? file.path ?? ""
         let ext = (path as NSString).pathExtension.lowercased()
-        let mediaExts = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff","mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
+        let videoExts = ["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
+        let mediaExts = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff"] + videoExts
 
         if mediaExts.contains(ext) {
             let thumbId = file.defaultSource?.metadata?.thumbAssetId ?? file.metadata?.thumbAssetId ?? 0
@@ -690,9 +692,14 @@ struct ArchiveDetailView: View {
                     let data = try await client.fetchAsset(assetId: thumbId)
                     CacheManager.shared.cacheCover(id: cacheKey, data: data)
                     previewImages[index] = data
+                    return
                 } catch {
                     LogManager.shared.log("[Preview] thumb fetch failed index=\(index): \(error.localizedDescription)")
                 }
+            }
+
+            if videoExts.contains(ext) {
+                await loadVideoPreview(index: index, arcid: arcid, path: path, client: client)
             }
             return
         }
@@ -717,6 +724,69 @@ struct ArchiveDetailView: View {
                 if attempt < 3 { try? await Task.sleep(nanoseconds: 500_000_000) }
             }
         }
+    }
+
+    private func loadVideoPreview(
+        index: Int,
+        arcid: String,
+        path: String,
+        client: APIClient
+    ) async {
+        let previewCacheKey = "video_preview_\(arcid)_\(path)"
+        if let cached = CacheManager.shared.getCover(id: previewCacheKey) {
+            previewImages[index] = cached
+            return
+        }
+
+        do {
+            let videoData = try await client.fetchPageImage(arcid: arcid, path: path)
+            guard !Task.isCancelled else { return }
+
+            let fileExtension = (path as NSString).pathExtension
+            let temporaryURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(fileExtension)
+            defer { try? FileManager.default.removeItem(at: temporaryURL) }
+            try videoData.write(to: temporaryURL, options: .atomic)
+
+            let asset = AVURLAsset(url: temporaryURL)
+            if let artwork = await videoArtwork(from: asset),
+               let data = artwork.jpegData(compressionQuality: 0.86) {
+                CacheManager.shared.cacheCover(id: previewCacheKey, data: data)
+                previewImages[index] = data
+                return
+            }
+
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 1, preferredTimescale: 600)
+
+            let image = try await generator.image(at: .zero).image
+            let preview = UIImage(cgImage: image)
+            guard let data = preview.jpegData(compressionQuality: 0.86) else { return }
+            CacheManager.shared.cacheCover(id: previewCacheKey, data: data)
+            previewImages[index] = data
+        } catch {
+            LogManager.shared.log("[Preview] video frame failed index=\(index): \(error.localizedDescription)")
+        }
+    }
+
+    private func videoArtwork(from asset: AVAsset) async -> UIImage? {
+        guard let metadata = try? await asset.load(.commonMetadata) else { return nil }
+
+        for item in metadata where item.commonKey == .commonKeyArtwork {
+            if let data = try? await item.load(.dataValue),
+               let image = UIImage(data: data) {
+                return image
+            }
+            if let value = try? await item.load(.value),
+               let data = value as? Data,
+               let image = UIImage(data: data) {
+                return image
+            }
+        }
+        return nil
     }
 }
 
@@ -867,4 +937,3 @@ struct ArchivePreviewCell: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
-
