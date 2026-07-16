@@ -1349,6 +1349,10 @@ class APIClient {
         }
     }
 
+    private struct SmartFilterReorderRequest: Encodable {
+        let orders: [SmartFilterOrderItem]
+    }
+
     func fetchAdminSmartFilters() async throws -> [SmartFilterItem] {
         LogManager.shared.log("GET /api/admin/smart_filters")
         let url = try makeURL("/api/admin/smart_filters")
@@ -1371,7 +1375,9 @@ class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(items)
+        request.httpBody = try JSONEncoder().encode(
+            SmartFilterReorderRequest(orders: items)
+        )
         applyAuthHeader(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)

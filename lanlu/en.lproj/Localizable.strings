@@ -251,6 +251,7 @@
 "smart_filter_sort_unknown" = "Unknown";
 "smart_filter_new_only" = "Latest Only";
 "smart_filter_untagged_only" = "Untagged Only";
+"smart_filter_edit_order" = "Edit Order";
 "detail_archived_in" = "Part of";
 "no_archived_in" = "Not part of any collection";
 "detail_no_description" = "No description";

@@ -1,20 +1,25 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct SmartFilterManagementView: View {
     let server: Server
 
     @State private var filters: [APIClient.SmartFilterItem] = []
     @State private var enabledStates: [Int: Bool] = [:]
-    @State private var originalOrder: [Int] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showAddFilter = false
-    @State private var didSubmitOrder = false
-    @State private var draggedFilterID: Int?
+    @State private var lastSubmittedOrder: [Int] = []
+    @State private var isEditingOrder = false
 
     var body: some View {
         List {
+            Section {
+                Toggle(
+                    String(localized: "smart_filter_edit_order"),
+                    isOn: $isEditingOrder
+                )
+            }
+
             if isLoading && filters.isEmpty {
                 HStack {
                     Spacer()
@@ -42,18 +47,9 @@ struct SmartFilterManagementView: View {
                     }
                     .tint(.accentColor)
                 }
-                .onDrag {
-                    draggedFilterID = filter.id
-                    return NSItemProvider(object: String(filter.id) as NSString)
-                }
-                .onDrop(
-                    of: [UTType.text],
-                    delegate: SmartFilterDropDelegate(
-                        destinationID: filter.id,
-                        filters: $filters,
-                        draggedFilterID: $draggedFilterID
-                    )
-                )
+            }
+            .onMove { source, destination in
+                filters.move(fromOffsets: source, toOffset: destination)
             }
 
             if let errorMessage, filters.isEmpty {
@@ -62,6 +58,10 @@ struct SmartFilterManagementView: View {
                     .foregroundStyle(.red)
             }
         }
+        .environment(
+            \.editMode,
+            .constant(isEditingOrder ? .active : .inactive)
+        )
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -79,8 +79,13 @@ struct SmartFilterManagementView: View {
         .task {
             await loadFilters()
         }
+        .onChange(of: isEditingOrder) { wasEditing, isEditing in
+            if wasEditing && !isEditing {
+                submitCurrentOrderIfNeeded()
+            }
+        }
         .onDisappear {
-            submitOrderIfNeeded()
+            submitCurrentOrderIfNeeded()
         }
     }
 
@@ -94,14 +99,13 @@ struct SmartFilterManagementView: View {
     private func loadFilters() async {
         isLoading = true
         errorMessage = nil
-        didSubmitOrder = false
         do {
             let loaded = try await server.apiClient.fetchAdminSmartFilters()
                 .sorted {
                     ($0.sortOrderNumber ?? Int.max) < ($1.sortOrderNumber ?? Int.max)
                 }
             filters = loaded
-            originalOrder = loaded.map(\.id)
+            lastSubmittedOrder = loaded.map(\.id)
             enabledStates = Dictionary(
                 uniqueKeysWithValues: loaded.map { ($0.id, $0.enabled ?? false) }
             )
@@ -113,13 +117,13 @@ struct SmartFilterManagementView: View {
         isLoading = false
     }
 
-    private func submitOrderIfNeeded() {
+    private func submitCurrentOrderIfNeeded() {
         let currentOrder = filters.map(\.id)
-        guard !didSubmitOrder,
-              !originalOrder.isEmpty,
-              currentOrder != originalOrder else { return }
+        guard !currentOrder.isEmpty,
+              currentOrder != lastSubmittedOrder else { return }
 
-        didSubmitOrder = true
+        let previousSubmittedOrder = lastSubmittedOrder
+        lastSubmittedOrder = currentOrder
         let payload = currentOrder.enumerated().map { index, id in
             APIClient.SmartFilterOrderItem(id: id, sortOrderNumber: index)
         }
@@ -128,42 +132,12 @@ struct SmartFilterManagementView: View {
                 try await server.apiClient.reorderAdminSmartFilters(payload)
                 LogManager.shared.log("[SmartFilters] Reorder completed")
             } catch {
+                if lastSubmittedOrder == currentOrder {
+                    lastSubmittedOrder = previousSubmittedOrder
+                }
                 LogManager.shared.log("[SmartFilters] Reorder failed: \(error.localizedDescription)")
             }
         }
-    }
-}
-
-private struct SmartFilterDropDelegate: DropDelegate {
-    let destinationID: Int
-    @Binding var filters: [APIClient.SmartFilterItem]
-    @Binding var draggedFilterID: Int?
-
-    func dropEntered(info: DropInfo) {
-        guard let draggedFilterID,
-              draggedFilterID != destinationID,
-              let sourceIndex = filters.firstIndex(where: { $0.id == draggedFilterID }),
-              let destinationIndex = filters.firstIndex(where: { $0.id == destinationID }) else {
-            return
-        }
-
-        withAnimation(.easeInOut(duration: 0.18)) {
-            filters.move(
-                fromOffsets: IndexSet(integer: sourceIndex),
-                toOffset: destinationIndex > sourceIndex
-                    ? destinationIndex + 1
-                    : destinationIndex
-            )
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggedFilterID = nil
-        return true
     }
 }
 

@@ -251,6 +251,7 @@
 "smart_filter_sort_unknown" = "未知";
 "smart_filter_new_only" = "仅最新";
 "smart_filter_untagged_only" = "仅无标签";
+"smart_filter_edit_order" = "编辑排序";
 "detail_archived_in" = "所属合集";
 "no_archived_in" = "无所属合集";
 "detail_no_description" = "没有简介";
