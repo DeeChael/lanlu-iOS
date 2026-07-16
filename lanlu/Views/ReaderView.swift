@@ -274,6 +274,41 @@ struct ReaderView: View {
                                 )
                                 .font(.caption)
                                 .monospacedDigit()
+                            } else if (currentPageFileType == .video) {
+                                Button {
+                                    // 切换视频播放状态
+                                } label: {
+                                    // 下面的 isAudioPlaying 应该换成 isVideoPlayer
+                                    Image(systemName: isAudioPlaying ? "pause.fill" : "play.fill")
+                                        .font(.title2)
+                                        .frame(width: 36)
+                                }
+
+                                Slider(
+                                    // 下面的 $audioCurrentTime 应该换成 $videoCurrentTime
+                                    value: $audioCurrentTime,
+                                    // 下面的 $audioDuration 应该换成 $videoDuration
+                                    in: 0...max(audioDuration, 1)
+                                ) { editing in
+                                    // 应该再松手后再调整进度，防止卡死播放器
+                                }
+                                .frame(maxWidth: .infinity)
+
+                                Text(
+                                    timeString(audioCurrentTime) // 应该换成 videoCurrentTime
+                                    + " / "
+                                    + timeString(audioDuration) // 应该换成 videoDuration
+                                )
+                                .font(.caption)
+                                .monospacedDigit()
+                                
+                                Button {
+                                    // 点击全屏
+                                } label: {
+                                    Image(systemName: "square.arrowtriangle.4.outward")
+                                        .font(.title2)
+                                        .frame(width: 36)
+                                }
                             }
                         }
                         .transition(
