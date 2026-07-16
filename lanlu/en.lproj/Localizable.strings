@@ -230,6 +230,7 @@
 "reader_dir_vertical" = "Vertical";
 "reader_settings_playback" = "Playback";
 "reader_settings_audio_autoplay" = "Auto-Play Audio";
+"reader_settings_video_autoplay" = "Auto-Play Video";
 "reader_settings_gesture" = "Gesture";
 "reader_settings_double_tap" = "Double Tap to Zoom";
 "reader_settings_tap_turn" = "Tap Sides to Turn Page";

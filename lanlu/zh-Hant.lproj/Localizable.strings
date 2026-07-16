@@ -230,6 +230,7 @@
 "reader_dir_vertical" = "條漫";
 "reader_settings_playback" = "播放";
 "reader_settings_audio_autoplay" = "音頻自動播放";
+"reader_settings_video_autoplay" = "視頻自動播放";
 "reader_settings_gesture" = "手勢";
 "reader_settings_double_tap" = "雙擊放大";
 "reader_settings_tap_turn" = "點擊兩側翻頁";

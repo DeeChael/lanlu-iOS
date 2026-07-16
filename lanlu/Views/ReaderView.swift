@@ -1,6 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AVFoundation
+import AVKit
+import CryptoKit
 import ImageIO
 
 extension Notification.Name {
@@ -93,6 +95,16 @@ struct ReaderView: View {
     @State fileprivate var audioTitle: String?
     @State fileprivate var audioArtist: String?
     @State fileprivate var audioAlbum: String?
+    @State fileprivate var videoPlayer: AVPlayer?
+    @State fileprivate var videoPlayerIndex: Int?
+    @State fileprivate var videoCurrentTime: Double = 0
+    @State fileprivate var videoDuration: Double = 0
+    @State fileprivate var isVideoPlaying = false
+    @State fileprivate var isVideoLoading = false
+    @State fileprivate var videoAspectRatio: CGFloat = 16 / 9
+    @State fileprivate var videoTimeObserver: Any?
+    @State fileprivate var videoEndObserver: NSObjectProtocol?
+    @State fileprivate var videoLoadTask: Task<Void, Never>?
     fileprivate var mediaToolbarIcon: String? {
         switch currentPageFileType {
         case .audio:
@@ -111,6 +123,7 @@ struct ReaderView: View {
     @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
     @AppStorage("reader_tap_turn_page") fileprivate var tapTurnPage = true
     @AppStorage("reader_audio_autoplay") fileprivate var audioAutoplay = false
+    @AppStorage("reader_video_autoplay") fileprivate var videoAutoplay = false
     @AppStorage("reader_reading_direction") fileprivate var readingDirectionRaw = ReaderReadingDirection.leftToRight.rawValue
 
     fileprivate var readingDirection: ReaderReadingDirection {
@@ -256,6 +269,7 @@ struct ReaderView: View {
                                         .font(.title2)
                                         .frame(width: 36)
                                 }
+                                .disabled(audioPlayer == nil)
 
                                 Slider(
                                     value: $audioCurrentTime,
@@ -266,6 +280,7 @@ struct ReaderView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
+                                .disabled(audioPlayer == nil)
 
                                 Text(
                                     timeString(audioCurrentTime)
@@ -276,39 +291,32 @@ struct ReaderView: View {
                                 .monospacedDigit()
                             } else if (currentPageFileType == .video) {
                                 Button {
-                                    // 切换视频播放状态
+                                    toggleVideoPlayback()
                                 } label: {
-                                    // 下面的 isAudioPlaying 应该换成 isVideoPlayer
-                                    Image(systemName: isAudioPlaying ? "pause.fill" : "play.fill")
+                                    Image(systemName: isVideoPlaying ? "pause.fill" : "play.fill")
                                         .font(.title2)
                                         .frame(width: 36)
                                 }
+                                .disabled(videoPlayer == nil)
 
                                 Slider(
-                                    // 下面的 $audioCurrentTime 应该换成 $videoCurrentTime
-                                    value: $audioCurrentTime,
-                                    // 下面的 $audioDuration 应该换成 $videoDuration
-                                    in: 0...max(audioDuration, 1)
+                                    value: $videoCurrentTime,
+                                    in: 0...max(videoDuration, 1)
                                 ) { editing in
-                                    // 应该再松手后再调整进度，防止卡死播放器
+                                    if !editing {
+                                        seekVideo(to: videoCurrentTime)
+                                    }
                                 }
                                 .frame(maxWidth: .infinity)
+                                .disabled(videoPlayer == nil)
 
                                 Text(
-                                    timeString(audioCurrentTime) // 应该换成 videoCurrentTime
+                                    timeString(videoCurrentTime)
                                     + " / "
-                                    + timeString(audioDuration) // 应该换成 videoDuration
+                                    + timeString(videoDuration)
                                 )
                                 .font(.caption)
                                 .monospacedDigit()
-                                
-                                Button {
-                                    // 点击全屏
-                                } label: {
-                                    Image(systemName: "square.arrowtriangle.4.outward")
-                                        .font(.title2)
-                                        .frame(width: 36)
-                                }
                             }
                         }
                         .transition(
@@ -361,6 +369,7 @@ struct ReaderView: View {
                 doubleTapZoom: $doubleTapZoom,
                 tapTurnPage: $tapTurnPage,
                 audioAutoplay: $audioAutoplay,
+                videoAutoplay: $videoAutoplay,
                 readingDirection: $readingDirectionRaw
             )
                 .presentationDetents([.large])
@@ -403,6 +412,8 @@ struct ReaderView: View {
             if currentPageFileType == .audio {
                 prepareAudio()
                 if audioAutoplay { startAudio() }
+            } else if currentPageFileType == .video {
+                prepareVideo(at: currentIndex, autoplay: videoAutoplay)
             }
 
             if readingDirection == .vertical {
@@ -412,7 +423,7 @@ struct ReaderView: View {
                 preloadAdjacent()
             }
         }
-        .onDisappear { cancelAllTasks(); stopAudio(); saveProgress() }
+        .onDisappear { cancelAllTasks(); stopAudio(); stopVideo(); saveProgress() }
         .onChange(of: currentIndex) { _, newIndex in
             updateBottomToolbar(for: newIndex)
 
@@ -421,9 +432,12 @@ struct ReaderView: View {
             audioArtist = nil
             audioAlbum = nil
             stopAudio()
+            stopVideo()
             if fileType(at: newIndex) == .audio {
                 prepareAudio()
                 if audioAutoplay { startAudio() }
+            } else if fileType(at: newIndex) == .video {
+                prepareVideo(at: newIndex, autoplay: videoAutoplay)
             }
             resetZoom(animated: false)
 
@@ -784,6 +798,141 @@ struct ReaderView: View {
         isAudioPlaying = false
         audioTimer?.invalidate()
         audioTimer = nil
+    }
+
+    fileprivate func prepareVideo(at index: Int, autoplay: Bool) {
+        guard index >= 0, index < files.count else { return }
+        let path = filePath(at: index)
+        guard !path.isEmpty else { return }
+
+        if videoPlayerIndex == index, let videoPlayer {
+            if autoplay {
+                videoPlayer.play()
+                isVideoPlaying = true
+            }
+            return
+        }
+
+        stopVideo()
+        isVideoLoading = true
+        videoPlayerIndex = index
+        videoLoadTask = Task {
+            do {
+                let url = try await cachedMediaURL(path: path)
+                guard !Task.isCancelled, currentIndex == index else { return }
+
+                let asset = AVURLAsset(url: url)
+                let tracks = try await asset.loadTracks(withMediaType: .video)
+                var aspectRatio: CGFloat = 16 / 9
+                if let track = tracks.first {
+                    let naturalSize = try await track.load(.naturalSize)
+                    let transform = try await track.load(.preferredTransform)
+                    let transformedSize = naturalSize.applying(transform)
+                    let width = abs(transformedSize.width)
+                    let height = abs(transformedSize.height)
+                    if width > 0, height > 0 { aspectRatio = width / height }
+                }
+
+                let item = AVPlayerItem(asset: asset)
+                let player = AVPlayer(playerItem: item)
+                await MainActor.run {
+                    guard currentIndex == index else { return }
+                    videoPlayer = player
+                    videoAspectRatio = aspectRatio
+                    isVideoLoading = false
+                    installVideoObservers(on: player, item: item)
+                    if autoplay {
+                        player.play()
+                        isVideoPlaying = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    if currentIndex == index {
+                        isVideoLoading = false
+                        videoPlayerIndex = nil
+                    }
+                }
+            }
+        }
+    }
+
+    fileprivate func cachedMediaURL(path: String) async throws -> URL {
+        let digest = SHA256.hash(data: Data("\(arcid)|\(path)".utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let ext = (path as NSString).pathExtension
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("reader_media", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(digest).appendingPathExtension(ext)
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+
+        let data = try await server.apiClient.fetchPageImage(arcid: arcid, path: path)
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    fileprivate func installVideoObservers(on player: AVPlayer, item: AVPlayerItem) {
+        videoTimeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { time in
+            videoCurrentTime = time.seconds.isFinite ? time.seconds : 0
+            let seconds = item.duration.seconds
+            if seconds.isFinite { videoDuration = seconds }
+            isVideoPlaying = player.timeControlStatus == .playing
+        }
+        videoEndObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { _ in
+            isVideoPlaying = false
+            videoCurrentTime = videoDuration
+        }
+    }
+
+    fileprivate func toggleVideoPlayback() {
+        guard let videoPlayer else { return }
+        if isVideoPlaying {
+            videoPlayer.pause()
+            isVideoPlaying = false
+        } else {
+            if videoDuration > 0, videoCurrentTime >= videoDuration - 0.1 {
+                videoPlayer.seek(to: .zero)
+            }
+            videoPlayer.play()
+            isVideoPlaying = true
+        }
+    }
+
+    fileprivate func seekVideo(to seconds: Double) {
+        videoPlayer?.seek(
+            to: CMTime(seconds: seconds, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        )
+    }
+
+    fileprivate func stopVideo() {
+        videoLoadTask?.cancel()
+        videoLoadTask = nil
+        videoPlayer?.pause()
+        if let observer = videoTimeObserver, let videoPlayer {
+            videoPlayer.removeTimeObserver(observer)
+        }
+        if let observer = videoEndObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        videoTimeObserver = nil
+        videoEndObserver = nil
+        videoPlayer = nil
+        videoPlayerIndex = nil
+        videoCurrentTime = 0
+        videoDuration = 0
+        isVideoPlaying = false
+        isVideoLoading = false
     }
 
     fileprivate func startAudioTimer() {
@@ -1271,6 +1420,8 @@ struct ReaderView: View {
 
         if fileType(at: index) == .audio {
             audioPageView(for: index, size: size)
+        } else if fileType(at: index) == .video {
+            videoPageView(for: index, size: size)
         } else if !isImage {
             filePlaceholder(path: path, size: size)
         } else if let image = images[index] {
@@ -1286,6 +1437,33 @@ struct ReaderView: View {
             loadingPageView(index: index, size: size)
                 .task(id: path) { loadPage(index) }
         }
+    }
+
+    @ViewBuilder
+    fileprivate func videoPageView(for index: Int, size: CGSize) -> some View {
+        ZStack {
+            Color.black
+            if videoPlayerIndex == index, let videoPlayer {
+                VideoPlayer(player: videoPlayer)
+                    .aspectRatio(videoAspectRatio, contentMode: .fit)
+                    .allowsHitTesting(false)
+            } else {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.4)
+                    Text((filePath(at: index) as NSString).lastPathComponent)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .task(id: index) {
+                    guard index == currentIndex else { return }
+                    prepareVideo(at: index, autoplay: videoAutoplay)
+                }
+            }
+        }
+        .frame(width: size.width, height: size.height)
     }
 
     @ViewBuilder
@@ -1658,6 +1836,7 @@ struct ReaderSettingsView: View {
     @Binding var doubleTapZoom: Bool
     @Binding var tapTurnPage: Bool
     @Binding var audioAutoplay: Bool
+    @Binding var videoAutoplay: Bool
     @Binding var readingDirection: String
     @Environment(\.dismiss) private var dismiss
 
@@ -1680,6 +1859,7 @@ struct ReaderSettingsView: View {
                 }
                 Section(String(localized: "reader_settings_playback")) {
                     Toggle(String(localized: "reader_settings_audio_autoplay"), isOn: $audioAutoplay)
+                    Toggle(String(localized: "reader_settings_video_autoplay"), isOn: $videoAutoplay)
                 }
             }
             .navigationTitle(String(localized: "reader_settings"))
