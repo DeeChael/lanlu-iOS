@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import ImageIO
 
 struct DetailTagView: View {
     let tags: [String]
@@ -115,10 +116,12 @@ struct ArchiveDetailView: View {
     @State private var selectedTab = 0
     @State private var previewMode = 0
     @State private var isDescriptionExpanded = true
-    @State private var previewImages: [Int: Data] = [:]
+    @State private var previewImages: [Int: UIImage] = [:]
     @State private var previewLoading: [Int: Bool] = [:]
+    @State private var previewTasks: [Int: Task<Void, Never>] = [:]
     @State private var showReader = false
     @State private var readerStartIndex = 0
+    private static let previewLoadSemaphore = AsyncSemaphore(limit: 3)
 
     init(archive: SearchResultItem, server: Server) {
         self.archive = archive
@@ -260,6 +263,14 @@ struct ArchiveDetailView: View {
             NotificationCenter.default.publisher(for: .readerProgressDidChange)
         ) { notification in
             applyReaderProgressChange(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            for task in previewTasks.values { task.cancel() }
+            previewTasks.removeAll()
+            previewLoading.removeAll()
+            previewImages.removeAll()
+            CacheManager.shared.clearMemoryCaches()
+            LogManager.shared.log("[Preview] Released thumbnails after memory warning")
         }
     }
 
@@ -469,7 +480,7 @@ struct ArchiveDetailView: View {
                 ArchivePreviewCell(
                     file: files[i],
                     index: i,
-                    imageData: previewImages[i],
+                    image: previewImages[i],
                     isLoading: previewLoading[i] ?? false,
                     mediaIcon: mediaIcon,
                     badgeIcon: badgeIcon
@@ -478,12 +489,18 @@ struct ArchiveDetailView: View {
                     readerStartIndex = i
                     showReader = true
                 }
+                .onAppear {
+                    loadPreviewImageIfNeeded(index: i)
+                }
+                .onDisappear {
+                    previewTasks[i]?.cancel()
+                    previewTasks[i] = nil
+                    previewLoading[i] = nil
+                    previewImages[i] = nil
+                }
             }
         }
         .padding(16)
-        .task(id: files.count) {
-            await loadPreviewImages()
-        }
     }
 
     // MARK: - Data
@@ -636,44 +653,34 @@ struct ArchiveDetailView: View {
         return raw
     }
 
-    private func loadPreviewImages() async {
-        guard let arcid = archive.arcid else { return }
-        let client = server.apiClient
-        previewImages = [:]
-        previewLoading = [:]
+    private func loadPreviewImageIfNeeded(index: Int) {
+        guard previewImages[index] == nil,
+              previewTasks[index] == nil,
+              let arcid = archive.arcid,
+              files.indices.contains(index) else { return }
 
-        let validIndices = files.indices.filter { i in
-            let file = files[i]
-            if (file.defaultSource?.path ?? file.path).map({ !$0.isEmpty }) == true {
-                previewLoading[i] = true
-                return true
+        let path = files[index].defaultSource?.path ?? files[index].path ?? ""
+        guard !path.isEmpty else { return }
+
+        previewLoading[index] = true
+        previewTasks[index] = Task {
+            await Self.previewLoadSemaphore.wait()
+            if !Task.isCancelled {
+                await loadSinglePreviewImage(
+                    index: index,
+                    arcid: arcid,
+                    client: server.apiClient
+                )
             }
-            return false
-        }
-
-        await withTaskGroup(of: Void.self) { group in
-            var next = 0
-
-            func enqueueNext() {
-                guard next < validIndices.count else { return }
-                let i = validIndices[next]
-                next += 1
-                group.addTask { [i] in
-                    await loadSinglePreviewImage(index: i, arcid: arcid, client: client)
-                }
-            }
-
-            for _ in 0..<min(2, validIndices.count) { enqueueNext() }
-
-            for await _ in group {
-                enqueueNext()
+            await Self.previewLoadSemaphore.signal()
+            await MainActor.run {
+                previewLoading[index] = nil
+                previewTasks[index] = nil
             }
         }
     }
 
     private func loadSinglePreviewImage(index: Int, arcid: String, client: APIClient) async {
-        defer { previewLoading[index] = false }
-
         let file = files[index]
         let path = file.defaultSource?.path ?? file.path ?? ""
         let ext = (path as NSString).pathExtension.lowercased()
@@ -685,13 +692,13 @@ struct ArchiveDetailView: View {
             if thumbId > 0 {
                 let cacheKey = "thumb_\(thumbId)"
                 if let cached = CacheManager.shared.getCover(id: cacheKey) {
-                    previewImages[index] = cached
+                    setPreviewImage(from: cached, index: index)
                     return
                 }
                 do {
                     let data = try await client.fetchAsset(assetId: thumbId)
                     CacheManager.shared.cacheCover(id: cacheKey, data: data)
-                    previewImages[index] = data
+                    setPreviewImage(from: data, index: index)
                     return
                 } catch {
                     LogManager.shared.log("[Preview] thumb fetch failed index=\(index): \(error.localizedDescription)")
@@ -707,7 +714,7 @@ struct ArchiveDetailView: View {
         let cacheKey = "page_\(arcid)_\(path)"
 
         if let cached = CacheManager.shared.getCover(id: cacheKey) {
-            previewImages[index] = cached
+            setPreviewImage(from: cached, index: index)
             return
         }
 
@@ -716,7 +723,7 @@ struct ArchiveDetailView: View {
             do {
                 let data = try await client.fetchPageImage(arcid: arcid, path: path)
                 CacheManager.shared.cacheCover(id: cacheKey, data: data)
-                previewImages[index] = data
+                setPreviewImage(from: data, index: index)
                 return
             } catch {
                 if Task.isCancelled { return }
@@ -734,26 +741,23 @@ struct ArchiveDetailView: View {
     ) async {
         let previewCacheKey = "video_preview_\(arcid)_\(path)"
         if let cached = CacheManager.shared.getCover(id: previewCacheKey) {
-            previewImages[index] = cached
+            setPreviewImage(from: cached, index: index)
             return
         }
 
         do {
-            let videoData = try await client.fetchPageImage(arcid: arcid, path: path)
-            guard !Task.isCancelled else { return }
+            let request = try client.pageRequest(arcid: arcid, path: path)
+            let (downloadedURL, response) = try await URLSession.shared.download(for: request)
+            defer { try? FileManager.default.removeItem(at: downloadedURL) }
+            guard !Task.isCancelled,
+                  let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else { return }
 
-            let fileExtension = (path as NSString).pathExtension
-            let temporaryURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension(fileExtension)
-            defer { try? FileManager.default.removeItem(at: temporaryURL) }
-            try videoData.write(to: temporaryURL, options: .atomic)
-
-            let asset = AVURLAsset(url: temporaryURL)
+            let asset = AVURLAsset(url: downloadedURL)
             if let artwork = await videoArtwork(from: asset),
                let data = artwork.jpegData(compressionQuality: 0.86) {
                 CacheManager.shared.cacheCover(id: previewCacheKey, data: data)
-                previewImages[index] = data
+                setPreviewImage(from: data, index: index)
                 return
             }
 
@@ -766,10 +770,33 @@ struct ArchiveDetailView: View {
             let preview = UIImage(cgImage: image)
             guard let data = preview.jpegData(compressionQuality: 0.86) else { return }
             CacheManager.shared.cacheCover(id: previewCacheKey, data: data)
-            previewImages[index] = data
+            setPreviewImage(from: data, index: index)
         } catch {
             LogManager.shared.log("[Preview] video frame failed index=\(index): \(error.localizedDescription)")
         }
+    }
+
+    private func setPreviewImage(from data: Data, index: Int) {
+        guard !Task.isCancelled,
+              let image = downsamplePreview(data: data) else { return }
+        previewImages[index] = image
+    }
+
+    private func downsamplePreview(data: Data) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
+            return nil
+        }
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: 480
+        ] as CFDictionary
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
+            return nil
+        }
+        return UIImage(cgImage: image)
     }
 
     private func videoArtwork(from asset: AVAsset) async -> UIImage? {
@@ -898,7 +925,7 @@ struct ChildCoverCell: View {
 struct ArchivePreviewCell: View {
     let file: APIClient.PageFile
     let index: Int
-    let imageData: Data?
+    let image: UIImage?
     let isLoading: Bool
     let mediaIcon: String?
     let badgeIcon: String?
@@ -907,8 +934,8 @@ struct ArchivePreviewCell: View {
         Rectangle().fill(Color(.systemGray5))
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .overlay {
-                if let data = imageData, let uiImage = UIImage(data: data) {
-                    Image(uiImage: uiImage).resizable().scaledToFill()
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
                 } else if isLoading {
                     ProgressView()
                 } else if let icon = mediaIcon {
@@ -929,7 +956,7 @@ struct ArchivePreviewCell: View {
                     .padding(4)
             }
             .overlay(alignment: .bottomTrailing) {
-                if let icon = badgeIcon, imageData != nil {
+                if let icon = badgeIcon, image != nil {
                     Image(systemName: icon)
                         .font(.caption2)
                         .padding(.horizontal, 6)

@@ -424,6 +424,7 @@ struct ReaderView: View {
             } else {
                 loadPage(currentIndex)
                 preloadAdjacent()
+                trimPageCache(around: currentIndex)
             }
         }
         .onDisappear { cancelAllTasks(); stopAudio(); stopVideo(); saveProgress() }
@@ -449,6 +450,7 @@ struct ReaderView: View {
             } else {
                 loadPage(newIndex)
                 preloadAdjacent()
+                trimPageCache(around: newIndex)
             }
         }
         .onChange(of: readingDirectionRaw) { _, _ in
@@ -468,7 +470,18 @@ struct ReaderView: View {
             } else {
                 loadPage(currentIndex)
                 preloadAdjacent()
+                trimPageCache(around: currentIndex)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            for (index, task) in loadTasks where index != currentIndex {
+                task.cancel()
+            }
+            loadTasks = loadTasks.filter { $0.key == currentIndex }
+            images = images.filter { $0.key == currentIndex }
+            thumbnailImages.removeAll()
+            CacheManager.shared.clearMemoryCaches()
+            LogManager.shared.log("[Reader] Released image caches after memory warning")
         }
     }
 
@@ -1434,6 +1447,7 @@ struct ReaderView: View {
                     thumbnailImages[index] = thumbnail
                     thumbnailFailedPages.remove(index)
                     thumbnailLoadTasks[index] = nil
+                    trimThumbnailCache(around: index)
                 }
             } catch {
                 await MainActor.run {
@@ -1477,6 +1491,13 @@ struct ReaderView: View {
         }
 
         return UIImage(cgImage: image)
+    }
+
+    fileprivate func trimThumbnailCache(around index: Int) {
+        let keepRange = max(0, index - 24)...min(maxIndex, index + 24)
+        for pageIndex in thumbnailImages.keys where !keepRange.contains(pageIndex) {
+            thumbnailImages.removeValue(forKey: pageIndex)
+        }
     }
 
     // MARK: - Page View
@@ -2029,7 +2050,14 @@ extension ReaderView {
             let cacheKey = "page_\(arcid)_\(path)"
 
             if let cached = CacheManager.shared.getCover(id: cacheKey),
-               let img = UIImage(data: cached) {
+               let img = readerImage(from: cached) {
+                guard !Task.isCancelled else {
+                    await MainActor.run {
+                        isLoading.remove(index)
+                        loadTasks[index] = nil
+                    }
+                    return
+                }
                 await MainActor.run {
                     images[index] = img
                     if img.size.width > 0, img.size.height > 0 {
@@ -2048,7 +2076,7 @@ extension ReaderView {
                     await MainActor.run { isLoading.remove(index); loadTasks[index] = nil }
                     return
                 }
-                guard let img = UIImage(data: data) else {
+                guard let img = readerImage(from: data) else {
                     LogManager.shared.log("[Reader] Image decode failed index=\(index) bytes=\(data.count)")
                     await MainActor.run { isLoading.remove(index); failedPages.insert(index); loadTasks[index] = nil }
                     return
@@ -2088,16 +2116,17 @@ extension ReaderView {
         guard readingDirection == .vertical,
               !files.isEmpty else { return }
 
-        let preloadRange = max(0, index - 2)...min(maxIndex, index + 3)
+        let preloadRange = max(0, index - 1)...min(maxIndex, index + 2)
         for pageIndex in preloadRange where fileType(at: pageIndex) == .image {
             loadPage(pageIndex)
         }
 
-        trimVerticalPageCache(around: index)
+        trimPageCache(around: index)
     }
 
-    fileprivate func trimVerticalPageCache(around index: Int) {
-        let keepRange = max(0, index - 5)...min(maxIndex, index + 6)
+    fileprivate func trimPageCache(around index: Int) {
+        let radius = 2
+        let keepRange = max(0, index - radius)...min(maxIndex, index + radius)
         let imageIndexesToRemove = images.keys.filter {
             !keepRange.contains($0)
         }
@@ -2113,6 +2142,14 @@ extension ReaderView {
             // 旧任务覆盖同一页的新任务状态。
             loadTasks[pageIndex]?.cancel()
         }
+    }
+
+    fileprivate func readerImage(from data: Data) -> UIImage? {
+        let screen = UIScreen.main.bounds.size
+        let scale = UIScreen.main.scale
+        let longestScreenEdge = max(screen.width, screen.height) * scale
+        let maxPixelSize = min(max(longestScreenEdge, 1_536), 2_048)
+        return downsampleImage(data: data, maxPixelSize: maxPixelSize)
     }
 
     fileprivate func saveProgress() {

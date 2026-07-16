@@ -8,6 +8,13 @@ final class CacheManager {
     private var coverCache = NSCache<NSString, NSData>()
     private var metaMemoryCache = NSCache<NSString, NSData>()
 
+    private init() {
+        archiveCache.countLimit = 200
+        coverCache.countLimit = 80
+        coverCache.totalCostLimit = 96 * 1_024 * 1_024
+        metaMemoryCache.countLimit = 300
+    }
+
     private var imageCacheDir: URL {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
             .appendingPathComponent("image_cache", isDirectory: true)
@@ -35,7 +42,11 @@ final class CacheManager {
     }
 
     func cacheCover(id: String, data: Data) {
-        coverCache.setObject(data as NSData, forKey: id as NSString)
+        coverCache.setObject(
+            data as NSData,
+            forKey: id as NSString,
+            cost: data.count
+        )
         let url = imageCacheDir.appendingPathComponent(id)
         try? data.write(to: url, options: .atomic)
     }
@@ -43,7 +54,13 @@ final class CacheManager {
     func getCover(id: String) -> Data? {
         if let cached = coverCache.object(forKey: id as NSString) as? Data { return cached }
         let url = imageCacheDir.appendingPathComponent(id)
-        return try? Data(contentsOf: url)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        coverCache.setObject(
+            data as NSData,
+            forKey: id as NSString,
+            cost: data.count
+        )
+        return data
     }
 
     // MARK: - Metadata cache (memory + disk)
@@ -122,9 +139,7 @@ final class CacheManager {
     }
 
     func clearAll() {
-        archiveCache.removeAllObjects()
-        coverCache.removeAllObjects()
-        metaMemoryCache.removeAllObjects()
+        clearMemoryCaches()
 
         let imgDir = imageCacheDir
         if let files = try? FileManager.default.contentsOfDirectory(at: imgDir, includingPropertiesForKeys: nil) {
@@ -134,5 +149,11 @@ final class CacheManager {
         if let files = try? FileManager.default.contentsOfDirectory(at: mDir, includingPropertiesForKeys: nil) {
             for url in files { try? FileManager.default.removeItem(at: url) }
         }
+    }
+
+    func clearMemoryCaches() {
+        archiveCache.removeAllObjects()
+        coverCache.removeAllObjects()
+        metaMemoryCache.removeAllObjects()
     }
 }
