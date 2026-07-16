@@ -86,7 +86,7 @@ struct FavoritesTabView: View {
                     items.append(item)
                 }
             }
-            print("[Favorites] checkForUpdates: total=\(items.count)")
+            LogManager.shared.log("[Favorites] Update check completed total=\(items.count)")
         }
         isLoading = false
     }
@@ -108,11 +108,11 @@ struct FavoritesTabView: View {
                 }
             }
 
-            print("[Favorites] page=\(nextPage) got=\(newItems.count) new=\(added) total=\(items.count)")
+            LogManager.shared.log("[Favorites] Page loaded page=\(nextPage) received=\(newItems.count) added=\(added) total=\(items.count)")
             nextPage += 1
             hasMore = newItems.count >= pageSize
         } catch {
-            print("[Favorites] error: \(error)")
+            LogManager.shared.log("[Favorites] Load failed: \(error.localizedDescription)")
             hasMore = false
         }
 

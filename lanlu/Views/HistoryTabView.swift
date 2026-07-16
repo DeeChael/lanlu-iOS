@@ -53,7 +53,7 @@ struct HistoryTabView: View {
                     items.append(item)
                 }
             }
-            print("[History] checkForUpdates: total=\(items.count)")
+            LogManager.shared.log("[History] Update check completed total=\(items.count)")
         }
         isLoading = false
     }
@@ -75,11 +75,11 @@ struct HistoryTabView: View {
                 }
             }
 
-            print("[History] page=\(nextPage) got=\(newItems.count) new=\(added) total=\(items.count)")
+            LogManager.shared.log("[History] Page loaded page=\(nextPage) received=\(newItems.count) added=\(added) total=\(items.count)")
             nextPage += 1
             hasMore = newItems.count >= pageSize
         } catch {
-            print("[History] error: \(error)")
+            LogManager.shared.log("[History] Load failed: \(error.localizedDescription)")
             hasMore = false
         }
 

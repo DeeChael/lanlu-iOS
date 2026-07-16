@@ -819,12 +819,18 @@ struct ChildMetaView: View {
     }
 
     private func loadMeta() async {
-        guard let eid = child.entityId else { print("[ChildMeta] no entityId"); return }
-        guard let meta = try? await server.apiClient.fetchArchiveMetadata(arcid: eid) else { print("[ChildMeta] fetch failed for \(eid)"); return }
+        guard let eid = child.entityId else {
+            LogManager.shared.log("[ChildMeta] Missing entity identifier")
+            return
+        }
+        guard let meta = try? await server.apiClient.fetchArchiveMetadata(arcid: eid) else {
+            LogManager.shared.log("[ChildMeta] Metadata fetch failed")
+            return
+        }
         archiveName = meta.title
         pagecount = meta.pagecount
         description = meta.description
-        print("[ChildMeta] loaded \(eid): pages=\(meta.pagecount ?? 0) desc=\(meta.description?.prefix(30) ?? "nil")")
+        LogManager.shared.log("[ChildMeta] Metadata loaded pages=\(meta.pagecount ?? 0)")
     }
 }
 

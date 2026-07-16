@@ -103,14 +103,17 @@ struct CategoryManagementView: View {
     private func loadCategories() async {
         isLoading = true
         errorMessage = nil
+        LogManager.shared.log("[Categories] Load started")
         do {
             let loadedCategories = try await server.apiClient.fetchCategories()
             categories = loadedCategories
             enabledStates = Dictionary(
                 uniqueKeysWithValues: loadedCategories.map { ($0.id, $0.enabled ?? false) }
             )
+            LogManager.shared.log("[Categories] Load completed count=\(loadedCategories.count)")
         } catch {
             errorMessage = error.localizedDescription
+            LogManager.shared.log("[Categories] Load failed: \(error.localizedDescription)")
         }
         isLoading = false
     }
@@ -201,6 +204,7 @@ private struct CategoryManagementRow: View {
         guard let data = try? await server.apiClient.fetchAsset(assetId: assetId),
               let image = UIImage(data: data) else {
             coverImage = nil
+            LogManager.shared.log("[Categories] Cover unavailable assetId=\(assetId)")
             return
         }
         coverImage = image

@@ -818,9 +818,11 @@ struct ReaderView: View {
         stopVideo()
         isVideoLoading = true
         videoPlayerIndex = index
+        LogManager.shared.log("[Reader] Video prepare index=\(index) autoplay=\(autoplay)")
         videoLoadTask = Task {
             do {
                 let source = try videoSource(path: path)
+                LogManager.shared.log("[Reader] Video source index=\(index) cached=\(source.isCached)")
                 guard !Task.isCancelled, currentIndex == index else { return }
 
                 let asset = AVURLAsset(
@@ -853,11 +855,13 @@ struct ReaderView: View {
                         isVideoPlaying = true
                     }
                 }
+                LogManager.shared.log("[Reader] Video ready index=\(index)")
 
                 if !source.isCached {
                     cacheVideoInBackground(path: path, destination: source.cacheURL)
                 }
             } catch {
+                LogManager.shared.log("[Reader] Video prepare failed index=\(index): \(error.localizedDescription)")
                 await MainActor.run {
                     if currentIndex == index {
                         isVideoLoading = false
@@ -913,6 +917,7 @@ struct ReaderView: View {
                     try FileManager.default.removeItem(at: destination)
                 }
                 try FileManager.default.moveItem(at: stagedURL, to: destination)
+                LogManager.shared.log("[Reader] Video cache completed")
             } catch {
                 if !Task.isCancelled {
                     LogManager.shared.log("[Reader] video cache failed: \(error.localizedDescription)")
@@ -1551,6 +1556,7 @@ struct ReaderView: View {
     }
 
     fileprivate func retryPage(_ index: Int) {
+        LogManager.shared.log("[Reader] Retry image index=\(index)")
         failedPages.remove(index)
         loadPage(index)
     }
@@ -2043,6 +2049,7 @@ extension ReaderView {
                     return
                 }
                 guard let img = UIImage(data: data) else {
+                    LogManager.shared.log("[Reader] Image decode failed index=\(index) bytes=\(data.count)")
                     await MainActor.run { isLoading.remove(index); failedPages.insert(index); loadTasks[index] = nil }
                     return
                 }
@@ -2057,6 +2064,9 @@ extension ReaderView {
                     loadTasks[index] = nil
                 }
             } catch {
+                if !Task.isCancelled {
+                    LogManager.shared.log("[Reader] Image load failed index=\(index): \(error.localizedDescription)")
+                }
                 await MainActor.run {
                     isLoading.remove(index); loadTasks[index] = nil
                     if !Task.isCancelled { failedPages.insert(index) }

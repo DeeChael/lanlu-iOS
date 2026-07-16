@@ -109,20 +109,20 @@ struct HomeTabView: View {
     }
 
     private func loadInitial() async {
-        print("[Home] Loading initial data")
+        LogManager.shared.log("[Home] Initial load started")
         do {
             let cats = try await server.apiClient.fetchCategories()
             categories = cats
             hasFetchedCategories = true
-            print("[Home] Categories loaded: \(cats.count)")
+            LogManager.shared.log("[Home] Categories loaded count=\(cats.count)")
         } catch {
-            print("[Home] Categories error: \(error)")
+            LogManager.shared.log("[Home] Categories load failed: \(error.localizedDescription)")
         }
 
         isLoading = true
         do {
             let items = try await server.apiClient.fetchRecommendations(count: pageSize, categoryId: selectedCategoryId)
-            print("[Home] Recommendations loaded: \(items.count)")
+            LogManager.shared.log("[Home] Recommendations loaded count=\(items.count)")
             for item in items {
                 if !recommendations.contains(where: { $0.displayId == item.displayId }) {
                     recommendations.append(item)
@@ -130,13 +130,13 @@ struct HomeTabView: View {
             }
             hasMore = items.count == pageSize
         } catch {
-            print("[Home] Recommendations error: \(error)")
+            LogManager.shared.log("[Home] Recommendations load failed: \(error.localizedDescription)")
         }
         isLoading = false
     }
 
     private func refresh() {
-        print("[Home] Refreshing with categoryId: \(selectedCategoryId ?? 0)")
+        LogManager.shared.log("[Home] Refresh categoryId=\(selectedCategoryId ?? 0)")
         recommendations = []
         hasMore = true
         isLoading = false
@@ -150,7 +150,6 @@ struct HomeTabView: View {
 
         do {
             let items = try await server.apiClient.fetchRecommendations(count: pageSize, categoryId: selectedCategoryId)
-            print("[Home] Got \(items.count) items")
             var newCount = 0
             for item in items {
                 if !recommendations.contains(where: { $0.displayId == item.displayId }) {
@@ -158,10 +157,10 @@ struct HomeTabView: View {
                     newCount += 1
                 }
             }
-            print("[Home] Added \(newCount) new, total \(recommendations.count)")
+            LogManager.shared.log("[Home] Recommendations updated received=\(items.count) added=\(newCount) total=\(recommendations.count)")
             hasMore = items.count == pageSize
         } catch {
-            print("[Home] Error: \(error)")
+            LogManager.shared.log("[Home] Refresh failed: \(error.localizedDescription)")
             hasMore = false
         }
         isLoading = false
@@ -171,7 +170,7 @@ struct HomeTabView: View {
         guard hasMore, !isLoading,
               let index = recommendations.firstIndex(where: { $0.displayId == item.displayId }),
               index >= recommendations.count - 5 else { return }
-        print("[Home] Loading more...")
+        LogManager.shared.log("[Home] Loading more recommendations")
         Task { await loadRecommendations(reset: false) }
     }
 }

@@ -928,8 +928,7 @@ class APIClient {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
 
-        print("[API] /api/user/stats status: \(httpResponse.statusCode)")
-        print("[API] /api/user/stats body: \(String(data: data, encoding: .utf8) ?? "nil")")
+        LogManager.shared.log("[API] /api/user/stats status=\(httpResponse.statusCode) bytes=\(data.count)")
 
         guard httpResponse.statusCode == 200 else {
             throw AuthError.networkError(String(localized: "connection_failed"))
@@ -982,8 +981,7 @@ class APIClient {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
 
-        print("[API] /api/user/trend status: \(httpResponse.statusCode)")
-        print("[API] /api/user/trend body: \(String(data: data, encoding: .utf8) ?? "nil")")
+        LogManager.shared.log("[API] /api/user/trend status=\(httpResponse.statusCode) bytes=\(data.count)")
 
         guard httpResponse.statusCode == 200 else {
             throw AuthError.networkError(String(localized: "connection_failed"))
@@ -1063,12 +1061,10 @@ class APIClient {
         LogManager.shared.log("GET /api/search page=\(page) pageSize=\(pageSize) sortby=\(sortby)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let bodyStr = String(data: data, encoding: .utf8) ?? "nil"
-        print("[API] /api/search status: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
-        print("[API] /api/search body: \(bodyStr.prefix(500))")
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
+        LogManager.shared.log("[API] /api/search status=\(httpResponse.statusCode) bytes=\(data.count)")
 
         if httpResponse.statusCode == 200 {
             return try JSONDecoder().decode(SearchResponse.self, from: data)
@@ -1433,18 +1429,28 @@ class APIClient {
         request.httpMethod = "GET"
         applyAuthHeader(&request)
         let (data, response) = try await URLSession.shared.data(for: request)
-        let bodyStr = String(data: data, encoding: .utf8) ?? "nil"
-        print("[API] fetchFiles \(arcid): status \((response as? HTTPURLResponse)?.statusCode ?? 0) body \(bodyStr.prefix(300))")
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        LogManager.shared.log("[API] Archive files status=\(statusCode) bytes=\(data.count)")
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            print("[API] fetchFiles failed: status \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+            LogManager.shared.log("[API] Archive files request failed status=\(statusCode)")
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
         if let result = try? JSONDecoder().decode(FilesResponse.self, from: data),
-           let pages = result.pages { print("[API] fetchFiles decoded \(pages.count) pages"); return pages }
+           let pages = result.pages {
+            LogManager.shared.log("[API] Archive files decoded count=\(pages.count)")
+            return pages
+        }
         if let envelope = try? JSONDecoder().decode(ApiEnvelope<FilesResponse>.self, from: data),
-           let result = envelope.data, let pages = result.pages { print("[API] fetchFiles envelope decoded \(pages.count) pages"); return pages }
-        print("[API] fetchFiles decode failed, raw: \(bodyStr.prefix(200))")
-        return (try? JSONDecoder().decode([PageFile].self, from: data)) ?? []
+           let result = envelope.data, let pages = result.pages {
+            LogManager.shared.log("[API] Archive files envelope decoded count=\(pages.count)")
+            return pages
+        }
+        if let pages = try? JSONDecoder().decode([PageFile].self, from: data) {
+            LogManager.shared.log("[API] Archive files array decoded count=\(pages.count)")
+            return pages
+        }
+        LogManager.shared.log("[API] Archive files decode failed")
+        return []
     }
 
     func fetchArchivedIn(arcid: String) async throws -> [ArchivedInItem] {
@@ -1596,16 +1602,15 @@ class APIClient {
             throw AuthError.networkError(String(localized: "invalid_url"))
         }
 
-        print("[API] GET \(url.absoluteString)")
+        LogManager.shared.log("GET /api/recommendations scene=\(scene) count=\(count)")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyAuthHeader(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        let rawBody = String(data: data, encoding: .utf8) ?? "nil"
-        print("[API] recommendations status: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
-        print("[API] recommendations body: \(rawBody.prefix(500))")
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        LogManager.shared.log("[API] Recommendations status=\(statusCode) bytes=\(data.count)")
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
@@ -1614,7 +1619,7 @@ class APIClient {
             let result = try JSONDecoder().decode(RecommendationsResponse.self, from: data)
             if let items = result.data { return items }
         } catch {
-            print("[API] recommendations decode error: \(error)")
+            LogManager.shared.log("[API] Recommendations primary decode failed: \(error.localizedDescription)")
         }
         if let envelope = try? JSONDecoder().decode(ApiEnvelope<[SearchResultItem]>.self, from: data),
            let items = envelope.data {
