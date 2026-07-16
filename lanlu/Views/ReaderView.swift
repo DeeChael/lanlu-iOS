@@ -482,7 +482,7 @@ struct ReaderView: View {
         default:
             ZStack {
                 pageStrip(size: size)
-                interactionOverlay(pageWidth: size.width)
+                interactionOverlay(pageSize: size)
             }
         }
     }
@@ -595,8 +595,7 @@ struct ReaderView: View {
                 .frame(width: width, height: height)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    failedPages.remove(index)
-                    loadPage(index)
+                    retryPage(index)
                 }
             } else {
                 VStack(spacing: 12) {
@@ -1089,14 +1088,14 @@ struct ReaderView: View {
         .offset(x: -size.width + dragOffset)
     }
 
-    fileprivate func interactionOverlay(pageWidth: CGFloat) -> some View {
+    fileprivate func interactionOverlay(pageSize: CGSize) -> some View {
         Color.clear
             .contentShape(Rectangle())
             .highPriorityGesture(doubleTapGesture)
             .onTapGesture { location in
-                handleSingleTap(at: location, pageWidth: pageWidth)
+                handleSingleTap(at: location, pageSize: pageSize)
             }
-            .gesture(pageDragGesture(pageWidth: pageWidth))
+            .gesture(pageDragGesture(pageWidth: pageSize.width))
             .simultaneousGesture(zoomGesture)
     }
 
@@ -1144,16 +1143,29 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func handleSingleTap(at location: CGPoint, pageWidth: CGFloat) {
+    fileprivate func handleSingleTap(at location: CGPoint, pageSize: CGSize) {
         let x = location.x
+        let y = location.y
+        let isCenterColumn = x >= pageSize.width * 0.3
+            && x <= pageSize.width * 0.7
+        let isCenterReloadBand = y >= pageSize.height * 0.4
+            && y <= pageSize.height * 0.6
 
-        if tapTurnPage, x < pageWidth * 0.3 {
+        if failedPages.contains(currentIndex),
+           isImageFile(filePath(at: currentIndex)),
+           isCenterColumn,
+           isCenterReloadBand {
+            retryPage(currentIndex)
+            return
+        }
+
+        if tapTurnPage, x < pageSize.width * 0.3 {
             if readingDirection == .rightToLeft {
                 nextPage()
             } else {
                 previousPage()
             }
-        } else if tapTurnPage, x > pageWidth * 0.7 {
+        } else if tapTurnPage, x > pageSize.width * 0.7 {
             if readingDirection == .rightToLeft {
                 previousPage()
             } else {
@@ -1535,7 +1547,12 @@ struct ReaderView: View {
         }
         .frame(width: size.width, height: size.height)
         .contentShape(Rectangle())
-        .onTapGesture { failedPages.remove(index); loadPage(index) }
+        .onTapGesture { retryPage(index) }
+    }
+
+    fileprivate func retryPage(_ index: Int) {
+        failedPages.remove(index)
+        loadPage(index)
     }
 
     @ViewBuilder
