@@ -57,6 +57,8 @@ struct ServerSettingDetailView: View {
                 CategoryManagementView(server: server)
             } else if setting == .tags {
                 TagManagementView(server: server)
+            } else if setting == .smartFilters {
+                SmartFilterManagementView(server: server)
             } else {
                 List {
                     Section {

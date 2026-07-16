@@ -36,7 +36,7 @@ struct TagManagementView: View {
                                     systemName: "pencil"
                                 )
                             }
-                            .tint(.blue)
+                            .tint(.accentColor)
                         }
                         .onAppear {
                             loadMoreIfNeeded(tag)
@@ -183,7 +183,7 @@ private struct TagManagementRow: View {
                         .font(.caption2)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
-                        .background(.secondary.opacity(0.12), in: Capsule())
+                        .glassEffect(.regular, in: Capsule())
                 }
 
                 Text(translatedTitle ?? tag.name)

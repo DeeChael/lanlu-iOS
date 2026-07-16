@@ -123,7 +123,7 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "pencil")
                     }
-                    .tint(.blue)
+                    .tint(.accentColor)
                 }
             }
         }

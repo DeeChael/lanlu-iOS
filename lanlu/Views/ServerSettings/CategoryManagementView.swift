@@ -38,7 +38,7 @@ struct CategoryManagementView: View {
                             systemName: "pencil"
                         )
                     }
-                    .tint(.blue)
+                    .tint(.accentColor)
 
                     Button {} label: {
                         Image(

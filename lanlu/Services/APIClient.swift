@@ -1298,6 +1298,89 @@ class APIClient {
         return page
     }
 
+    // MARK: - Smart Filters
+
+    struct SmartFilterTranslation: Decodable {
+        let text: String?
+    }
+
+    struct SmartFilterItem: Decodable, Identifiable {
+        let id: Int
+        let name: String
+        let translations: [String: SmartFilterTranslation]?
+        let icon: String?
+        let query: String?
+        let sortBy: String?
+        let sortOrder: String?
+        let dateFrom: String?
+        let dateTo: String?
+        let newOnly: Bool?
+        let untaggedOnly: Bool?
+        let sortOrderNumber: Int?
+        let enabled: Bool?
+        let createdAt: String?
+        let updatedAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, translations, icon, query, enabled
+            case sortBy = "sort_by"
+            case sortOrder = "sort_order"
+            case dateFrom = "date_from"
+            case dateTo = "date_to"
+            case newOnly = "newonly"
+            case untaggedOnly = "untaggedonly"
+            case sortOrderNumber = "sort_order_num"
+            case createdAt = "created_at"
+            case updatedAt = "updated_at"
+        }
+    }
+
+    private struct SmartFilterListData: Decodable {
+        let items: [SmartFilterItem]
+    }
+
+    struct SmartFilterOrderItem: Encodable {
+        let id: Int
+        let sortOrderNumber: Int
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case sortOrderNumber = "sort_order_num"
+        }
+    }
+
+    func fetchAdminSmartFilters() async throws -> [SmartFilterItem] {
+        LogManager.shared.log("GET /api/admin/smart_filters")
+        let url = try makeURL("/api/admin/smart_filters")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        let result = try JSONDecoder().decode(ApiEnvelope<SmartFilterListData>.self, from: data)
+        return result.data?.items ?? []
+    }
+
+    func reorderAdminSmartFilters(_ items: [SmartFilterOrderItem]) async throws {
+        LogManager.shared.log("POST /api/admin/smart_filters/reorder count=\(items.count)")
+        let url = try makeURL("/api/admin/smart_filters/reorder")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(items)
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
     // MARK: - Archive Metadata
 
     struct ArchiveMetadataAsset: Codable {
