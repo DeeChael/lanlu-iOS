@@ -167,6 +167,8 @@
 "ok" = "好的";
 "page_unit" = "頁";
 "filter_title" = "篩選";
+"tag_namespace" = "命名空間";
+"tag_all_namespaces" = "所有命名空間";
 "filter_sort" = "排序";
 "filter_sort_field" = "字段";
 "filter_sort_order" = "方向";

@@ -1201,6 +1201,103 @@ class APIClient {
         return []
     }
 
+    // MARK: - Tags
+
+    struct TagTranslation: Decodable {
+        let text: String?
+        let intro: String?
+    }
+
+    struct TagItem: Decodable, Identifiable {
+        let id: Int
+        let namespace: String?
+        let name: String
+        let translations: [String: TagTranslation]?
+        let links: String?
+        let iconAssetId: Int?
+        let backgroundAssetId: Int?
+        let createdAt: String?
+        let updatedAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, namespace, name, translations, links
+            case iconAssetId
+            case backgroundAssetId
+            case createdAt = "created_at"
+            case updatedAt = "updated_at"
+        }
+    }
+
+    struct TagPage: Decodable {
+        let items: [TagItem]
+        let total: Int
+        let limit: Int
+        let offset: Int
+    }
+
+    private struct TagNamespacesData: Decodable {
+        let namespaces: [String]
+    }
+
+    func fetchTagNamespaces() async throws -> [String] {
+        LogManager.shared.log("GET /api/tags/namespaces")
+        let url = try makeURL("/api/tags/namespaces")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        let result = try JSONDecoder().decode(ApiEnvelope<TagNamespacesData>.self, from: data)
+        return result.data?.namespaces ?? []
+    }
+
+    func fetchTags(
+        limit: Int,
+        offset: Int,
+        search: String?,
+        namespace: String?
+    ) async throws -> TagPage {
+        var url = try makeURL("/api/tags")
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        var queryItems = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
+        if let search, !search.isEmpty {
+            queryItems.append(URLQueryItem(name: "search", value: search))
+        }
+        if let namespace, !namespace.isEmpty {
+            queryItems.append(URLQueryItem(name: "namespace", value: namespace))
+        }
+        components.queryItems = queryItems
+        guard let requestURL = components.url else {
+            throw AuthError.networkError(String(localized: "invalid_url"))
+        }
+        url = requestURL
+
+        LogManager.shared.log("GET /api/tags limit=\(limit) offset=\(offset) filtered=\(namespace != nil) searching=\(search?.isEmpty == false)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        let result = try JSONDecoder().decode(ApiEnvelope<TagPage>.self, from: data)
+        guard let page = result.data else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return page
+    }
+
     // MARK: - Archive Metadata
 
     struct ArchiveMetadataAsset: Codable {

@@ -55,6 +55,8 @@ struct ServerSettingDetailView: View {
                 AccountSecurityView(server: server)
             } else if setting == .category {
                 CategoryManagementView(server: server)
+            } else if setting == .tags {
+                TagManagementView(server: server)
             } else {
                 List {
                     Section {

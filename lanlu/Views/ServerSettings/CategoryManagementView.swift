@@ -28,27 +28,21 @@ struct CategoryManagementView: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 16))
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {} label: {
-                        swipeActionIcon(
-                            systemName: "trash",
-                            color: .red,
-                            accessibilityLabel: String(localized: "delete")
+                        Image(
+                            systemName: "trash"
                         )
                     }
 
                     Button {} label: {
-                        swipeActionIcon(
-                            systemName: "pencil",
-                            color: .blue,
-                            accessibilityLabel: String(localized: "edit")
+                        Image(
+                            systemName: "pencil"
                         )
                     }
                     .tint(.blue)
 
                     Button {} label: {
-                        swipeActionIcon(
-                            systemName: "play",
-                            color: .green,
-                            accessibilityLabel: String(localized: "scan")
+                        Image(
+                            systemName: "play"
                         )
                     }
                     .tint(.green)
@@ -85,19 +79,6 @@ struct CategoryManagementView: View {
             get: { enabledStates[category.id] ?? category.enabled ?? false },
             set: { enabledStates[category.id] = $0 }
         )
-    }
-
-    private func swipeActionIcon(
-        systemName: String,
-        color: Color,
-        accessibilityLabel: String
-    ) -> some View {
-        Image(systemName: systemName)
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.white)
-            .frame(width: 40, height: 40)
-            .background(color, in: Circle())
-            .accessibilityLabel(accessibilityLabel)
     }
 
     private func loadCategories() async {

@@ -167,6 +167,8 @@
 "ok" = "OK";
 "page_unit" = "pages";
 "filter_title" = "Filter";
+"tag_namespace" = "Namespace";
+"tag_all_namespaces" = "All Namespaces";
 "filter_sort" = "Sort";
 "filter_sort_field" = "Field";
 "filter_sort_order" = "Direction";

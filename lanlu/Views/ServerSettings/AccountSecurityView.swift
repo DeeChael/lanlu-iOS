@@ -154,7 +154,9 @@ struct AccountSecurityView: View {
                         Button(role: .destructive) {
                             Task { await deletePasskey(credential) }
                         } label: {
-                            Label(String(localized: "delete"), systemImage: "trash")
+                            Image(
+                                systemName: "trash"
+                            )
                         }
                         .disabled(deletingPasskeyIds.contains(credential.id))
                     }
@@ -211,7 +213,9 @@ struct AccountSecurityView: View {
                                 Button(role: .destructive) {
                                     Task { await revokeLoginSession(session) }
                                 } label: {
-                                    Label(String(localized: "revoke_login"), systemImage: "iphone.slash")
+                                    Image(
+                                        systemName: "iphone.slash"
+                                    )
                                 }
                                 .disabled(isRevokingLoginSession)
                             }
@@ -274,7 +278,9 @@ struct AccountSecurityView: View {
                             Button(role: .destructive) {
                                 Task { await deleteAPIToken(token) }
                             } label: {
-                                Label(String(localized: "delete"), systemImage: "trash")
+                                Image(
+                                    systemName: "trash"
+                                )
                             }
                             .disabled(deletingAPITokenIds.contains(token.id))
                         }
