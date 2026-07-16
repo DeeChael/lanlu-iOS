@@ -111,11 +111,7 @@ struct ReaderView: View {
         case .audio:
             return "music.note"
         case .video:
-            if bottomControlFocus == .fileControl {
-                return "video.fill"
-            } else {
-                return "video"
-            }
+            return "video"
         default:
             return nil
         }
@@ -334,6 +330,12 @@ struct ReaderView: View {
                         }
                     } label: {
                         Image(systemName: icon)
+                            .symbolVariant(
+                                currentPageFileType == .video
+                                && bottomControlFocus == .fileControl
+                                ? .fill
+                                : .none
+                            )
                             .foregroundStyle(
                                 bottomControlFocus == .fileControl
                                 ? AnyShapeStyle(.tint)
