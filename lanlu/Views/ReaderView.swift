@@ -243,7 +243,7 @@ struct ReaderView: View {
                             in: 0...Double(maxIndex),
                             step: 1
                         )
-                        .frame(maxWidth: .infinity)
+                        .frame(width: .infinity)
                         .padding(.trailing, 4)
                         .transition(.move(edge: .leading).combined(with: .opacity))
                     }
@@ -276,7 +276,7 @@ struct ReaderView: View {
                                         audioPlayer?.currentTime = audioCurrentTime
                                     }
                                 }
-                                .frame(maxWidth: .infinity)
+                                .frame(width: .infinity)
                                 .disabled(audioPlayer == nil)
 
                                 Text(
@@ -304,7 +304,7 @@ struct ReaderView: View {
                                         seekVideo(to: videoCurrentTime)
                                     }
                                 }
-                                .frame(maxWidth: .infinity)
+                                .frame(width: .infinity)
                                 .disabled(videoPlayer == nil)
 
                                 Text(
