@@ -1387,6 +1387,59 @@ class APIClient {
         }
     }
 
+    // MARK: - Server Statistics
+
+    struct TagCloudItem: Decodable, Identifiable {
+        let tag: String
+        let display: String
+        let count: Int
+
+        var id: String { tag }
+    }
+
+    struct TagCloudData: Decodable {
+        let items: [TagCloudItem]
+        let total: Int
+    }
+
+    func fetchServerInfo() async throws -> ServerInfo {
+        LogManager.shared.log("GET /api/info")
+        let url = try makeURL("/api/info")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        if let envelope = try? JSONDecoder().decode(ApiEnvelope<ServerInfo>.self, from: data),
+           let info = envelope.data {
+            return info
+        }
+        return try JSONDecoder().decode(ServerInfo.self, from: data)
+    }
+
+    func fetchTagCloud() async throws -> TagCloudData {
+        LogManager.shared.log("GET /api/tags/cloud")
+        let url = try makeURL("/api/tags/cloud")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        let result = try JSONDecoder().decode(ApiEnvelope<TagCloudData>.self, from: data)
+        guard let cloud = result.data else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return cloud
+    }
+
     // MARK: - Archive Metadata
 
     struct ArchiveMetadataAsset: Codable {

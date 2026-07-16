@@ -252,6 +252,13 @@
 "smart_filter_new_only" = "僅最新";
 "smart_filter_untagged_only" = "僅無標籤";
 "smart_filter_edit_order" = "編輯排序";
+"statistics_system_info" = "系統信息";
+"statistics_server_name" = "服務器名稱";
+"statistics_version" = "版本";
+"statistics_total_archives" = "檔案總數";
+"statistics_total_pages_read" = "總閱讀頁數";
+"statistics_db_extensions" = "數據庫拓展";
+"statistics_tag_cloud" = "標籤詞雲";
 "detail_archived_in" = "所屬合集";
 "no_archived_in" = "無所屬合集";
 "detail_no_description" = "沒有簡介";

@@ -252,6 +252,13 @@
 "smart_filter_new_only" = "仅最新";
 "smart_filter_untagged_only" = "仅无标签";
 "smart_filter_edit_order" = "编辑排序";
+"statistics_system_info" = "系统信息";
+"statistics_server_name" = "服务器名称";
+"statistics_version" = "版本";
+"statistics_total_archives" = "档案总数";
+"statistics_total_pages_read" = "总阅读页数";
+"statistics_db_extensions" = "数据库拓展";
+"statistics_tag_cloud" = "标签词云";
 "detail_archived_in" = "所属合集";
 "no_archived_in" = "无所属合集";
 "detail_no_description" = "没有简介";
