@@ -1760,6 +1760,65 @@ class APIClient {
         }
     }
 
+    // MARK: - System Settings
+
+    struct SystemSettingDescription: Decodable {
+        let en: String?
+        let zh: String?
+    }
+
+    struct SystemSettingItem: Decodable, Identifiable {
+        let id: Int
+        let key: String
+        let value: String
+        let valueType: String
+        let category: String
+        let description: SystemSettingDescription
+        let isEncrypted: Bool
+    }
+
+    private struct SystemSettingsResponse: Decodable {
+        let success: Bool
+        let data: [SystemSettingItem]
+    }
+
+    private struct SystemSettingsBatchRequest: Encodable {
+        let settings: [String: String]
+    }
+
+    func fetchAdminSystemSettings() async throws -> [SystemSettingItem] {
+        LogManager.shared.log("GET /api/admin/system/settings")
+        let url = try makeURL("/api/admin/system/settings")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+        return try JSONDecoder().decode(SystemSettingsResponse.self, from: data).data
+    }
+
+    func updateAdminSystemSettings(_ settings: [String: String]) async throws {
+        LogManager.shared.log("PUT /api/admin/system/settings/batch count=\(settings.count)")
+        let url = try makeURL("/api/admin/system/settings/batch")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            SystemSettingsBatchRequest(settings: settings)
+        )
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
     // MARK: - Server Statistics
 
     struct TagCloudItem: Decodable, Identifiable {

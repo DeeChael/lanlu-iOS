@@ -104,6 +104,13 @@
 "user_delete_title" = "刪除用戶";
 "user_delete_confirm" = "確定要刪除用戶「%@」嗎？此操作無法撤銷。";
 "ss_system_settings" = "系統設置";
+"system_settings_cron" = "定時任務設置";
+"system_settings_storage" = "存儲設置";
+"system_settings_performance" = "性能設置";
+"system_settings_server" = "服務器設置";
+"system_settings_ssl" = "SSL 設置";
+"system_settings_integer_value" = "整數值";
+"system_settings_invalid_integer" = "請輸入有效的整數。";
 "ss_background_tasks" = "後臺任務";
 "ss_scheduled_tasks" = "定時任務";
 "ss_plugin_management" = "插件管理";
