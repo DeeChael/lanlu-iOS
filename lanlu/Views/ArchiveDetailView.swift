@@ -151,94 +151,14 @@ struct ArchiveDetailView: View {
     private var isTankoubon: Bool { archive.type == "tankoubon" }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Scrollable content
-            ScrollView {
-                if selectedTab == 0 { infoTab } else { contentTab }
+        GeometryReader { geometry in
+            if geometry.size.width > geometry.size.height {
+                landscapeLayout(size: geometry.size)
+            } else {
+                portraitLayout
             }
         }
-        .safeAreaBar(edge: .top) {
-            VStack {
-                // Fixed header
-                HStack(alignment: .top, spacing: 12) {
-                    coverView
-                        .frame(width: 140)
-                        .aspectRatio(3.0 / 4.0, contentMode: .fill)
-                        .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        MarqueeText(text: archive.filename ?? archive.title ?? "---")
-                            .font(.title3)
-                            .fontWeight(.bold)
-                            .padding(.vertical, 2)
-
-                        if isTankoubon {
-                            if let ac = archive.archiveCount ?? tankoubonMeta?.archiveCount {
-                                Text(String(format: String(localized: "tankoubon_archives"), ac))
-                                    .font(.subheadline).foregroundColor(.secondary)
-                            }
-                            Text(String(format: String(localized: "detail_total_pages"), tankoubonMeta?.pagecount ?? 0))
-                                .font(.subheadline).foregroundColor(.secondary)
-                        } else {
-                            if let pages = archive.pagecount ?? meta?.pagecount {
-                                Text(String(format: String(localized: "detail_total_pages"), pages))
-                                    .font(.subheadline).foregroundColor(.secondary)
-                            }
-                        }
-
-                        Spacer()
-
-                        HStack(spacing: 8) {
-                            Button { toggleFavorite() } label: {
-                                Image(systemName: isFavorite ? "heart.fill" : "heart").font(.body)
-                            }
-                            .frame(width: 36, height: 36)
-                            .background(Color(.systemGray5))
-                            .clipShape(Circle())
-
-                            if !isTankoubon {
-                                let progress = meta?.progress ?? archive.progress ?? 0
-                                let hasProgress = progress > 0
-                                let totalPages = meta?.pagecount ?? archive.pagecount ?? 1
-                                let pct = min(Int(Double(progress) / Double(totalPages) * 100), 100)
-                                Button {
-                                    readerStartIndex = hasProgress ? progress - 1 : 0
-                                    showReader = true
-                                } label: {
-                                    Label(hasProgress ? String(format: String(localized: "detail_continue_read"), pct) : String(localized: "detail_start_read"), systemImage: "book.fill")
-                                        .font(.subheadline).fontWeight(.semibold)
-                                        .frame(maxWidth: .infinity).frame(height: 36)
-                                        .background(Color.accentColor).foregroundColor(.white)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                }
-                            }
-                        }
-                    }
-                    .frame(height: 140 * 4 / 3)
-                }
-                .padding(16)
-                
-                // Segmented tabs
-                Picker("", selection: $selectedTab) {
-                    Text(String(localized: "detail_info")).tag(0)
-                    Text(String(localized: "detail_content")).tag(1)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                
-                if selectedTab != 0 && !isTankoubon {
-                    Picker("", selection: $previewMode) {
-                        Text(String(localized: "detail_preview")).tag(0)
-                        Text(String(localized: "detail_filetree")).tag(1)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                }
-            }
-        }
-        .navigationTitle("")
+        .navigationTitle(archive.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .animation(.easeInOut(duration: 0.3), value: selectedTab)
@@ -272,6 +192,142 @@ struct ArchiveDetailView: View {
             CacheManager.shared.clearMemoryCaches()
             LogManager.shared.log("[Preview] Released thumbnails after memory warning")
         }
+    }
+
+    private var portraitLayout: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                if selectedTab == 0 { infoTab } else { contentTab }
+            }
+        }
+        .safeAreaBar(edge: .top) {
+            VStack {
+                detailHeader
+                detailTabPicker
+
+                if selectedTab != 0 && !isTankoubon {
+                    previewModePicker
+                        .padding(.bottom, 8)
+                }
+            }
+        }
+    }
+
+    private func landscapeLayout(size: CGSize) -> some View {
+        HStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 0) {
+                    detailHeader
+                    infoTab
+                }
+            }
+            .frame(width: min(max(size.width * 0.42, 320), 460))
+
+            Divider()
+            
+            ScrollView {
+                contentTab
+            }
+            .safeAreaBar(edge: .top) {
+                if !isTankoubon {
+                    previewModePicker
+                        .padding(.vertical, 8)
+                }
+                
+            }
+        }
+    }
+
+    private var detailHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            coverView
+                .frame(width: 140)
+                .aspectRatio(3.0 / 4.0, contentMode: .fill)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 6) {
+                MarqueeText(text: archive.title ?? archive.filename ?? "---")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .padding(.vertical, 2)
+
+                if isTankoubon {
+                    if let count = archive.archiveCount ?? tankoubonMeta?.archiveCount {
+                        Text(String(format: String(localized: "tankoubon_archives"), count))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(String(format: String(localized: "detail_total_pages"), tankoubonMeta?.pagecount ?? 0))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else if let pages = archive.pagecount ?? meta?.pagecount {
+                    Text(String(format: String(localized: "detail_total_pages"), pages))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+                detailActions
+            }
+            .frame(height: 140 * 4 / 3)
+        }
+        .padding(16)
+    }
+
+    private var detailActions: some View {
+        HStack(spacing: 8) {
+            Button { toggleFavorite() } label: {
+                Image(systemName: isFavorite ? "heart.fill" : "heart")
+                    .font(.body)
+            }
+            .frame(width: 36, height: 36)
+            .background(Color(.systemGray5))
+            .clipShape(Circle())
+
+            if !isTankoubon {
+                let progress = meta?.progress ?? archive.progress ?? 0
+                let hasProgress = progress > 0
+                let totalPages = meta?.pagecount ?? archive.pagecount ?? 1
+                let percentage = min(Int(Double(progress) / Double(totalPages) * 100), 100)
+                Button {
+                    readerStartIndex = hasProgress ? progress - 1 : 0
+                    showReader = true
+                } label: {
+                    Label(
+                        hasProgress
+                            ? String(format: String(localized: "detail_continue_read"), percentage)
+                            : String(localized: "detail_start_read"),
+                        systemImage: "book.fill"
+                    )
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .background(Color.accentColor)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+    }
+
+    private var detailTabPicker: some View {
+        Picker("", selection: $selectedTab) {
+            Text(String(localized: "detail_info")).tag(0)
+            Text(String(localized: "detail_content")).tag(1)
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 16)
+    }
+
+    private var previewModePicker: some View {
+        Picker("", selection: $previewMode) {
+            Text(String(localized: "detail_preview")).tag(0)
+            Text(String(localized: "detail_filetree")).tag(1)
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 16)
     }
 
     private func applyReaderProgressChange(_ notification: Notification) {
