@@ -26,7 +26,7 @@ struct ArchiveGridCell: View {
                     }
                 }
 
-            MarqueeText(text: isTankoubon ? (archive.title ?? "---") : (archive.filename ?? archive.title ?? "---"))
+            MarqueeText(text: isTankoubon ? (archive.title ?? "---") : (archive.title ?? archive.filename ?? "---"))
                 .font(.subheadline).lineLimit(1)
 
             HStack(spacing: 4) {

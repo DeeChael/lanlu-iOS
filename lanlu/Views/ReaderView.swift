@@ -166,7 +166,10 @@ struct ReaderView: View {
                 } label: { Image(systemName: "list.bullet") }
             }
             ToolbarItem(placement: .principal) {
-                Text("\(currentIndex + 1) / \(files.count)").font(.subheadline)
+                Text("\(currentIndex + 1) / \(files.count)")
+                    .font(.subheadline)
+                    .padding(8)
+                    .glassEffect(.regular, in: Capsule())
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showReaderSettings = true } label: { Image(systemName: "gearshape.fill") }
