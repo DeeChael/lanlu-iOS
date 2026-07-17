@@ -41,6 +41,26 @@ enum ReaderReadingDirection: String, CaseIterable, Identifiable {
     }
 }
 
+enum ReaderTapGestureMode: String, CaseIterable, Identifiable {
+    case leftRight
+    case lShape
+    case kindle
+    case edges
+    case disabled
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .leftRight: String(localized: "reader_tap_mode_left_right")
+        case .lShape: String(localized: "reader_tap_mode_l_shape")
+        case .kindle: "Kindle"
+        case .edges: String(localized: "reader_tap_mode_edges")
+        case .disabled: String(localized: "reader_tap_mode_disabled")
+        }
+    }
+}
+
 
 fileprivate struct ReaderVerticalScrollRequest: Equatable {
     let token = UUID()
@@ -125,13 +145,17 @@ struct ReaderView: View {
     }
     @State fileprivate var progressValue: Double
     @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
-    @AppStorage("reader_tap_turn_page") fileprivate var tapTurnPage = true
+    @AppStorage("reader_tap_gesture_mode") fileprivate var tapGestureModeRaw = ReaderTapGestureMode.leftRight.rawValue
     @AppStorage("reader_audio_autoplay") fileprivate var audioAutoplay = false
     @AppStorage("reader_video_autoplay") fileprivate var videoAutoplay = false
     @AppStorage("reader_reading_direction") fileprivate var readingDirectionRaw = ReaderReadingDirection.leftToRight.rawValue
 
     fileprivate var readingDirection: ReaderReadingDirection {
         ReaderReadingDirection(rawValue: readingDirectionRaw) ?? .leftToRight
+    }
+
+    fileprivate var tapGestureMode: ReaderTapGestureMode {
+        ReaderTapGestureMode(rawValue: tapGestureModeRaw) ?? .leftRight
     }
 
     var maxIndex: Int { max(0, files.count - 1) }
@@ -380,7 +404,7 @@ struct ReaderView: View {
         .sheet(isPresented: $showReaderSettings) {
             ReaderSettingsView(
                 doubleTapZoom: $doubleTapZoom,
-                tapTurnPage: $tapTurnPage,
+                tapGestureMode: $tapGestureModeRaw,
                 audioAutoplay: $audioAutoplay,
                 videoAutoplay: $videoAutoplay,
                 readingDirection: $readingDirectionRaw
@@ -1183,24 +1207,54 @@ struct ReaderView: View {
     }
 
     fileprivate func handleSingleTap(at location: CGPoint, pageSize: CGSize) {
-        let x = location.x
+        let horizontal = location.x / max(pageSize.width, 1)
+        let vertical = location.y / max(pageSize.height, 1)
 
-        if tapTurnPage, x < pageSize.width * 0.3 {
-            if readingDirection == .rightToLeft {
+        switch tapGestureMode {
+        case .leftRight:
+            if horizontal < 1 / 3 {
+                previousPage()
+            } else if horizontal > 2 / 3 {
                 nextPage()
             } else {
-                previousPage()
+                toggleReaderControls()
             }
-        } else if tapTurnPage, x > pageSize.width * 0.7 {
-            if readingDirection == .rightToLeft {
+        case .lShape:
+            if vertical < 1 / 3 {
+                previousPage()
+            } else if vertical > 2 / 3 {
+                nextPage()
+            } else if horizontal < 1 / 3 {
+                previousPage()
+            } else if horizontal > 2 / 3 {
+                nextPage()
+            } else {
+                toggleReaderControls()
+            }
+        case .kindle:
+            if vertical < 1 / 3 {
+                toggleReaderControls()
+            } else if horizontal < 1 / 3 {
                 previousPage()
             } else {
                 nextPage()
             }
-        } else {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                showControls.toggle()
+        case .edges:
+            if horizontal < 1 / 3 || horizontal > 2 / 3 {
+                nextPage()
+            } else if vertical > 2 / 3 {
+                previousPage()
+            } else {
+                toggleReaderControls()
             }
+        case .disabled:
+            toggleReaderControls()
+        }
+    }
+
+    fileprivate func toggleReaderControls() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showControls.toggle()
         }
     }
 
@@ -1918,7 +1972,7 @@ struct ReaderPageView: View {
 
 struct ReaderSettingsView: View {
     @Binding var doubleTapZoom: Bool
-    @Binding var tapTurnPage: Bool
+    @Binding var tapGestureMode: String
     @Binding var audioAutoplay: Bool
     @Binding var videoAutoplay: Bool
     @Binding var readingDirection: String
@@ -1939,7 +1993,19 @@ struct ReaderSettingsView: View {
                 }
                 Section(String(localized: "reader_settings_gesture")) {
                     Toggle(String(localized: "reader_settings_double_tap"), isOn: $doubleTapZoom)
-                    Toggle(String(localized: "reader_settings_tap_turn"), isOn: $tapTurnPage)
+                    NavigationLink {
+                        ReaderTapGestureSettingsView(selection: $tapGestureMode)
+                    } label: {
+                        HStack {
+                            Text(String(localized: "reader_tap_gesture"))
+                            Spacer()
+                            Text(
+                                ReaderTapGestureMode(rawValue: tapGestureMode)?.title
+                                    ?? ReaderTapGestureMode.leftRight.title
+                            )
+                            .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 Section(String(localized: "reader_settings_playback")) {
                     Toggle(String(localized: "reader_settings_audio_autoplay"), isOn: $audioAutoplay)
@@ -1954,6 +2020,133 @@ struct ReaderSettingsView: View {
                 }
             }
         }
+    }
+}
+
+private struct ReaderTapGestureSettingsView: View {
+    @Binding var selection: String
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(ReaderTapGestureMode.allCases) { mode in
+                    Button {
+                        selection = mode.rawValue
+                    } label: {
+                        ReaderTapGestureCard(
+                            mode: mode,
+                            isSelected: selection == mode.rawValue
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(16)
+        }
+        .navigationTitle(String(localized: "reader_tap_gesture"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct ReaderTapGestureCard: View {
+    let mode: ReaderTapGestureMode
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color(uiColor: .systemBackground))
+
+                ReaderTapGestureDiagram(mode: mode)
+                    .padding(12)
+            }
+            .aspectRatio(0.72, contentMode: .fit)
+
+            Text(mode.title)
+                .font(.headline)
+                .foregroundStyle(.primary)
+        }
+        .padding(10)
+        .background(
+            isSelected
+                ? Color.accentColor.opacity(0.08)
+                : Color(uiColor: .secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 16)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(
+                    isSelected ? Color.accentColor : Color(uiColor: .separator),
+                    lineWidth: isSelected ? 2 : 0.5
+                )
+        }
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.35))
+                .padding(8)
+        }
+    }
+}
+
+private struct ReaderTapGestureDiagram: View {
+    let mode: ReaderTapGestureMode
+
+    private let previousColor = Color.blue.opacity(0.38)
+    private let nextColor = Color.green.opacity(0.38)
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+
+            ZStack(alignment: .topLeading) {
+                Color.clear
+                switch mode {
+                case .leftRight:
+                    region(x: 0, y: 0, width: width / 3, height: height, color: previousColor)
+                    region(x: width * 2 / 3, y: 0, width: width / 3, height: height, color: nextColor)
+                case .lShape:
+                    region(x: 0, y: 0, width: width, height: height / 3, color: previousColor)
+                    region(x: 0, y: height * 2 / 3, width: width, height: height / 3, color: nextColor)
+                    region(x: 0, y: height / 3, width: width / 3, height: height / 3, color: previousColor)
+                    region(x: width * 2 / 3, y: height / 3, width: width / 3, height: height / 3, color: nextColor)
+                case .kindle:
+                    region(x: 0, y: height / 3, width: width / 3, height: height * 2 / 3, color: previousColor)
+                    region(x: width / 3, y: height / 3, width: width * 2 / 3, height: height * 2 / 3, color: nextColor)
+                case .edges:
+                    region(x: 0, y: 0, width: width / 3, height: height, color: nextColor)
+                    region(x: width * 2 / 3, y: 0, width: width / 3, height: height, color: nextColor)
+                    region(x: width / 3, y: height * 2 / 3, width: width / 3, height: height / 3, color: previousColor)
+                case .disabled:
+                    EmptyView()
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
+            }
+        }
+    }
+
+    private func region(
+        x: CGFloat,
+        y: CGFloat,
+        width: CGFloat,
+        height: CGFloat,
+        color: Color
+    ) -> some View {
+        Rectangle()
+            .fill(color)
+            .frame(width: width, height: height)
+            .offset(x: x, y: y)
     }
 }
 
