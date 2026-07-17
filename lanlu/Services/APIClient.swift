@@ -1483,8 +1483,8 @@ class APIClient {
         let query: String?
         let sortBy: String?
         let sortOrder: String?
-        let dateFrom: String?
-        let dateTo: String?
+        let dateFrom: Int?
+        let dateTo: Int?
         let newOnly: Bool?
         let untaggedOnly: Bool?
         let sortOrderNumber: Int?
@@ -1503,6 +1503,63 @@ class APIClient {
             case sortOrderNumber = "sort_order_num"
             case createdAt = "created_at"
             case updatedAt = "updated_at"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(Int.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            translations = try container.decodeIfPresent(
+                [String: SmartFilterTranslation].self,
+                forKey: .translations
+            )
+            icon = try container.decodeIfPresent(String.self, forKey: .icon)
+            query = try container.decodeIfPresent(String.self, forKey: .query)
+            sortBy = try container.decodeIfPresent(String.self, forKey: .sortBy)
+            sortOrder = try container.decodeIfPresent(String.self, forKey: .sortOrder)
+            dateFrom = Self.decodeInt(container, key: .dateFrom)
+            dateTo = Self.decodeInt(container, key: .dateTo)
+            newOnly = try container.decodeIfPresent(Bool.self, forKey: .newOnly)
+            untaggedOnly = try container.decodeIfPresent(Bool.self, forKey: .untaggedOnly)
+            sortOrderNumber = Self.decodeInt(container, key: .sortOrderNumber)
+            enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+            createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+            updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        }
+
+        private static func decodeInt(
+            _ container: KeyedDecodingContainer<CodingKeys>,
+            key: CodingKeys
+        ) -> Int? {
+            if let value = try? container.decodeIfPresent(Int.self, forKey: key) {
+                return value
+            }
+            if let value = try? container.decodeIfPresent(String.self, forKey: key) {
+                return Int(value)
+            }
+            return nil
+        }
+    }
+
+    struct SmartFilterPayload: Encodable {
+        let name: String
+        let icon: String
+        let query: String?
+        let sortBy: String
+        let sortOrder: String
+        let dateFrom: Int
+        let dateTo: Int
+        let newOnly: Bool
+        let untaggedOnly: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case name, icon, query
+            case sortBy = "sort_by"
+            case sortOrder = "sort_order"
+            case dateFrom = "date_from"
+            case dateTo = "date_to"
+            case newOnly = "newonly"
+            case untaggedOnly = "untaggedonly"
         }
     }
 
@@ -1554,6 +1611,64 @@ class APIClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
+    func createAdminSmartFilter(_ payload: SmartFilterPayload) async throws {
+        try await submitSmartFilter(path: "/api/admin/smart_filters", method: "POST", payload: payload)
+    }
+
+    func updateAdminSmartFilter(id: Int, payload: SmartFilterPayload) async throws {
+        try await submitSmartFilter(path: "/api/admin/smart_filters/\(id)", method: "PUT", payload: payload)
+    }
+
+    func toggleAdminSmartFilter(id: Int) async throws {
+        try await performSmartFilterAction(
+            path: "/api/admin/smart_filters/\(id)/toggle",
+            method: "POST"
+        )
+    }
+
+    func deleteAdminSmartFilter(id: Int) async throws {
+        try await performSmartFilterAction(
+            path: "/api/admin/smart_filters/\(id)",
+            method: "DELETE"
+        )
+    }
+
+    private func submitSmartFilter(
+        path: String,
+        method: String,
+        payload: SmartFilterPayload
+    ) async throws {
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body = try JSONEncoder().encode(payload)
+        request.httpBody = body
+        applyAuthHeader(&request)
+        LogManager.shared.log(
+            "[SmartFilters] \(method) \(path) payload=\(String(data: body, encoding: .utf8) ?? "")"
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
+    private func performSmartFilterAction(path: String, method: String) async throws {
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
             throw AuthError.networkError(apiMessage(from: data))
         }
     }

@@ -508,13 +508,9 @@ private struct CategoryEditorView: View {
                     TextField(String(localized: "category_name"), text: $name)
                         .submitLabel(.done)
                         .scrollDismissesKeyboard(.immediately)
-                }
-                Section {
                     TextField(String(localized: "category_scan_path"), text: $scanPath)
                         .submitLabel(.done)
                         .scrollDismissesKeyboard(.immediately)
-                }
-                Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(String(localized: "category_description"))
                             .font(.caption)
@@ -523,8 +519,6 @@ private struct CategoryEditorView: View {
                             .frame(minHeight: 96)
                             .scrollDismissesKeyboard(.immediately)
                     }
-                }
-                Section {
                     Stepper(value: $sortOrder) {
                         HStack {
                             Text(String(localized: "category_sort_order"))
@@ -535,7 +529,7 @@ private struct CategoryEditorView: View {
                         }
                     }
                 }
-
+                
                 if !enabledPluginNamespaces.isEmpty {
                     Section(String(localized: "category_metadata_plugins")) {
                         ForEach(enabledPluginNamespaces, id: \.self) { namespace in
