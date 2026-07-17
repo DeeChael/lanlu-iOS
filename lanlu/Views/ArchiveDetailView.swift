@@ -150,6 +150,17 @@ struct ArchiveDetailView: View {
 
     private var isTankoubon: Bool { archive.type == "tankoubon" }
 
+    private var displayTitle: String {
+        let candidates = isTankoubon
+            ? [archive.title, tankoubonMeta?.title]
+            : [archive.title, meta?.title, archive.filename, meta?.filename]
+
+        return candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty })
+            ?? "---"
+    }
+
     var body: some View {
         GeometryReader { geometry in
             if geometry.size.width > geometry.size.height {
@@ -158,7 +169,7 @@ struct ArchiveDetailView: View {
                 portraitLayout
             }
         }
-        .navigationTitle(archive.title ?? "")
+        .navigationTitle(displayTitle == "---" ? "" : displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .animation(.easeInOut(duration: 0.3), value: selectedTab)
@@ -247,7 +258,7 @@ struct ArchiveDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 6) {
-                MarqueeText(text: archive.title ?? archive.filename ?? "---")
+                MarqueeText(text: displayTitle)
                     .font(.title3)
                     .fontWeight(.bold)
                     .padding(.vertical, 2)
