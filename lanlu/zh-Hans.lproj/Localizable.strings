@@ -259,6 +259,7 @@
 "statistics_total_pages_read" = "总阅读页数";
 "statistics_db_extensions" = "数据库拓展";
 "statistics_tag_cloud" = "标签词云";
+"archive_unread" = "未读过";
 "detail_archived_in" = "所属合集";
 "no_archived_in" = "无所属合集";
 "detail_no_description" = "没有简介";

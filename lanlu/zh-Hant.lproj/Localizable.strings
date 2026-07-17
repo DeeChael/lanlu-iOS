@@ -259,6 +259,7 @@
 "statistics_total_pages_read" = "總閱讀頁數";
 "statistics_db_extensions" = "數據庫拓展";
 "statistics_tag_cloud" = "標籤詞雲";
+"archive_unread" = "未讀過";
 "detail_archived_in" = "所屬合集";
 "no_archived_in" = "無所屬合集";
 "detail_no_description" = "沒有簡介";

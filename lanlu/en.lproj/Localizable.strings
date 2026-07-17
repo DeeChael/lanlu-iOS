@@ -259,6 +259,7 @@
 "statistics_total_pages_read" = "Total Pages Read";
 "statistics_db_extensions" = "Database Extensions";
 "statistics_tag_cloud" = "Tag Cloud";
+"archive_unread" = "Unread";
 "detail_archived_in" = "Part of";
 "no_archived_in" = "Not part of any collection";
 "detail_no_description" = "No description";

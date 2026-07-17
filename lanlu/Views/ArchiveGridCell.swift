@@ -7,6 +7,7 @@ struct ArchiveGridCell: View {
 
     private var isTankoubon: Bool { archive.type == "tankoubon" }
     private var coverAssetId: Int? { archive.assets?.cover }
+    private var hasReadingProgress: Bool { (archive.progress ?? 0) > 0 }
     private var progressPercent: Int {
         guard !isTankoubon, let p = archive.progress, let total = archive.pagecount, total > 0 else { return 0 }
         return min(Int((Double(p) / Double(total)) * 100), 100)
@@ -42,7 +43,11 @@ struct ArchiveGridCell: View {
                 }
                 Spacer()
                 if !isTankoubon {
-                    Text("\(progressPercent)%")
+                    Text(
+                        hasReadingProgress
+                            ? "\(progressPercent)%"
+                            : String(localized: "archive_unread")
+                    )
                         .font(.caption).fontWeight(.semibold).foregroundColor(.primary)
                 }
             }

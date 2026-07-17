@@ -1738,7 +1738,7 @@ private struct ReaderTableOfContentsOverlay: View {
 
             ZStack(alignment: .leading) {
                 Color.black
-                    .ignoresSafeArea(.container, edges: .vertical)
+                    .ignoresSafeArea(.container, edges: [.vertical, .horizontal])
                     .opacity(isPanelVisible ? 0.32 : 0)
                     .contentShape(Rectangle())
                     .onTapGesture {
