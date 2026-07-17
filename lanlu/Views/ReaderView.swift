@@ -13,6 +13,14 @@ enum ReaderPageFileType {
     case unknown, image, video, audio
 }
 
+private enum ReaderImageLoadError: LocalizedError {
+    case decodeFailed
+
+    var errorDescription: String? {
+        "Image decode failed"
+    }
+}
+
 enum ReaderBottomControlFocus {
     case bookProgress, fileControl
 }
@@ -62,7 +70,6 @@ struct ReaderView: View {
     @State fileprivate var currentIndex: Int
     @State fileprivate var showControls = false
     @State fileprivate var images: [Int: UIImage] = [:]
-    @State fileprivate var failedPages: Set<Int> = []
     @State fileprivate var isLoading: Set<Int> = []
     @State fileprivate var dragOffset: CGFloat = 0
     @State fileprivate var verticalDrag: CGFloat = 0
@@ -431,7 +438,10 @@ struct ReaderView: View {
             }
         }
         .onDisappear { cancelAllTasks(); stopAudio(); stopVideo(); saveProgress() }
-        .onChange(of: currentIndex) { _, newIndex in
+        .onChange(of: currentIndex) { oldIndex, newIndex in
+            loadTasks[oldIndex]?.cancel()
+            loadTasks[oldIndex] = nil
+            isLoading.remove(oldIndex)
             updateBottomToolbar(for: newIndex)
 
             audioCover = nil
@@ -600,19 +610,6 @@ struct ReaderView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: width, height: height)
-            } else if failedPages.contains(index) {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.orange)
-                    Text(String(localized: "reader_tap_reload"))
-                        .font(.subheadline)
-                }
-                .frame(width: width, height: height)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    retryPage(index)
-                }
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -1187,19 +1184,6 @@ struct ReaderView: View {
 
     fileprivate func handleSingleTap(at location: CGPoint, pageSize: CGSize) {
         let x = location.x
-        let y = location.y
-        let isCenterColumn = x >= pageSize.width * 0.3
-            && x <= pageSize.width * 0.7
-        let isCenterReloadBand = y >= pageSize.height * 0.4
-            && y <= pageSize.height * 0.6
-
-        if failedPages.contains(currentIndex),
-           isImageFile(filePath(at: currentIndex)),
-           isCenterColumn,
-           isCenterReloadBand {
-            retryPage(currentIndex)
-            return
-        }
 
         if tapTurnPage, x < pageSize.width * 0.3 {
             if readingDirection == .rightToLeft {
@@ -1544,8 +1528,6 @@ struct ReaderView: View {
                 panOffset: index == currentIndex ? panOffset : .zero
             )
             .frame(width: size.width, height: size.height)
-        } else if failedPages.contains(index) {
-            failedPageView(index: index, size: size)
         } else {
             loadingPageView(index: index, size: size)
                 .task(id: path) { loadPage(index) }
@@ -1587,23 +1569,6 @@ struct ReaderView: View {
                 .font(.caption)
         }
         .frame(width: size.width, height: size.height)
-    }
-
-    @ViewBuilder
-    fileprivate func failedPageView(index: Int, size: CGSize) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundColor(.orange)
-            Text(String(localized: "reader_tap_reload")).font(.subheadline)
-        }
-        .frame(width: size.width, height: size.height)
-        .contentShape(Rectangle())
-        .onTapGesture { retryPage(index) }
-    }
-
-    fileprivate func retryPage(_ index: Int) {
-        LogManager.shared.log("[Reader] Retry image index=\(index)")
-        failedPages.remove(index)
-        loadPage(index)
     }
 
     @ViewBuilder
@@ -2060,7 +2025,6 @@ extension ReaderView {
     fileprivate func loadPage(_ index: Int) {
         guard index >= 0, index < files.count else { return }
         guard images[index] == nil else { return }
-        guard !failedPages.contains(index) else { return }
         guard !isLoading.contains(index) else { return }
 
         let path = filePath(at: index)
@@ -2073,56 +2037,54 @@ extension ReaderView {
         loadTasks[index] = Task {
             let cacheKey = "page_\(arcid)_\(path)"
 
-            if let cached = CacheManager.shared.getCover(id: cacheKey),
-               let img = readerImage(from: cached) {
-                guard !Task.isCancelled else {
+            var attempt = 0
+            while !Task.isCancelled {
+                attempt += 1
+                do {
+                    let data: Data
+                    let loadedFromCache: Bool
+                    if attempt == 1,
+                       let cached = CacheManager.shared.getCover(id: cacheKey) {
+                        data = cached
+                        loadedFromCache = true
+                    } else {
+                        data = try await server.apiClient.fetchPageImage(arcid: arcid, path: path)
+                        loadedFromCache = false
+                    }
+
+                    guard !Task.isCancelled else { break }
+                    guard let image = readerImage(from: data) else {
+                        throw ReaderImageLoadError.decodeFailed
+                    }
+
+                    if !loadedFromCache {
+                        CacheManager.shared.cacheCover(id: cacheKey, data: data)
+                    }
                     await MainActor.run {
+                        images[index] = image
+                        if image.size.width > 0, image.size.height > 0 {
+                            imageAspectRatios[index] = image.size.height / image.size.width
+                        }
                         isLoading.remove(index)
                         loadTasks[index] = nil
                     }
                     return
-                }
-                await MainActor.run {
-                    images[index] = img
-                    if img.size.width > 0, img.size.height > 0 {
-                        imageAspectRatios[index] = img.size.height / img.size.width
+                } catch {
+                    guard !Task.isCancelled else { break }
+                    let shouldRetry = await MainActor.run { currentIndex == index }
+                    if !shouldRetry {
+                        break
                     }
-                    failedPages.remove(index)
-                    isLoading.remove(index)
-                    loadTasks[index] = nil
+                    LogManager.shared.log(
+                        "[Reader] Current image retry index=\(index) attempt=\(attempt): \(error.localizedDescription)"
+                    )
+                    try? await Task.sleep(for: .milliseconds(800))
                 }
-                return
             }
 
-            do {
-                let data = try await server.apiClient.fetchPageImage(arcid: arcid, path: path)
-                guard !Task.isCancelled else {
-                    await MainActor.run { isLoading.remove(index); loadTasks[index] = nil }
-                    return
-                }
-                guard let img = readerImage(from: data) else {
-                    LogManager.shared.log("[Reader] Image decode failed index=\(index) bytes=\(data.count)")
-                    await MainActor.run { isLoading.remove(index); failedPages.insert(index); loadTasks[index] = nil }
-                    return
-                }
-                CacheManager.shared.cacheCover(id: cacheKey, data: data)
-                await MainActor.run {
-                    images[index] = img
-                    if img.size.width > 0, img.size.height > 0 {
-                        imageAspectRatios[index] = img.size.height / img.size.width
-                    }
-                    failedPages.remove(index)
-                    isLoading.remove(index)
-                    loadTasks[index] = nil
-                }
-            } catch {
-                if !Task.isCancelled {
-                    LogManager.shared.log("[Reader] Image load failed index=\(index): \(error.localizedDescription)")
-                }
-                await MainActor.run {
-                    isLoading.remove(index); loadTasks[index] = nil
-                    if !Task.isCancelled { failedPages.insert(index) }
-                }
+            await MainActor.run {
+                isLoading.remove(index)
+                loadTasks[index] = nil
             }
         }
     }
