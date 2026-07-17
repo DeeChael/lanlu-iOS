@@ -700,42 +700,63 @@ struct ReaderView: View {
         let artist = index == currentIndex ? audioArtist : nil
         let album = index == currentIndex ? audioAlbum : nil
 
-        return VStack(spacing: 16) {
-            Spacer()
-            ZStack(alignment: .center) {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(.systemGray5))
-                if let cover {
-                    Image(uiImage: cover)
-                        .resizable()
-                        .scaledToFill()
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                } else {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 60))
-                        .foregroundColor(.secondary)
+        let coverView = ZStack(alignment: .center) {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemGray5))
+            if let cover {
+                Image(uiImage: cover)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            } else {
+                Image(systemName: "music.note")
+                    .font(.system(size: 60))
+                    .foregroundColor(.secondary)
+            }
+        }
+
+        let informationView = VStack(alignment: .leading, spacing: 4) {
+            Text(title ?? fileName)
+                .font(.title2)
+                .foregroundColor(.primary)
+                .lineLimit(1)
+            Text(artist ?? String(localized: "reader_audio_artist"))
+                .font(.body)
+                .foregroundColor(.primary)
+                .lineLimit(1)
+            Text(album ?? String(localized: "reader_audio_album"))
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .italic()
+                .lineLimit(1)
+        }
+
+        return Group {
+            if size.width > size.height {
+                let coverSize = max(min(size.height - 64, size.width * 0.42), 160)
+                HStack(spacing: 32) {
+                    coverView
+                        .frame(width: coverSize, height: coverSize)
+
+                    informationView
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .safeAreaPadding(.horizontal)
+                .safeAreaPadding(.vertical)
+            } else {
+                VStack(spacing: 16) {
+                    Spacer()
+                    coverView
+                        .frame(width: size.width - 64, height: size.width - 64)
+
+                    informationView
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 32)
+                    Spacer()
                 }
             }
-            .frame(width: size.width - 64, height: size.width - 64)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title ?? fileName)
-                    .font(.title2)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                Text(artist ?? String(localized: "reader_audio_artist"))
-                    .font(.body)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                Text(album ?? String(localized: "reader_audio_album"))
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .italic()
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 32)
-            Spacer()
         }
         .frame(width: size.width, height: size.height)
         .task(id: index) {
