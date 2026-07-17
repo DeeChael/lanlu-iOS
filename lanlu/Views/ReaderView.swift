@@ -2251,6 +2251,7 @@ struct ReaderSettingsView: View {
                                 .monospacedDigit()
                         }
                     }
+                    .foregroundStyle(verticalAddMargin ? .primary : .secondary)
                     .disabled(!verticalAddMargin)
                 }
                 Section(String(localized: "reader_settings_playback")) {
