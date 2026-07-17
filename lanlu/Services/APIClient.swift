@@ -1171,12 +1171,62 @@ class APIClient {
             case createdAt = "created_at"
             case updatedAt = "updated_at"
         }
+
     }
 
     struct CategoriesResponse: Decodable {
         let operation: String?
         let success: Int?
         let data: [CategoryItem]?
+    }
+
+    struct AdminPlugin: Codable, Identifiable, Sendable {
+        let id: Int
+        let name: String
+        let namespace: String
+        let version: String?
+        let description: String?
+        let author: String?
+        let entry: String?
+        let pluginType: String?
+        let enabled: Bool?
+        let installed: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, namespace, version, description, author, entry, enabled, installed
+            case pluginType = "plugin_type"
+        }
+    }
+
+    struct CreateCategoryPayload: Encodable {
+        let name: String
+        let scanPath: String
+        let description: String
+        let icon: String
+        let sortOrder: Int
+        let plugins: [String]
+
+        enum CodingKeys: String, CodingKey {
+            case name, description, icon, plugins
+            case scanPath = "scan_path"
+            case sortOrder = "sort_order"
+        }
+    }
+
+    struct UpdateCategoryPayload: Encodable {
+        let name: String?
+        let scanPath: String?
+        let description: String?
+        let icon: String?
+        let sortOrder: Int?
+        let plugins: [String]?
+        let enabled: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case name, description, icon, plugins, enabled
+            case scanPath = "scan_path"
+            case sortOrder = "sort_order"
+        }
     }
 
     func fetchCategories() async throws -> [CategoryItem] {
@@ -1186,6 +1236,11 @@ class APIClient {
         applyAuthHeader(&request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
+        let responseText = String(data: data, encoding: .utf8) ?? "<non-text response>"
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        LogManager.shared.log(
+            "[Categories] GET /api/categories status=\(statusCode) response=\(responseText)"
+        )
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
@@ -1199,6 +1254,122 @@ class APIClient {
             return items
         }
         return []
+    }
+
+    func fetchAdminPlugins() async throws -> [AdminPlugin] {
+        let url = try makeURL("/api/admin/plugins")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let responseText = String(data: data, encoding: .utf8) ?? "<non-text response>"
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        LogManager.shared.log(
+            "[Categories] GET /api/admin/plugins status=\(statusCode) response=\(responseText)"
+        )
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        if let plugins = try? JSONDecoder().decode([AdminPlugin].self, from: data) {
+            return plugins
+        }
+        if let envelope = try? JSONDecoder().decode(ApiEnvelope<[AdminPlugin]>.self, from: data),
+           let plugins = envelope.data {
+            return plugins
+        }
+        throw AuthError.networkError(String(localized: "connection_failed"))
+    }
+
+    func createCategory(_ payload: CreateCategoryPayload) async throws {
+        try await submitCategory(path: "/api/categories", method: "POST", payload: payload)
+    }
+
+    func updateCategory(catid: String, payload: UpdateCategoryPayload) async throws {
+        try await submitCategory(path: "/api/categories/\(catid)", method: "PUT", payload: payload)
+    }
+
+    private func submitCategory<Payload: Encodable>(
+        path: String,
+        method: String,
+        payload: Payload
+    ) async throws {
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let requestBody = try JSONEncoder().encode(payload)
+        request.httpBody = requestBody
+        applyAuthHeader(&request)
+
+        let requestJSON = String(data: requestBody, encoding: .utf8) ?? "<invalid utf8>"
+        LogManager.shared.log("[Categories] \(method) \(path) payload=\(requestJSON)")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+
+        let responseText = String(data: data, encoding: .utf8) ?? "<non-text response>"
+        LogManager.shared.log(
+            "[Categories] \(method) \(path) status=\(httpResponse.statusCode) response=\(responseText)"
+        )
+        if 200..<300 ~= httpResponse.statusCode {
+            return
+        }
+
+        throw AuthError.networkError(
+            categoryErrorMessage(from: data, statusCode: httpResponse.statusCode)
+        )
+    }
+
+    private func categoryErrorMessage(from data: Data, statusCode: Int) -> String {
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["message", "error", "detail", "reason"] {
+                if let value = object[key] as? String, !value.isEmpty {
+                    return value
+                }
+            }
+        }
+        if let text = String(data: data, encoding: .utf8), !text.isEmpty {
+            return "HTTP \(statusCode): \(text)"
+        }
+        return "HTTP \(statusCode)"
+    }
+
+    func deleteCategory(id: Int) async throws {
+        try await performCategoryAction(
+            path: "/api/categories/\(id)",
+            method: "DELETE"
+        )
+    }
+
+    func scanCategory(id: Int) async throws {
+        try await performCategoryAction(
+            path: "/api/categories/\(id)/scan",
+            method: "POST"
+        )
+    }
+
+    func scanCategories() async throws {
+        try await performCategoryAction(
+            path: "/api/categories/scan",
+            method: "POST"
+        )
+    }
+
+    private func performCategoryAction(path: String, method: String) async throws {
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        applyAuthHeader(&request)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
     }
 
     // MARK: - Tags

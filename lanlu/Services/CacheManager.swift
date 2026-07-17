@@ -115,6 +115,31 @@ final class CacheManager {
         return data
     }
 
+    func cacheAdminPlugins(serverId: String, data: Data) {
+        let key = adminPluginsCacheKey(serverId: serverId)
+        metaMemoryCache.setObject(data as NSData, forKey: key as NSString)
+        try? data.write(to: metaDiskURL(key: key), options: .atomic)
+    }
+
+    func getAdminPlugins(serverId: String) -> Data? {
+        let key = adminPluginsCacheKey(serverId: serverId)
+        if let cached = metaMemoryCache.object(forKey: key as NSString) as? Data {
+            return cached
+        }
+        let url = metaDiskURL(key: key)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        metaMemoryCache.setObject(data as NSData, forKey: key as NSString)
+        return data
+    }
+
+    private func adminPluginsCacheKey(serverId: String) -> String {
+        let encoded = Data(serverId.utf8).base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "=", with: "")
+        return "admin_plugins_\(encoded)"
+    }
+
     var metadataDiskCount: Int {
         (try? FileManager.default.contentsOfDirectory(at: metaCacheDir, includingPropertiesForKeys: nil).filter {
             let name = $0.lastPathComponent
