@@ -153,6 +153,8 @@ struct ReaderView: View {
     @AppStorage("reader_preload_page_count") fileprivate var preloadPageCount = 2
     @AppStorage("reader_double_page") fileprivate var doublePageEnabled = false
     @AppStorage("reader_first_page_single") fileprivate var firstPageAlwaysSingle = false
+    @AppStorage("reader_vertical_add_margin") fileprivate var verticalAddMargin = false
+    @AppStorage("reader_vertical_margin") fileprivate var verticalMargin = 16
     @State fileprivate var horizontalPageUnits: [[Int]]
     @State fileprivate var horizontalUnitIndexByPage: [Int: Int]
 
@@ -522,7 +524,9 @@ struct ReaderView: View {
                 readingDirection: $readingDirectionRaw,
                 preloadPageCount: $preloadPageCount,
                 doublePageEnabled: $doublePageEnabled,
-                firstPageAlwaysSingle: $firstPageAlwaysSingle
+                firstPageAlwaysSingle: $firstPageAlwaysSingle,
+                verticalAddMargin: $verticalAddMargin,
+                verticalMargin: $verticalMargin
             )
                 .presentationDetents([.large])
         }
@@ -760,17 +764,23 @@ struct ReaderView: View {
         viewportHeight: CGFloat
     ) -> some View {
         let path = filePath(at: index)
+        let isImage = fileType(at: index) == .image
+        let horizontalMargin = isImage && verticalAddMargin
+            ? CGFloat(verticalMargin)
+            : 0
+        let contentWidth = max(width - horizontalMargin * 2, 1)
         let height = verticalPageHeight(
             index: index,
-            width: width,
+            width: contentWidth,
             viewportHeight: viewportHeight
         )
 
-        if fileType(at: index) == .image {
+        if isImage {
             if let image = images[index] {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
+                    .frame(width: contentWidth, height: height)
                     .frame(width: width, height: height)
             } else {
                 VStack(spacing: 12) {
@@ -780,6 +790,7 @@ struct ReaderView: View {
                         .font(.caption)
                         .monospacedDigit()
                 }
+                .frame(width: contentWidth, height: height)
                 .frame(width: width, height: height)
                 .task(id: path) {
                     loadPage(index)
@@ -2175,6 +2186,8 @@ struct ReaderSettingsView: View {
     @Binding var preloadPageCount: Int
     @Binding var doublePageEnabled: Bool
     @Binding var firstPageAlwaysSingle: Bool
+    @Binding var verticalAddMargin: Bool
+    @Binding var verticalMargin: Int
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -2223,6 +2236,22 @@ struct ReaderSettingsView: View {
                         isOn: $firstPageAlwaysSingle
                     )
                     .disabled(!doublePageEnabled)
+                }
+                Section(String(localized: "reader_settings_vertical_comic")) {
+                    Toggle(
+                        String(localized: "reader_vertical_add_margin"),
+                        isOn: $verticalAddMargin
+                    )
+                    Stepper(value: $verticalMargin, in: 4...128, step: 4) {
+                        HStack {
+                            Text(String(localized: "reader_vertical_margin"))
+                            Spacer()
+                            Text("\(verticalMargin)")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    .disabled(!verticalAddMargin)
                 }
                 Section(String(localized: "reader_settings_playback")) {
                     Toggle(String(localized: "reader_settings_audio_autoplay"), isOn: $audioAutoplay)

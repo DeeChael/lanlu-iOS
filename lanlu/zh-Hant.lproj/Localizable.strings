@@ -245,6 +245,9 @@
 "reader_preload_pages" = "預加載頁數";
 "reader_double_page" = "雙頁";
 "reader_first_page_single" = "首頁總是單獨顯示";
+"reader_settings_vertical_comic" = "條漫";
+"reader_vertical_add_margin" = "留邊";
+"reader_vertical_margin" = "邊距";
 "reader_reset_zoom" = "重置縮放";
 "reader_toc_title" = "目錄";
 "reader_tap_reload" = "點擊重新加載";
