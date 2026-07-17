@@ -94,6 +94,15 @@
 "ss_tags" = "Tags";
 "ss_smart_filters" = "Smart Filters";
 "ss_user_management" = "User Management";
+"create_user" = "Create User";
+"set_as_administrator" = "Set as Administrator";
+"administrator" = "Administrator";
+"user_admin" = "Administrator";
+"user_regular" = "Regular User";
+"user_created_time" = "Created: %@";
+"change_user_password" = "Change User Password";
+"user_delete_title" = "Delete User";
+"user_delete_confirm" = "Delete user “%@”? This action cannot be undone.";
 "ss_system_settings" = "System Settings";
 "ss_background_tasks" = "Background Tasks";
 "ss_scheduled_tasks" = "Scheduled Tasks";

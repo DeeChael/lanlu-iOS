@@ -94,6 +94,15 @@
 "ss_tags" = "標籤";
 "ss_smart_filters" = "智能篩選";
 "ss_user_management" = "用戶管理";
+"create_user" = "創建用戶";
+"set_as_administrator" = "設為管理員";
+"administrator" = "管理員";
+"user_admin" = "管理員";
+"user_regular" = "普通用戶";
+"user_created_time" = "創建時間：%@";
+"change_user_password" = "修改用戶密碼";
+"user_delete_title" = "刪除用戶";
+"user_delete_confirm" = "確定要刪除用戶「%@」嗎？此操作無法撤銷。";
 "ss_system_settings" = "系統設置";
 "ss_background_tasks" = "後臺任務";
 "ss_scheduled_tasks" = "定時任務";

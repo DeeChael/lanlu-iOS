@@ -59,6 +59,8 @@ struct ServerSettingDetailView: View {
                 TagManagementView(server: server)
             } else if setting == .smartFilters {
                 SmartFilterManagementView(server: server)
+            } else if setting == .userManagement {
+                UserManagementView(server: server)
             } else if setting == .statistics {
                 ServerStatisticsView(server: server)
             } else {

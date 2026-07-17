@@ -94,6 +94,15 @@
 "ss_tags" = "标签";
 "ss_smart_filters" = "智能筛选";
 "ss_user_management" = "用户管理";
+"create_user" = "创建用户";
+"set_as_administrator" = "设为管理员";
+"administrator" = "管理员";
+"user_admin" = "管理员";
+"user_regular" = "普通用户";
+"user_created_time" = "创建时间：%@";
+"change_user_password" = "修改用户密码";
+"user_delete_title" = "删除用户";
+"user_delete_confirm" = "确定要删除用户“%@”吗？此操作无法撤销。";
 "ss_system_settings" = "系统设置";
 "ss_background_tasks" = "后台任务";
 "ss_scheduled_tasks" = "定时任务";

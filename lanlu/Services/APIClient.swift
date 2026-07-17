@@ -92,6 +92,17 @@ struct UserInfoData: Decodable {
     let user: UserData
 }
 
+struct AdminUser: Decodable, Identifiable {
+    let id: Int
+    let username: String
+    let isAdmin: Bool
+    let createdAt: String
+}
+
+private struct AdminUsersData: Decodable {
+    let users: [AdminUser]
+}
+
 struct TOTPStatusData: Decodable {
     let enabled: Bool
     let recoveryCodesRemaining: Int
@@ -573,6 +584,82 @@ class APIClient {
         default:
             LogManager.shared.log("Token verify failed: HTTP \(httpResponse.statusCode)")
             throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+    }
+
+    // MARK: - User Management
+
+    func fetchAdminUsers() async throws -> [AdminUser] {
+        LogManager.shared.log("GET /api/auth/admin/users")
+        let url = try makeURL("/api/auth/admin/users")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+        let envelope = try JSONDecoder().decode(ApiEnvelope<AdminUsersData>.self, from: data)
+        return envelope.data?.users ?? []
+    }
+
+    func createAdminUser(username: String, isAdmin: Bool) async throws {
+        try await submitAdminUserRequest(
+            path: "/api/auth/admin/users",
+            method: "POST",
+            body: ["username": username, "isAdmin": isAdmin]
+        )
+    }
+
+    func updateAdminUserRole(id: Int, isAdmin: Bool) async throws {
+        try await submitAdminUserRequest(
+            path: "/api/auth/admin/users/\(id)/role",
+            method: "PUT",
+            body: ["isAdmin": isAdmin]
+        )
+    }
+
+    func resetAdminUserPassword(id: Int, newPassword: String) async throws {
+        try await submitAdminUserRequest(
+            path: "/api/auth/admin/users/\(id)/reset-password",
+            method: "POST",
+            body: ["newPassword": newPassword]
+        )
+    }
+
+    func deleteAdminUser(id: Int) async throws {
+        LogManager.shared.log("DELETE /api/auth/admin/users/\(id)")
+        let url = try makeURL("/api/auth/admin/users/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
+    private func submitAdminUserRequest(
+        path: String,
+        method: String,
+        body: [String: Any]
+    ) async throws {
+        LogManager.shared.log("\(method) \(path)")
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw AuthError.networkError(apiMessage(from: data))
         }
     }
 
