@@ -241,6 +241,10 @@
 "reader_tap_mode_l_shape" = "L 型";
 "reader_tap_mode_edges" = "邊緣";
 "reader_tap_mode_disabled" = "禁用";
+"reader_settings_pagination" = "分頁";
+"reader_preload_pages" = "預加載頁數";
+"reader_double_page" = "雙頁";
+"reader_first_page_single" = "首頁總是單獨顯示";
 "reader_reset_zoom" = "重置縮放";
 "reader_toc_title" = "目錄";
 "reader_tap_reload" = "點擊重新加載";

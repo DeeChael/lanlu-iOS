@@ -86,6 +86,7 @@ struct ReaderView: View {
     let files: [APIClient.PageFile]
     let startIndex: Int
     let server: Server
+    let pageFileTypes: [ReaderPageFileType]
 
     @State fileprivate var currentIndex: Int
     @State fileprivate var showControls = false
@@ -149,6 +150,11 @@ struct ReaderView: View {
     @AppStorage("reader_audio_autoplay") fileprivate var audioAutoplay = false
     @AppStorage("reader_video_autoplay") fileprivate var videoAutoplay = false
     @AppStorage("reader_reading_direction") fileprivate var readingDirectionRaw = ReaderReadingDirection.leftToRight.rawValue
+    @AppStorage("reader_preload_page_count") fileprivate var preloadPageCount = 2
+    @AppStorage("reader_double_page") fileprivate var doublePageEnabled = false
+    @AppStorage("reader_first_page_single") fileprivate var firstPageAlwaysSingle = false
+    @State fileprivate var horizontalPageUnits: [[Int]]
+    @State fileprivate var horizontalUnitIndexByPage: [Int: Int]
 
     fileprivate var readingDirection: ReaderReadingDirection {
         ReaderReadingDirection(rawValue: readingDirectionRaw) ?? .leftToRight
@@ -161,16 +167,104 @@ struct ReaderView: View {
     var maxIndex: Int { max(0, files.count - 1) }
 
     fileprivate var currentFileIsImage: Bool {
-        isImageFile(filePath(at: currentIndex))
+        fileType(at: currentIndex) == .image
+    }
+
+    fileprivate func makeHorizontalPageUnits() -> [[Int]] {
+        guard doublePageEnabled else { return files.indices.map { [$0] } }
+        var units: [[Int]] = []
+        var index = 0
+        if firstPageAlwaysSingle, !files.isEmpty {
+            units.append([0])
+            index = 1
+        }
+
+        while index < files.count {
+            let nextIndex = index + 1
+            if nextIndex < files.count,
+               pageFileTypes[index] == .image,
+               pageFileTypes[nextIndex] == .image {
+                units.append([index, nextIndex])
+                index += 2
+            } else {
+                units.append([index])
+                index += 1
+            }
+        }
+        return units
+    }
+
+    fileprivate func rebuildHorizontalPaginationCache() {
+        let units = makeHorizontalPageUnits()
+        var unitIndexByPage: [Int: Int] = [:]
+        unitIndexByPage.reserveCapacity(files.count)
+        for (unitIndex, pages) in units.enumerated() {
+            for pageIndex in pages {
+                unitIndexByPage[pageIndex] = unitIndex
+            }
+        }
+        horizontalPageUnits = units
+        horizontalUnitIndexByPage = unitIndexByPage
+    }
+
+    fileprivate func horizontalUnit(containing index: Int) -> [Int] {
+        guard let unitIndex = horizontalUnitIndexByPage[index],
+              horizontalPageUnits.indices.contains(unitIndex) else { return [index] }
+        return horizontalPageUnits[unitIndex]
+    }
+
+    fileprivate func horizontalUnitIndex(containing index: Int) -> Int? {
+        horizontalUnitIndexByPage[index]
+    }
+
+    fileprivate func adjacentHorizontalTarget(from index: Int, offset: Int) -> Int? {
+        guard let unitIndex = horizontalUnitIndex(containing: index) else { return nil }
+        let targetUnitIndex = unitIndex + offset
+        guard horizontalPageUnits.indices.contains(targetUnitIndex) else { return nil }
+        return horizontalPageUnits[targetUnitIndex].first
+    }
+
+    fileprivate func isInCurrentHorizontalUnit(_ index: Int) -> Bool {
+        horizontalUnit(containing: currentIndex).contains(index)
+    }
+
+    fileprivate func horizontalPreloadImageIndices(after unitIndex: Int) -> [Int] {
+        let units = horizontalPageUnits
+        guard units.indices.contains(unitIndex) else { return [] }
+
+        let preloadLimit = min(max(preloadPageCount, 1), 5)
+        var result: [Int] = []
+        for nextUnitIndex in units.indices where nextUnitIndex > unitIndex {
+            for pageIndex in units[nextUnitIndex] where fileType(at: pageIndex) == .image {
+                result.append(pageIndex)
+                if result.count == preloadLimit {
+                    return result
+                }
+            }
+        }
+        return result
     }
 
     init(arcid: String, files: [APIClient.PageFile], startIndex: Int, server: Server) {
+        let fileTypes = files.map { file in
+            Self.detectFileType(
+                file.defaultSource?.path ?? file.path ?? ""
+            )
+        }
+        let initialUnits = files.indices.map { [$0] }
         self.arcid = arcid
         self.files = files
         self.startIndex = startIndex
         self.server = server
+        self.pageFileTypes = fileTypes
         _currentIndex = State(initialValue: startIndex)
         _progressValue = State(initialValue: Double(startIndex))
+        _horizontalPageUnits = State(initialValue: initialUnits)
+        _horizontalUnitIndexByPage = State(
+            initialValue: Dictionary(
+                uniqueKeysWithValues: files.indices.map { ($0, $0) }
+            )
+        )
     }
 
     var body: some View {
@@ -235,8 +329,17 @@ struct ReaderView: View {
                                     : "chevron.left"
                                 )
                             }
-                            .disabled(currentIndex <= 0)
-                            .opacity(currentIndex <= 0 ? 0.5 : 1)
+                            .disabled(
+                                readingDirection == .vertical
+                                    ? currentIndex <= 0
+                                    : adjacentHorizontalTarget(from: currentIndex, offset: -1) == nil
+                            )
+                            .opacity(
+                                (readingDirection == .vertical
+                                    ? currentIndex <= 0
+                                    : adjacentHorizontalTarget(from: currentIndex, offset: -1) == nil)
+                                ? 0.5 : 1
+                            )
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             Button { nextPage() } label: {
                                 Image(
@@ -245,8 +348,17 @@ struct ReaderView: View {
                                     : "chevron.right"
                                 )
                             }
-                            .disabled(currentIndex >= maxIndex)
-                            .opacity(currentIndex >= maxIndex ? 0.5 : 1)
+                            .disabled(
+                                readingDirection == .vertical
+                                    ? currentIndex >= maxIndex
+                                    : adjacentHorizontalTarget(from: currentIndex, offset: 1) == nil
+                            )
+                            .opacity(
+                                (readingDirection == .vertical
+                                    ? currentIndex >= maxIndex
+                                    : adjacentHorizontalTarget(from: currentIndex, offset: 1) == nil)
+                                ? 0.5 : 1
+                            )
                             .transition(.move(edge: .leading).combined(with: .opacity))
                         }
                     }
@@ -269,7 +381,7 @@ struct ReaderView: View {
                                                 animated: false
                                             )
                                         } else {
-                                            currentIndex = newIndex
+                                            currentIndex = horizontalUnit(containing: newIndex).first ?? newIndex
                                         }
                                     }
                                 }
@@ -407,7 +519,10 @@ struct ReaderView: View {
                 tapGestureMode: $tapGestureModeRaw,
                 audioAutoplay: $audioAutoplay,
                 videoAutoplay: $videoAutoplay,
-                readingDirection: $readingDirectionRaw
+                readingDirection: $readingDirectionRaw,
+                preloadPageCount: $preloadPageCount,
+                doublePageEnabled: $doublePageEnabled,
+                firstPageAlwaysSingle: $firstPageAlwaysSingle
             )
                 .presentationDetents([.large])
         }
@@ -441,6 +556,12 @@ struct ReaderView: View {
             .interactiveDismissDisabled()
         }
         .onAppear {
+            rebuildHorizontalPaginationCache()
+            if readingDirection != .vertical {
+                let normalizedIndex = horizontalUnit(containing: currentIndex).first ?? currentIndex
+                currentIndex = normalizedIndex
+                progressValue = Double(normalizedIndex)
+            }
             currentPageFileType = fileType(at: currentIndex)
             if files.count <= 1 && mediaToolbarIcon != nil  {
                 bottomControlFocus = .fileControl
@@ -463,9 +584,11 @@ struct ReaderView: View {
         }
         .onDisappear { cancelAllTasks(); stopAudio(); stopVideo(); saveProgress() }
         .onChange(of: currentIndex) { oldIndex, newIndex in
-            loadTasks[oldIndex]?.cancel()
-            loadTasks[oldIndex] = nil
-            isLoading.remove(oldIndex)
+            for index in horizontalUnit(containing: oldIndex) where !horizontalUnit(containing: newIndex).contains(index) {
+                loadTasks[index]?.cancel()
+                loadTasks[index] = nil
+                isLoading.remove(index)
+            }
             updateBottomToolbar(for: newIndex)
 
             audioCover = nil
@@ -505,17 +628,32 @@ struct ReaderView: View {
                 preloadVerticalPages(around: currentIndex)
                 requestVerticalPage(currentIndex, animated: false)
             } else {
-                loadPage(currentIndex)
-                preloadAdjacent()
-                trimPageCache(around: currentIndex)
+                refreshHorizontalPagination()
             }
         }
+        .onChange(of: preloadPageCount) { _, _ in
+            guard readingDirection != .vertical else { return }
+            preloadAdjacent()
+            trimPageCache(around: currentIndex)
+        }
+        .onChange(of: doublePageEnabled) { _, _ in
+            rebuildHorizontalPaginationCache()
+            refreshHorizontalPagination()
+        }
+        .onChange(of: firstPageAlwaysSingle) { _, _ in
+            guard doublePageEnabled else { return }
+            rebuildHorizontalPaginationCache()
+            refreshHorizontalPagination()
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-            for (index, task) in loadTasks where index != currentIndex {
+            let currentIndices = readingDirection == .vertical
+                ? Set([currentIndex])
+                : Set(horizontalUnit(containing: currentIndex))
+            for (index, task) in loadTasks where !currentIndices.contains(index) {
                 task.cancel()
             }
-            loadTasks = loadTasks.filter { $0.key == currentIndex }
-            images = images.filter { $0.key == currentIndex }
+            loadTasks = loadTasks.filter { currentIndices.contains($0.key) }
+            images = images.filter { currentIndices.contains($0.key) }
             thumbnailImages.removeAll()
             CacheManager.shared.clearMemoryCaches()
             LogManager.shared.log("[Reader] Released image caches after memory warning")
@@ -628,7 +766,7 @@ struct ReaderView: View {
             viewportHeight: viewportHeight
         )
 
-        if isImageFile(path) {
+        if fileType(at: index) == .image {
             if let image = images[index] {
                 Image(uiImage: image)
                     .resizable()
@@ -1106,49 +1244,66 @@ struct ReaderView: View {
 
     @ViewBuilder
     fileprivate func pageStrip(size: CGSize) -> some View {
+        let currentUnit = horizontalUnit(containing: currentIndex)
+        let previousTarget = adjacentHorizontalTarget(from: currentIndex, offset: -1)
+        let nextTarget = adjacentHorizontalTarget(from: currentIndex, offset: 1)
+
         HStack(spacing: 0) {
             if readingDirection == .rightToLeft {
-                // 右到左时，高页码位于当前页左侧，低页码位于右侧。
-                if currentIndex < maxIndex {
-                    pageView(for: currentIndex + 1, size: size)
-                        .frame(width: size.width, height: size.height)
-                } else {
-                    Color.black
-                        .frame(width: size.width, height: size.height)
-                }
+                horizontalUnitView(target: nextTarget, size: size)
             } else {
-                if currentIndex > 0 {
-                    pageView(for: currentIndex - 1, size: size)
-                        .frame(width: size.width, height: size.height)
-                } else {
-                    Color.black
-                        .frame(width: size.width, height: size.height)
-                }
+                horizontalUnitView(target: previousTarget, size: size)
             }
 
-            pageView(for: currentIndex, size: size)
+            horizontalUnitView(indices: currentUnit, size: size)
                 .frame(width: size.width, height: size.height)
 
             if readingDirection == .rightToLeft {
-                if currentIndex > 0 {
-                    pageView(for: currentIndex - 1, size: size)
-                        .frame(width: size.width, height: size.height)
-                } else {
-                    Color.black
-                        .frame(width: size.width, height: size.height)
-                }
+                horizontalUnitView(target: previousTarget, size: size)
             } else {
-                if currentIndex < maxIndex {
-                    pageView(for: currentIndex + 1, size: size)
-                        .frame(width: size.width, height: size.height)
-                } else {
-                    Color.black
-                        .frame(width: size.width, height: size.height)
-                }
+                horizontalUnitView(target: nextTarget, size: size)
             }
         }
         // 无论阅读方向如何，当前页都始终位于三页容器的中间。
         .offset(x: -size.width + dragOffset)
+    }
+
+    @ViewBuilder
+    fileprivate func horizontalUnitView(target: Int?, size: CGSize) -> some View {
+        if let target {
+            horizontalUnitView(indices: horizontalUnit(containing: target), size: size)
+        } else {
+            Color.black
+                .frame(width: size.width, height: size.height)
+        }
+    }
+
+    @ViewBuilder
+    fileprivate func horizontalUnitView(indices: [Int], size: CGSize) -> some View {
+        if indices.count == 2,
+           fileType(at: indices[0]) == .image,
+           fileType(at: indices[1]) == .image {
+            let displayedIndices = readingDirection == .rightToLeft
+                ? Array(indices.reversed())
+                : indices
+            HStack(spacing: 0) {
+                ForEach(Array(displayedIndices.enumerated()), id: \.element) { position, index in
+                    pageView(
+                        for: index,
+                        size: CGSize(width: size.width / 2, height: size.height),
+                        imageAlignment: position == 0 ? .trailing : .leading
+                    )
+                        .frame(width: size.width / 2, height: size.height)
+                }
+            }
+            .frame(width: size.width, height: size.height)
+        } else if let index = indices.first {
+            pageView(for: index, size: size)
+                .frame(width: size.width, height: size.height)
+        } else {
+            Color.black
+                .frame(width: size.width, height: size.height)
+        }
     }
 
     fileprivate func interactionOverlay(pageSize: CGSize) -> some View {
@@ -1258,6 +1413,18 @@ struct ReaderView: View {
         }
     }
 
+    fileprivate func refreshHorizontalPagination() {
+        guard readingDirection != .vertical else { return }
+        let normalizedIndex = horizontalUnit(containing: currentIndex).first ?? currentIndex
+        withoutAnimation {
+            currentIndex = normalizedIndex
+            progressValue = Double(normalizedIndex)
+            dragOffset = 0
+        }
+        preloadAdjacent()
+        trimPageCache(around: normalizedIndex)
+    }
+
     fileprivate func handleDragChanged(_ value: DragGesture.Value) {
         guard !isPageAnimating else { return }
 
@@ -1277,12 +1444,12 @@ struct ReaderView: View {
             if readingDirection == .rightToLeft {
                 // 右滑进入更高页码；左滑进入更低页码。
                 needsDamping =
-                    (currentIndex == maxIndex && translation > 0) ||
-                    (currentIndex == 0 && translation < 0)
+                    (adjacentHorizontalTarget(from: currentIndex, offset: 1) == nil && translation > 0) ||
+                    (adjacentHorizontalTarget(from: currentIndex, offset: -1) == nil && translation < 0)
             } else {
                 needsDamping =
-                    (currentIndex == 0 && translation > 0) ||
-                    (currentIndex == maxIndex && translation < 0)
+                    (adjacentHorizontalTarget(from: currentIndex, offset: -1) == nil && translation > 0) ||
+                    (adjacentHorizontalTarget(from: currentIndex, offset: 1) == nil && translation < 0)
             }
 
             withoutAnimation {
@@ -1352,23 +1519,29 @@ struct ReaderView: View {
     }
 
     fileprivate func isImageFile(_ path: String) -> Bool {
-        let clean = path.split(whereSeparator: { $0 == "?" || $0 == "#" }).first.map(String.init) ?? path
-        let ext = (clean as NSString).pathExtension.lowercased()
-        guard !ext.isEmpty else { return false }
-        if let type = UTType(filenameExtension: ext) { return type.conforms(to: .image) }
-        let fallback: Set<String> = ["jpg","jpeg","png","gif","webp","heic","heif","bmp","tif","tiff","avif"]
-        return fallback.contains(ext)
+        Self.detectFileType(path) == .image
     }
 
-    fileprivate func fileType(at index: Int) -> ReaderPageFileType {
-        let path = filePath(at: index)
-        if isImageFile(path) { return .image }
-        let ext = (path as NSString).pathExtension.lowercased()
+    fileprivate static func detectFileType(_ path: String) -> ReaderPageFileType {
+        let clean = path.split(whereSeparator: { $0 == "?" || $0 == "#" }).first.map(String.init) ?? path
+        let ext = (clean as NSString).pathExtension.lowercased()
+        guard !ext.isEmpty else { return .unknown }
+        if let type = UTType(filenameExtension: ext), type.conforms(to: .image) {
+            return .image
+        }
+        let fallback: Set<String> = ["jpg","jpeg","png","gif","webp","heic","heif","bmp","tif","tiff","avif"]
+        if fallback.contains(ext) { return .image }
+
         let video: Set<String> = ["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
         if video.contains(ext) { return .video }
         let audio: Set<String> = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff"]
         if audio.contains(ext) { return .audio }
         return .unknown
+    }
+
+    fileprivate func fileType(at index: Int) -> ReaderPageFileType {
+        guard pageFileTypes.indices.contains(index) else { return .unknown }
+        return pageFileTypes[index]
     }
 
     fileprivate func iconForFile(_ path: String) -> String {
@@ -1398,7 +1571,7 @@ struct ReaderView: View {
             ?? file.metadata?.thumbAssetId
             ?? 0
 
-        return thumbnailAssetId > 0 || isImageFile(filePath(at: index))
+        return thumbnailAssetId > 0 || fileType(at: index) == .image
     }
 
     fileprivate func selectPageFromTableOfContents(_ index: Int) {
@@ -1409,17 +1582,18 @@ struct ReaderView: View {
             return
         }
 
-        guard index != currentIndex else { return }
+        let normalizedIndex = horizontalUnit(containing: index).first ?? index
+        guard normalizedIndex != currentIndex else { return }
 
         withAnimation(.easeOut(duration: 0.25)) {
-            progressValue = Double(index)
+            progressValue = Double(normalizedIndex)
         }
 
         withoutAnimation {
             dragOffset = 0
             isDragging = false
             isPageAnimating = false
-            currentIndex = index
+            currentIndex = normalizedIndex
         }
     }
 
@@ -1436,7 +1610,7 @@ struct ReaderView: View {
             ?? file.metadata?.thumbAssetId
             ?? 0
 
-        guard thumbnailAssetId > 0 || isImageFile(path) else { return }
+        guard thumbnailAssetId > 0 || fileType(at: index) == .image else { return }
 
         let requestedPixels = maxDimensionPoints * UIScreen.main.scale
         let maxPixelSize = min(max(requestedPixels, 384), 1024)
@@ -1565,21 +1739,26 @@ struct ReaderView: View {
     // MARK: - Page View
 
     @ViewBuilder
-    fileprivate func pageView(for index: Int, size: CGSize) -> some View {
+    fileprivate func pageView(
+        for index: Int,
+        size: CGSize,
+        imageAlignment: Alignment = .center
+    ) -> some View {
         let path = filePath(at: index)
-        let isImage = isImageFile(path)
+        let pageFileType = fileType(at: index)
 
-        if fileType(at: index) == .audio {
+        if pageFileType == .audio {
             audioPageView(for: index, size: size)
-        } else if fileType(at: index) == .video {
+        } else if pageFileType == .video {
             videoPageView(for: index, size: size)
-        } else if !isImage {
+        } else if pageFileType != .image {
             filePlaceholder(path: path, size: size)
         } else if let image = images[index] {
             ReaderPageView(
                 image: image,
                 scale: index == currentIndex ? currentScale : 1.0,
-                panOffset: index == currentIndex ? panOffset : .zero
+                panOffset: index == currentIndex ? panOffset : .zero,
+                alignment: imageAlignment
             )
             .frame(width: size.width, height: size.height)
         } else {
@@ -1717,19 +1896,15 @@ struct ReaderView: View {
             translation < -w * 0.25 || predictedTranslation < -100
 
         let rightSwipeTarget = readingDirection == .rightToLeft
-            ? currentIndex + 1
-            : currentIndex - 1
+            ? adjacentHorizontalTarget(from: currentIndex, offset: 1)
+            : adjacentHorizontalTarget(from: currentIndex, offset: -1)
         let leftSwipeTarget = readingDirection == .rightToLeft
-            ? currentIndex - 1
-            : currentIndex + 1
+            ? adjacentHorizontalTarget(from: currentIndex, offset: -1)
+            : adjacentHorizontalTarget(from: currentIndex, offset: 1)
 
-        if swipedRight,
-           rightSwipeTarget >= 0,
-           rightSwipeTarget <= maxIndex {
+        if swipedRight, let rightSwipeTarget {
             animatePageChange(to: rightSwipeTarget, pageWidth: w)
-        } else if swipedLeft,
-                  leftSwipeTarget >= 0,
-                  leftSwipeTarget <= maxIndex {
+        } else if swipedLeft, let leftSwipeTarget {
             animatePageChange(to: leftSwipeTarget, pageWidth: w)
         } else {
             withAnimation(.easeOut(duration: 0.2)) {
@@ -1960,13 +2135,34 @@ struct ReaderPageView: View {
     let image: UIImage
     let scale: CGFloat
     let panOffset: CGSize
+    let alignment: Alignment
 
     var body: some View {
-        Image(uiImage: image)
-            .resizable().scaledToFit()
-            .scaleEffect(scale).offset(panOffset)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
+        GeometryReader { proxy in
+            let imageAspectRatio = image.size.width / max(image.size.height, 1)
+            let containerAspectRatio = proxy.size.width / max(proxy.size.height, 1)
+            let fittedSize = imageAspectRatio > containerAspectRatio
+                ? CGSize(
+                    width: proxy.size.width,
+                    height: proxy.size.width / imageAspectRatio
+                )
+                : CGSize(
+                    width: proxy.size.height * imageAspectRatio,
+                    height: proxy.size.height
+                )
+
+            Image(uiImage: image)
+                .resizable()
+                .frame(width: fittedSize.width, height: fittedSize.height)
+                .scaleEffect(scale)
+                .offset(panOffset)
+                .frame(
+                    width: proxy.size.width,
+                    height: proxy.size.height,
+                    alignment: alignment
+                )
+                .clipped()
+        }
     }
 }
 
@@ -1976,6 +2172,9 @@ struct ReaderSettingsView: View {
     @Binding var audioAutoplay: Bool
     @Binding var videoAutoplay: Bool
     @Binding var readingDirection: String
+    @Binding var preloadPageCount: Int
+    @Binding var doublePageEnabled: Bool
+    @Binding var firstPageAlwaysSingle: Bool
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -2006,6 +2205,24 @@ struct ReaderSettingsView: View {
                             .foregroundStyle(.secondary)
                         }
                     }
+                }
+                Section(String(localized: "reader_settings_pagination")) {
+                    Stepper(value: $preloadPageCount, in: 1...5) {
+                        HStack {
+                            Text(String(localized: "reader_preload_pages"))
+                            Spacer()
+                            Text("\(preloadPageCount)")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+
+                    Toggle(String(localized: "reader_double_page"), isOn: $doublePageEnabled)
+                    Toggle(
+                        String(localized: "reader_first_page_single"),
+                        isOn: $firstPageAlwaysSingle
+                    )
+                    .disabled(!doublePageEnabled)
                 }
                 Section(String(localized: "reader_settings_playback")) {
                     Toggle(String(localized: "reader_settings_audio_autoplay"), isOn: $audioAutoplay)
@@ -2174,23 +2391,21 @@ extension ReaderView {
     }
 
     fileprivate func previousPage() {
-        let targetIndex = currentIndex - 1
-        guard targetIndex >= 0 else { return }
-
         if readingDirection == .vertical {
+            let targetIndex = currentIndex - 1
+            guard targetIndex >= 0 else { return }
             requestVerticalPage(targetIndex, animated: true)
-        } else {
+        } else if let targetIndex = adjacentHorizontalTarget(from: currentIndex, offset: -1) {
             animatePageChange(to: targetIndex, pageWidth: pageWidth)
         }
     }
 
     fileprivate func nextPage() {
-        let targetIndex = currentIndex + 1
-        guard targetIndex <= maxIndex else { return }
-
         if readingDirection == .vertical {
+            let targetIndex = currentIndex + 1
+            guard targetIndex <= maxIndex else { return }
             requestVerticalPage(targetIndex, animated: true)
-        } else {
+        } else if let targetIndex = adjacentHorizontalTarget(from: currentIndex, offset: 1) {
             animatePageChange(to: targetIndex, pageWidth: pageWidth)
         }
     }
@@ -2222,7 +2437,7 @@ extension ReaderView {
 
         let path = filePath(at: index)
         guard !path.isEmpty else { return }
-        guard isImageFile(path) else { return }
+        guard fileType(at: index) == .image else { return }
 
         isLoading.insert(index)
         loadTasks[index]?.cancel()
@@ -2264,7 +2479,11 @@ extension ReaderView {
                     return
                 } catch {
                     guard !Task.isCancelled else { break }
-                    let shouldRetry = await MainActor.run { currentIndex == index }
+                    let shouldRetry = await MainActor.run {
+                        readingDirection == .vertical
+                            ? currentIndex == index
+                            : isInCurrentHorizontalUnit(index)
+                    }
                     if !shouldRetry {
                         break
                     }
@@ -2283,11 +2502,15 @@ extension ReaderView {
     }
 
     fileprivate func preloadAdjacent() {
-        let nextIndex = currentIndex + 1
-        if nextIndex < files.count {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                loadPage(nextIndex)
-            }
+        guard readingDirection != .vertical,
+              let currentUnitIndex = horizontalUnitIndex(containing: currentIndex) else { return }
+
+        let units = horizontalPageUnits
+        for pageIndex in units[currentUnitIndex] where fileType(at: pageIndex) == .image {
+            loadPage(pageIndex)
+        }
+        for pageIndex in horizontalPreloadImageIndices(after: currentUnitIndex) {
+            loadPage(pageIndex)
         }
     }
 
@@ -2304,17 +2527,31 @@ extension ReaderView {
     }
 
     fileprivate func trimPageCache(around index: Int) {
-        let radius = 2
-        let keepRange = max(0, index - radius)...min(maxIndex, index + radius)
+        let keepIndices: Set<Int>
+        if readingDirection == .vertical {
+            keepIndices = Set(max(0, index - 2)...min(maxIndex, index + 2))
+        } else if let currentUnitIndex = horizontalUnitIndex(containing: index) {
+            let units = horizontalPageUnits
+            var horizontalKeepIndices = Set(units[currentUnitIndex])
+            if currentUnitIndex > 0 {
+                horizontalKeepIndices.formUnion(units[currentUnitIndex - 1])
+            }
+            horizontalKeepIndices.formUnion(
+                horizontalPreloadImageIndices(after: currentUnitIndex)
+            )
+            keepIndices = horizontalKeepIndices
+        } else {
+            keepIndices = [index]
+        }
         let imageIndexesToRemove = images.keys.filter {
-            !keepRange.contains($0)
+            !keepIndices.contains($0)
         }
         for pageIndex in imageIndexesToRemove {
             images.removeValue(forKey: pageIndex)
         }
 
         let taskIndexesToCancel = loadTasks.keys.filter {
-            !keepRange.contains($0)
+            !keepIndices.contains($0)
         }
         for pageIndex in taskIndexesToCancel {
             // 只发出取消信号，由任务自身统一清理状态，避免快速跳页时

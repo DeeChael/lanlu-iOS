@@ -241,6 +241,10 @@
 "reader_tap_mode_l_shape" = "L Shape";
 "reader_tap_mode_edges" = "Edges";
 "reader_tap_mode_disabled" = "Disabled";
+"reader_settings_pagination" = "Pagination";
+"reader_preload_pages" = "Preload Pages";
+"reader_double_page" = "Double Page";
+"reader_first_page_single" = "Always Show First Page Separately";
 "reader_reset_zoom" = "Reset Zoom";
 "reader_toc_title" = "Pages";
 "reader_tap_reload" = "Tap to reload";
