@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AVFoundation
 import AVKit
+import MediaPlayer
 import CryptoKit
 import ImageIO
 
@@ -61,6 +62,134 @@ enum ReaderTapGestureMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum ReaderVolumeButtonMode: String, CaseIterable, Identifiable {
+    case off
+    case volumeUpNext
+    case volumeDownNext
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .off: String(localized: "reader_volume_button_off")
+        case .volumeUpNext: String(localized: "reader_volume_up_next")
+        case .volumeDownNext: String(localized: "reader_volume_down_next")
+        }
+    }
+}
+
+private struct ReaderVolumeButtonControl: UIViewRepresentable {
+    let mode: ReaderVolumeButtonMode
+    let onVolumeUp: () -> Void
+    let onVolumeDown: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onVolumeUp: onVolumeUp, onVolumeDown: onVolumeDown)
+    }
+
+    func makeUIView(context: Context) -> MPVolumeView {
+        let view = MPVolumeView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+        view.showsRouteButton = false
+        view.showsVolumeSlider = true
+        view.alpha = 0.001
+        context.coordinator.attach(to: view, mode: mode)
+        return view
+    }
+
+    func updateUIView(_ uiView: MPVolumeView, context: Context) {
+        context.coordinator.update(
+            mode: mode,
+            onVolumeUp: onVolumeUp,
+            onVolumeDown: onVolumeDown
+        )
+    }
+
+    static func dismantleUIView(_ uiView: MPVolumeView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        private let audioSession = AVAudioSession.sharedInstance()
+        private var observation: NSKeyValueObservation?
+        private weak var slider: UISlider?
+        private var originalVolume: Float?
+        private var isResetting = false
+        private var mode: ReaderVolumeButtonMode = .off
+        private var onVolumeUp: () -> Void
+        private var onVolumeDown: () -> Void
+        private let baselineVolume: Float = 0.5
+
+        init(onVolumeUp: @escaping () -> Void, onVolumeDown: @escaping () -> Void) {
+            self.onVolumeUp = onVolumeUp
+            self.onVolumeDown = onVolumeDown
+        }
+
+        func attach(to volumeView: MPVolumeView, mode: ReaderVolumeButtonMode) {
+            self.mode = mode
+            slider = volumeView.subviews.compactMap { $0 as? UISlider }.first
+            originalVolume = audioSession.outputVolume
+            try? audioSession.setActive(true)
+
+            observation = audioSession.observe(\.outputVolume, options: [.new]) { [weak self] _, change in
+                guard let newVolume = change.newValue else { return }
+                DispatchQueue.main.async {
+                    self?.handleVolumeChange(newVolume)
+                }
+            }
+            resetVolumeToBaseline()
+        }
+
+        func update(
+            mode: ReaderVolumeButtonMode,
+            onVolumeUp: @escaping () -> Void,
+            onVolumeDown: @escaping () -> Void
+        ) {
+            self.mode = mode
+            self.onVolumeUp = onVolumeUp
+            self.onVolumeDown = onVolumeDown
+        }
+
+        func detach() {
+            observation?.invalidate()
+            observation = nil
+            if let originalVolume {
+                setSystemVolume(originalVolume)
+            }
+            slider = nil
+            originalVolume = nil
+            mode = .off
+        }
+
+        private func handleVolumeChange(_ newVolume: Float) {
+            guard mode != .off, !isResetting else { return }
+            let difference = newVolume - baselineVolume
+            guard abs(difference) > 0.001 else { return }
+
+            if difference > 0 {
+                onVolumeUp()
+            } else {
+                onVolumeDown()
+            }
+            resetVolumeToBaseline()
+        }
+
+        private func resetVolumeToBaseline() {
+            isResetting = true
+            setSystemVolume(baselineVolume)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                self?.isResetting = false
+            }
+        }
+
+        private func setSystemVolume(_ volume: Float) {
+            guard let slider else { return }
+            slider.setValue(volume, animated: false)
+            slider.sendActions(for: .valueChanged)
+        }
+    }
+}
+
 
 fileprivate struct ReaderVerticalScrollRequest: Equatable {
     let token = UUID()
@@ -81,6 +210,7 @@ fileprivate struct ReaderVerticalPageFramePreferenceKey: PreferenceKey {
 
 struct ReaderView: View {
     @Environment(\.dismiss) fileprivate var dismiss
+    @Environment(\.scenePhase) fileprivate var scenePhase
 
     let arcid: String
     let files: [APIClient.PageFile]
@@ -147,6 +277,7 @@ struct ReaderView: View {
     @State fileprivate var progressValue: Double
     @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
     @AppStorage("reader_tap_gesture_mode") fileprivate var tapGestureModeRaw = ReaderTapGestureMode.leftRight.rawValue
+    @AppStorage("reader_volume_button_mode") fileprivate var volumeButtonModeRaw = ReaderVolumeButtonMode.off.rawValue
     @AppStorage("reader_audio_autoplay") fileprivate var audioAutoplay = false
     @AppStorage("reader_video_autoplay") fileprivate var videoAutoplay = false
     @AppStorage("reader_reading_direction") fileprivate var readingDirectionRaw = ReaderReadingDirection.leftToRight.rawValue
@@ -164,6 +295,10 @@ struct ReaderView: View {
 
     fileprivate var tapGestureMode: ReaderTapGestureMode {
         ReaderTapGestureMode(rawValue: tapGestureModeRaw) ?? .leftRight
+    }
+
+    fileprivate var volumeButtonMode: ReaderVolumeButtonMode {
+        ReaderVolumeButtonMode(rawValue: volumeButtonModeRaw) ?? .off
     }
 
     var maxIndex: Int { max(0, files.count - 1) }
@@ -515,10 +650,25 @@ struct ReaderView: View {
             }
         }
         .statusBarHidden(!showControls)
+        .background {
+            if volumeButtonMode != .off,
+               scenePhase == .active,
+               !showReaderSettings,
+               !showTableOfContents {
+                ReaderVolumeButtonControl(
+                    mode: volumeButtonMode,
+                    onVolumeUp: handleVolumeUpButton,
+                    onVolumeDown: handleVolumeDownButton
+                )
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+            }
+        }
         .sheet(isPresented: $showReaderSettings) {
             ReaderSettingsView(
                 doubleTapZoom: $doubleTapZoom,
                 tapGestureMode: $tapGestureModeRaw,
+                volumeButtonMode: $volumeButtonModeRaw,
                 audioAutoplay: $audioAutoplay,
                 videoAutoplay: $videoAutoplay,
                 readingDirection: $readingDirectionRaw,
@@ -2180,6 +2330,7 @@ struct ReaderPageView: View {
 struct ReaderSettingsView: View {
     @Binding var doubleTapZoom: Bool
     @Binding var tapGestureMode: String
+    @Binding var volumeButtonMode: String
     @Binding var audioAutoplay: Bool
     @Binding var videoAutoplay: Bool
     @Binding var readingDirection: String
@@ -2218,6 +2369,17 @@ struct ReaderSettingsView: View {
                             .foregroundStyle(.secondary)
                         }
                     }
+
+                    Picker(
+                        String(localized: "reader_volume_button_page_turn"),
+                        selection: $volumeButtonMode
+                    ) {
+                        ForEach(ReaderVolumeButtonMode.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.secondary)
                 }
                 Section(String(localized: "reader_settings_pagination")) {
                     Stepper(value: $preloadPageCount, in: 1...5) {
@@ -2417,6 +2579,28 @@ extension ReaderView {
 
         withTransaction(transaction) {
             showTableOfContents = false
+        }
+    }
+
+    fileprivate func handleVolumeUpButton() {
+        switch volumeButtonMode {
+        case .off:
+            break
+        case .volumeUpNext:
+            nextPage()
+        case .volumeDownNext:
+            previousPage()
+        }
+    }
+
+    fileprivate func handleVolumeDownButton() {
+        switch volumeButtonMode {
+        case .off:
+            break
+        case .volumeUpNext:
+            previousPage()
+        case .volumeDownNext:
+            nextPage()
         }
     }
 

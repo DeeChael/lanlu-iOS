@@ -297,6 +297,10 @@
 "reader_settings_double_tap" = "Double Tap to Zoom";
 "reader_settings_tap_turn" = "Tap Sides to Turn Page";
 "reader_tap_gesture" = "Tap Gestures";
+"reader_volume_button_page_turn" = "Volume Button Page Turn";
+"reader_volume_button_off" = "Off";
+"reader_volume_up_next" = "Volume Up for Next Page";
+"reader_volume_down_next" = "Volume Down for Next Page";
 "reader_tap_mode_left_right" = "Left and Right";
 "reader_tap_mode_l_shape" = "L Shape";
 "reader_tap_mode_edges" = "Edges";
