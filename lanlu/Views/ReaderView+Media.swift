@@ -132,7 +132,7 @@ extension ReaderView {
                 audioAlbum = album
                 startAudioTimer()
                 if (autoplay || shouldAutoPlayCurrentMedia)
-                    && !autoReadPausedOnCurrentPage {
+                    && !shouldSuppressAutoReadMediaPlayback {
                     startAudio()
                 }
             }
@@ -158,7 +158,7 @@ extension ReaderView {
         guard !path.isEmpty else { return }
 
         if videoPlayerIndex == index, let videoPlayer {
-            if autoplay && !autoReadPausedOnCurrentPage {
+            if autoplay && !shouldSuppressAutoReadMediaPlayback {
                 videoPlayer.play()
                 isVideoPlaying = true
             }
@@ -200,7 +200,7 @@ extension ReaderView {
                     videoAspectRatio = aspectRatio
                     isVideoLoading = false
                     installVideoObservers(on: player, item: item)
-                    if autoplay && !autoReadPausedOnCurrentPage {
+                    if autoplay && !shouldSuppressAutoReadMediaPlayback {
                         player.play()
                         isVideoPlaying = true
                     }

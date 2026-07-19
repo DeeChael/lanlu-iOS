@@ -581,6 +581,9 @@ extension ReaderView {
 
     func handleCurrentIndexChange(from oldIndex: Int, to newIndex: Int) {
         autoReadFinishedMediaIndex = nil
+        if autoReadPausedPageIndex != newIndex {
+            autoReadPausedPageIndex = nil
+        }
         let newUnit = horizontalUnit(containing: newIndex)
         for index in horizontalUnit(containing: oldIndex) where !newUnit.contains(index) {
             loadTasks[index]?.cancel()
@@ -647,9 +650,12 @@ extension ReaderView {
 
     func handleAutoReadEnabledChange(_ enabled: Bool) {
         if enabled {
+            autoReadPausedPageIndex = currentPageSupportsAutoRead ? nil : currentIndex
             resetZoom(animated: false)
             showReaderSettings = false
             showControls = false
+        } else {
+            autoReadPausedPageIndex = nil
         }
         refreshAutoRead()
     }
@@ -661,6 +667,10 @@ extension ReaderView {
         if oldState.enabled != newState.enabled {
             handleAutoReadEnabledChange(newState.enabled)
         } else {
+            if autoReadPausedPageIndex == currentIndex,
+               currentPageSupportsAutoRead {
+                autoReadPausedPageIndex = nil
+            }
             refreshAutoRead()
         }
     }
@@ -1010,16 +1020,23 @@ extension ReaderView {
         autoReadEnabled && !autoReadImagesOnly
     }
 
-    var autoReadPausedOnCurrentPage: Bool {
-        guard autoReadEnabled else { return false }
+    var currentPageSupportsAutoRead: Bool {
         switch currentPageFileType {
         case .image:
-            return false
-        case .audio, .video:
-            return autoReadImagesOnly
-        case .unknown:
             return true
+        case .audio, .video:
+            return !autoReadImagesOnly
+        case .unknown:
+            return false
         }
+    }
+
+    var autoReadPausedOnCurrentPage: Bool {
+        autoReadEnabled && autoReadPausedPageIndex == currentIndex
+    }
+
+    var shouldSuppressAutoReadMediaPlayback: Bool {
+        autoReadEnabled && autoReadImagesOnly
     }
 
     func refreshAutoRead() {
@@ -1056,13 +1073,19 @@ extension ReaderView {
                 scheduleAutoReadPageTurn()
             }
         case .audio, .video:
-            if autoReadFinishedMediaIndex == currentIndex {
+            if autoReadImagesOnly {
+                audioPlayer?.pause()
+                isAudioPlaying = false
+                videoPlayer?.pause()
+                isVideoPlaying = false
+                scheduleImmediateAutoReadAdvance()
+            } else if autoReadFinishedMediaIndex == currentIndex {
                 scheduleImmediateAutoReadAdvance()
             } else {
                 startCurrentAutoReadMedia()
             }
         case .unknown:
-            break
+            scheduleImmediateAutoReadAdvance()
         }
     }
 
@@ -1161,6 +1184,7 @@ extension ReaderView {
 
     private func stopAutoReadAtEnd() {
         stopAutoReadTask()
+        autoReadPausedPageIndex = nil
         autoReadEnabled = false
         showAutoReadSettings = false
     }

@@ -125,6 +125,7 @@ struct ReaderView: View {
     @State var showTableOfContents = false
     @State var autoReadTask: Task<Void, Never>?
     @State var autoReadFinishedMediaIndex: Int?
+    @State var autoReadPausedPageIndex: Int?
     @State var thumbnailImages: [Int: UIImage] = [:]
     @State var thumbnailFailedPages: Set<Int> = []
     @State var thumbnailLoadTasks: [Int: Task<Void, Never>] = [:]
@@ -581,7 +582,7 @@ struct ReaderView: View {
                 autoReadInterval: $autoReadInterval,
                 autoReadImagesOnly: $autoReadImagesOnly
             )
-            .presentationSizing(.fitted)
+            .presentationDetents([.height(280)])
         }
         .fullScreenCover(isPresented: $showTableOfContents) {
             ReaderTableOfContentsOverlay(
