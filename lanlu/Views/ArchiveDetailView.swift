@@ -319,6 +319,7 @@ struct ArchiveDetailView: View {
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
+                .disabled(isLoading || files.isEmpty)
             }
         }
     }
