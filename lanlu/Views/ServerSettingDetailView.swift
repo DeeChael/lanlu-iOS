@@ -7,8 +7,6 @@ enum ServerSetting: String, CaseIterable, Identifiable {
     case smartFilters
     case userManagement
     case systemSettings
-    case backgroundTasks
-    case scheduledTasks
     case pluginManagement
     case statistics
 
@@ -22,8 +20,6 @@ enum ServerSetting: String, CaseIterable, Identifiable {
         case .smartFilters: String(localized: "ss_smart_filters")
         case .userManagement: String(localized: "ss_user_management")
         case .systemSettings: String(localized: "ss_system_settings")
-        case .backgroundTasks: String(localized: "ss_background_tasks")
-        case .scheduledTasks: String(localized: "ss_scheduled_tasks")
         case .pluginManagement: String(localized: "ss_plugin_management")
         case .statistics: String(localized: "ss_statistics")
         }
@@ -37,8 +33,6 @@ enum ServerSetting: String, CaseIterable, Identifiable {
         case .smartFilters: "line.3.horizontal.decrease"
         case .userManagement: "person.2"
         case .systemSettings: "server.rack"
-        case .backgroundTasks: "calendar.badge.clock"
-        case .scheduledTasks: "clock"
         case .pluginManagement: "puzzlepiece"
         case .statistics: "chart.bar"
         }

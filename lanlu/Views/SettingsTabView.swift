@@ -239,8 +239,6 @@ struct SettingsTabView: View {
                     serverSettingLink(.smartFilters)
                     serverSettingLink(.userManagement)
                     serverSettingLink(.systemSettings)
-                    serverSettingLink(.backgroundTasks)
-                    serverSettingLink(.scheduledTasks)
                     serverSettingLink(.pluginManagement)
                     serverSettingLink(.statistics)
                 }
