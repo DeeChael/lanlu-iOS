@@ -6,6 +6,7 @@ struct FilterSheetView: View {
     @Binding var dateEnabled: Bool
     @Binding var dateFrom: Date
     @Binding var dateTo: Date
+    @Binding var newOnly: Bool
     @Binding var untaggedOnly: Bool
     @Binding var favoriteOnly: Bool
     let onReset: () -> Void
@@ -14,12 +15,14 @@ struct FilterSheetView: View {
     @State private var showResetConfirm = false
 
     private let sortOptions: [(id: String, label: LocalizedStringKey)] = [
+        ("relevance", "sort_relevance"),
         ("lastreadtime", "sort_lastread"),
         ("created_at", "sort_created"),
         ("release_at", "sort_release"),
         ("updated_at", "sort_updated"),
         ("title", "sort_title"),
         ("pagecount", "sort_pages"),
+        ("", "sort_default"),
     ]
 
     var body: some View {
@@ -67,6 +70,7 @@ struct FilterSheetView: View {
                 }
 
                 Section {
+                    Toggle(String(localized: "filter_new_only"), isOn: $newOnly)
                     Toggle(String(localized: "filter_untagged"), isOn: $untaggedOnly)
                     Toggle(String(localized: "filter_favorites"), isOn: $favoriteOnly)
                 }

@@ -10,6 +10,7 @@ struct SearchView: View {
     @Binding var dateEnabled: Bool
     @Binding var dateFrom: Date
     @Binding var dateTo: Date
+    @Binding var newOnly: Bool
     @Binding var untaggedOnly: Bool
     @Binding var favoriteOnly: Bool
     @State private var suggestions: [AutocompleteSuggestion] = []
@@ -229,7 +230,8 @@ struct SearchView: View {
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
         do {
             let result = try await server.apiClient.search(
-                favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly, groupbyTanks: true,
+                favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly, newonly: newOnly,
+                groupbyTanks: true,
                 filter: currentQuery.isEmpty ? nil : currentQuery,
                 tags: currentTags,
                 sortby: sortField, order: sortOrder,
@@ -273,7 +275,8 @@ struct SearchView: View {
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
         do {
             let result = try await server.apiClient.search(
-                favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly, groupbyTanks: true,
+                favoriteOnly: favoriteOnly, untaggedOnly: untaggedOnly, newonly: newOnly,
+                groupbyTanks: true,
                 filter: currentQuery.isEmpty ? nil : currentQuery,
                 tags: currentTags,
                 sortby: sortField, order: sortOrder,

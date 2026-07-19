@@ -239,6 +239,7 @@ struct TOTPRecoveryResetView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var password = ""
+    @State private var showsPassword = false
     @State private var code = ""
     @State private var recoveryCodes: [String] = []
     @State private var isLoading = false
@@ -250,8 +251,27 @@ struct TOTPRecoveryResetView: View {
                 if recoveryCodes.isEmpty {
                     Form {
                         Section(String(localized: "password_verification")) {
-                            SecureField(String(localized: "password"), text: $password)
+                            HStack {
+                                Group {
+                                    if showsPassword {
+                                        TextField(String(localized: "password"), text: $password)
+                                    } else {
+                                        SecureField(String(localized: "password"), text: $password)
+                                    }
+                                }
                                 .textContentType(.password)
+
+                                Button {
+                                    showsPassword.toggle()
+                                } label: {
+                                    Image(systemName: showsPassword ? "eye.fill" : "eye.slash.fill")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel(
+                                    String(localized: showsPassword ? "hide_password" : "show_password")
+                                )
+                            }
                         }
                         Section(String(localized: "totp_verification")) {
                             TextField(String(localized: "totp_code"), text: $code)

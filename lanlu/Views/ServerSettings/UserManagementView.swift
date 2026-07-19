@@ -332,7 +332,9 @@ private struct ResetUserPasswordView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var newPassword = ""
     @State private var confirmedPassword = ""
+    @State private var showsNewPassword = false
     @State private var verificationPassword = ""
+    @State private var showsVerificationPassword = false
     @State private var needsStepUp = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
@@ -342,15 +344,53 @@ private struct ResetUserPasswordView: View {
             Form {
                 if needsStepUp {
                     Section(String(localized: "password_verification")) {
-                        SecureField(String(localized: "password"), text: $verificationPassword)
+                        HStack {
+                            Group {
+                                if showsVerificationPassword {
+                                    TextField(String(localized: "password"), text: $verificationPassword)
+                                } else {
+                                    SecureField(String(localized: "password"), text: $verificationPassword)
+                                }
+                            }
                             .textContentType(.password)
+
+                            Button {
+                                showsVerificationPassword.toggle()
+                            } label: {
+                                Image(systemName: showsVerificationPassword ? "eye.fill" : "eye.slash.fill")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(
+                                String(localized: showsVerificationPassword ? "hide_password" : "show_password")
+                            )
+                        }
                     }
                 } else {
                     Section {
-                        SecureField(String(localized: "new_password"), text: $newPassword)
+                        HStack {
+                            Group {
+                                if showsNewPassword {
+                                    TextField(String(localized: "new_password"), text: $newPassword)
+                                } else {
+                                    SecureField(String(localized: "new_password"), text: $newPassword)
+                                }
+                            }
                             .textContentType(.newPassword)
-                        SecureField(String(localized: "confirm_new_password"), text: $confirmedPassword)
+
+                            passwordVisibilityButton(isVisible: $showsNewPassword)
+                        }
+
+                        HStack {
+                            Group {
+                                if showsNewPassword {
+                                    TextField(String(localized: "confirm_new_password"), text: $confirmedPassword)
+                                } else {
+                                    SecureField(String(localized: "confirm_new_password"), text: $confirmedPassword)
+                                }
+                            }
                             .textContentType(.newPassword)
+                        }
                     }
                 }
 
@@ -392,6 +432,19 @@ private struct ResetUserPasswordView: View {
         return needsStepUp
             ? verificationPassword.isEmpty
             : newPassword.isEmpty || confirmedPassword.isEmpty
+    }
+
+    private func passwordVisibilityButton(isVisible: Binding<Bool>) -> some View {
+        Button {
+            isVisible.wrappedValue.toggle()
+        } label: {
+            Image(systemName: isVisible.wrappedValue ? "eye.fill" : "eye.slash.fill")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(
+            String(localized: isVisible.wrappedValue ? "hide_password" : "show_password")
+        )
     }
 
     private var errorAlertPresented: Binding<Bool> {

@@ -17,6 +17,7 @@ struct ServerHomeView: View {
     @State private var dateEnabled = false
     @State private var dateFrom = Date()
     @State private var dateTo = Date()
+    @State private var newOnly = false
     @State private var untaggedOnly = false
     @State private var favoriteOnly = false
 
@@ -60,7 +61,8 @@ struct ServerHomeView: View {
                         server: server, showFilter: $showFilter, searching: $searching,
                         sortField: $sortField, sortOrder: $sortOrder,
                         dateEnabled: $dateEnabled, dateFrom: $dateFrom, dateTo: $dateTo,
-                        untaggedOnly: $untaggedOnly, favoriteOnly: $favoriteOnly
+                        newOnly: $newOnly, untaggedOnly: $untaggedOnly,
+                        favoriteOnly: $favoriteOnly
                     )
                     .navigationTitle(String(localized: "tab_search"))
                     .navigationBarTitleDisplayMode(.inline)
@@ -82,11 +84,12 @@ struct ServerHomeView: View {
                 sortField: $sortField, sortOrder: $sortOrder,
                 dateEnabled: $dateEnabled,
                 dateFrom: $dateFrom, dateTo: $dateTo,
-                untaggedOnly: $untaggedOnly, favoriteOnly: $favoriteOnly,
+                newOnly: $newOnly, untaggedOnly: $untaggedOnly,
+                favoriteOnly: $favoriteOnly,
                 onReset: {
                     sortField = "created_at"; sortOrder = "desc"
                     dateEnabled = false; dateFrom = Date(); dateTo = Date()
-                    untaggedOnly = false; favoriteOnly = false
+                    newOnly = false; untaggedOnly = false; favoriteOnly = false
                 }
             )
         }

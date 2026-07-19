@@ -110,6 +110,7 @@ struct HomeTabView: View {
 
     private func loadInitial() async {
         LogManager.shared.log("[Home] Initial load started")
+        isLoading = true
         do {
             let cats = try await server.apiClient.fetchCategories()
             categories = cats
@@ -119,7 +120,6 @@ struct HomeTabView: View {
             LogManager.shared.log("[Home] Categories load failed: \(error.localizedDescription)")
         }
 
-        isLoading = true
         do {
             let items = try await server.apiClient.fetchRecommendations(count: pageSize, categoryId: selectedCategoryId)
             LogManager.shared.log("[Home] Recommendations loaded count=\(items.count)")

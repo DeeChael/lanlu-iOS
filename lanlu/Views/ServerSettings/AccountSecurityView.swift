@@ -653,7 +653,10 @@ private struct PasswordChangeSheet: View {
     @State private var currentPassword = ""
     @State private var newPassword = ""
     @State private var confirmedPassword = ""
+    @State private var showsCurrentPassword = false
+    @State private var showsNewPassword = false
     @State private var verificationPassword = ""
+    @State private var showsVerificationPassword = false
     @State private var totpCode = ""
     @State private var useStepUpRecoveryCode = false
     @State private var isLoading = false
@@ -681,15 +684,44 @@ private struct PasswordChangeSheet: View {
     private var passwordForm: some View {
         Form {
             Section(String(localized: "current_password")) {
-                SecureField(String(localized: "current_password"), text: $currentPassword)
+                HStack {
+                    Group {
+                        if showsCurrentPassword {
+                            TextField(String(localized: "current_password"), text: $currentPassword)
+                        } else {
+                            SecureField(String(localized: "current_password"), text: $currentPassword)
+                        }
+                    }
                     .textContentType(.password)
+
+                    passwordVisibilityButton(isVisible: $showsCurrentPassword)
+                }
             }
 
             Section(String(localized: "new_password")) {
-                SecureField(String(localized: "new_password"), text: $newPassword)
+                HStack {
+                    Group {
+                        if showsNewPassword {
+                            TextField(String(localized: "new_password"), text: $newPassword)
+                        } else {
+                            SecureField(String(localized: "new_password"), text: $newPassword)
+                        }
+                    }
                     .textContentType(.newPassword)
-                SecureField(String(localized: "confirm_new_password"), text: $confirmedPassword)
+
+                    passwordVisibilityButton(isVisible: $showsNewPassword)
+                }
+
+                HStack {
+                    Group {
+                        if showsNewPassword {
+                            TextField(String(localized: "confirm_new_password"), text: $confirmedPassword)
+                        } else {
+                            SecureField(String(localized: "confirm_new_password"), text: $confirmedPassword)
+                        }
+                    }
                     .textContentType(.newPassword)
+                }
             }
 
             errorSection
@@ -726,8 +758,25 @@ private struct PasswordChangeSheet: View {
     private var passwordVerification: some View {
         Form {
             Section(String(localized: "security_verification_required")) {
-                SecureField(String(localized: "password"), text: $verificationPassword)
+                HStack {
+                    Group {
+                        if showsVerificationPassword {
+                            TextField(String(localized: "password"), text: $verificationPassword)
+                        } else {
+                            SecureField(String(localized: "password"), text: $verificationPassword)
+                        }
+                    }
                     .textContentType(.password)
+
+                    Button {
+                        showsVerificationPassword.toggle()
+                    } label: {
+                        Image(systemName: showsVerificationPassword ? "eye.fill" : "eye.slash.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(String(localized: showsVerificationPassword ? "hide_password" : "show_password"))
+                }
             }
             errorSection
             Section {
@@ -803,6 +852,19 @@ private struct PasswordChangeSheet: View {
 
     private var passwordFieldsAreEmpty: Bool {
         currentPassword.isEmpty || newPassword.isEmpty || confirmedPassword.isEmpty
+    }
+
+    private func passwordVisibilityButton(isVisible: Binding<Bool>) -> some View {
+        Button {
+            isVisible.wrappedValue.toggle()
+        } label: {
+            Image(systemName: isVisible.wrappedValue ? "eye.fill" : "eye.slash.fill")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(
+            String(localized: isVisible.wrappedValue ? "hide_password" : "show_password")
+        )
     }
 
     private func submitButton(
