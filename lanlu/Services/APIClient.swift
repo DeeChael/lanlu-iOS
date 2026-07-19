@@ -1785,6 +1785,22 @@ class APIClient {
         return result.data?.items ?? []
     }
 
+    func fetchSmartFilters() async throws -> [SmartFilterItem] {
+        LogManager.shared.log("GET /api/smart_filters")
+        let url = try makeURL("/api/smart_filters")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+        let result = try JSONDecoder().decode(ApiEnvelope<SmartFilterListData>.self, from: data)
+        return result.data?.items ?? []
+    }
+
     func reorderAdminSmartFilters(_ items: [SmartFilterOrderItem]) async throws {
         LogManager.shared.log("POST /api/admin/smart_filters/reorder count=\(items.count)")
         let url = try makeURL("/api/admin/smart_filters/reorder")

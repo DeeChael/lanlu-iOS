@@ -36,6 +36,9 @@
 "just_now" = "剛剛";
 "tab_home" = "首頁";
 "tab_favorites" = "收藏";
+"tab_categories" = "分類";
+"tab_bookshelf" = "書架";
+"categories_no_smart_filters" = "當前服務器不存在智能分類";
 "tab_settings" = "設置";
 "switch_server" = "切換";
 "home_placeholder" = "首頁";
@@ -92,7 +95,7 @@
 "scan" = "掃描";
 "edit" = "編輯";
 "ss_tags" = "標籤";
-"ss_smart_filters" = "智能篩選";
+"ss_smart_filters" = "智能分類";
 "ss_user_management" = "用戶管理";
 "create_user" = "創建用戶";
 "set_as_administrator" = "設為管理員";
@@ -299,7 +302,7 @@
 "reader_reset_zoom" = "重置縮放";
 "reader_toc_title" = "目錄";
 "reader_tap_reload" = "點擊重新加載";
-"smart_filter_add" = "添加智能篩選";
+"smart_filter_add" = "添加智能分類";
 "smart_filter_sort_method" = "排序方式：%@";
 "smart_filter_sort_default" = "默認";
 "smart_filter_sort_created" = "創建時間";
@@ -312,7 +315,7 @@
 "smart_filter_new_only" = "僅最新";
 "smart_filter_untagged_only" = "僅無標籤";
 "smart_filter_edit_order" = "編輯排序";
-"smart_filter_edit" = "修改智能篩選";
+"smart_filter_edit" = "修改智能分類";
 "smart_filter_name" = "名稱";
 "smart_filter_icon" = "圖標";
 "smart_filter_query" = "關鍵詞（選填）";
@@ -323,8 +326,8 @@
 "smart_filter_relative_day_help" = "相對天數，如 -7 表示 7 天前，0 表示今天。";
 "smart_filter_new_only_full" = "僅顯示新檔案";
 "smart_filter_untagged_only_full" = "僅顯示無標籤檔案";
-"smart_filter_delete_title" = "刪除智能篩選";
-"smart_filter_delete_confirm" = "確定要刪除智能篩選「%@」嗎？此操作無法撤銷。";
+"smart_filter_delete_title" = "刪除智能分類";
+"smart_filter_delete_confirm" = "確定要刪除智能分類「%@」嗎？此操作無法撤銷。";
 "statistics_system_info" = "系統信息";
 "statistics_server_name" = "服務器名稱";
 "statistics_version" = "版本";

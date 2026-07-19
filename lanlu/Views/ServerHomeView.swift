@@ -30,18 +30,18 @@ struct ServerHomeView: View {
                 }
             }
 
-            Tab(String(localized: "tab_favorites"), systemImage: "heart.fill", value: 1) {
+            Tab(String(localized: "tab_categories"), systemImage: "square.grid.2x2.fill", value: 1) {
                 NavigationStack {
-                    FavoritesTabView(server: server)
-                        .navigationTitle(String(localized: "tab_favorites"))
+                    CategoriesTabView(server: server)
+                        .navigationTitle(String(localized: "tab_categories"))
                         .navigationBarTitleDisplayMode(.inline)
                 }
             }
 
-            Tab(String(localized: "tab_history"), systemImage: "clock.fill", value: 2) {
+            Tab(String(localized: "tab_bookshelf"), systemImage: "book.fill", value: 2) {
                 NavigationStack {
-                    HistoryTabView(server: server)
-                        .navigationTitle(String(localized: "tab_history"))
+                    BookshelfTabView(server: server)
+                        .navigationTitle(String(localized: "tab_bookshelf"))
                         .navigationBarTitleDisplayMode(.inline)
                 }
             }

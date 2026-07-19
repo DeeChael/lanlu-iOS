@@ -36,6 +36,9 @@
 "just_now" = "just now";
 "tab_home" = "Home";
 "tab_favorites" = "Favorites";
+"tab_categories" = "Categories";
+"tab_bookshelf" = "Bookshelf";
+"categories_no_smart_filters" = "This server has no smart filters.";
 "tab_settings" = "Settings";
 "switch_server" = "Switch";
 "home_placeholder" = "Home";
