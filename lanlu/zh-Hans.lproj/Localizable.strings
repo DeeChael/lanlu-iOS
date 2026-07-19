@@ -324,6 +324,7 @@
 "smart_filter_date_from" = "开始日期";
 "smart_filter_date_to" = "结束日期";
 "smart_filter_relative_day_help" = "相对天数，如 -7 表示 7 天前，0 表示今天。";
+"smart_filter_invalid_date_range" = "开始日期不能大于结束日期。";
 "smart_filter_new_only_full" = "仅显示新档案";
 "smart_filter_untagged_only_full" = "仅显示无标签档案";
 "smart_filter_delete_title" = "删除智能分类";

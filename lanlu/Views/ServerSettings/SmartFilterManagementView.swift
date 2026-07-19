@@ -513,6 +513,10 @@ private struct SmartFilterEditorView: View {
 
     private func submit() {
         guard canSubmit else { return }
+        guard dateFrom <= dateTo else {
+            errorMessage = String(localized: "smart_filter_invalid_date_range")
+            return
+        }
         isSubmitting = true
         errorMessage = nil
 

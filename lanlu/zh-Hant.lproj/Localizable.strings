@@ -324,6 +324,7 @@
 "smart_filter_date_from" = "開始日期";
 "smart_filter_date_to" = "結束日期";
 "smart_filter_relative_day_help" = "相對天數，如 -7 表示 7 天前，0 表示今天。";
+"smart_filter_invalid_date_range" = "開始日期不能大於結束日期。";
 "smart_filter_new_only_full" = "僅顯示新檔案";
 "smart_filter_untagged_only_full" = "僅顯示無標籤檔案";
 "smart_filter_delete_title" = "刪除智能分類";

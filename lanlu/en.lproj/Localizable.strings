@@ -324,6 +324,7 @@
 "smart_filter_date_from" = "Start Date";
 "smart_filter_date_to" = "End Date";
 "smart_filter_relative_day_help" = "Relative days, such as -7 for 7 days ago and 0 for today.";
+"smart_filter_invalid_date_range" = "The start date cannot be later than the end date.";
 "smart_filter_new_only_full" = "Show New Archives Only";
 "smart_filter_untagged_only_full" = "Show Untagged Archives Only";
 "smart_filter_delete_title" = "Delete Smart Filter";
