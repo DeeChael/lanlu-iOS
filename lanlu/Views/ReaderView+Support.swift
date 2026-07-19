@@ -702,6 +702,40 @@ extension ReaderView {
     }
 
     @ViewBuilder
+    var autoReadButtonLabel: some View {
+        ZStack {
+            if readingDirection != .vertical {
+                GeometryReader { geometry in
+                    TimelineView(
+                        .animation(
+                            minimumInterval: 1.0 / 60.0,
+                            paused: autoReadProgressStartDate == nil
+                        )
+                    ) { timeline in
+                        let progress = autoReadProgress(at: timeline.date)
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.green.opacity(0.24))
+                                .frame(width: geometry.size.width * progress)
+                        }
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+
+            Label(
+                String(localized: "reader_auto_read"),
+                systemImage: autoReadPausedOnCurrentPage
+                    ? "pause.fill"
+                    : "automatic.brakesignal"
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 32)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
     var readerBottomSafeAreaContent: some View {
         if isZoomed {
             Section {
@@ -727,15 +761,7 @@ extension ReaderView {
                 Button {
                     showAutoReadSettings = true
                 } label: {
-                    Label(
-                        String(localized: "reader_auto_read"),
-                        systemImage: autoReadPausedOnCurrentPage
-                            ? "pause.fill"
-                            : "automatic.brakesignal"
-                    )
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                    .padding(.vertical, 6)
+                    autoReadButtonLabel
                 }
                 .padding(.horizontal, 16)
                 .buttonStyle(.glass)
@@ -881,6 +907,11 @@ extension ReaderView {
                         }
                         isLoading.remove(index)
                         loadTasks[index] = nil
+                        if autoReadEnabled,
+                           readingDirection == .vertical,
+                           index == currentIndex {
+                            refreshAutoRead()
+                        }
                     }
                     return
                 } catch {
@@ -1040,8 +1071,7 @@ extension ReaderView {
     }
 
     func refreshAutoRead() {
-        autoReadTask?.cancel()
-        autoReadTask = nil
+        stopAutoReadTask()
 
         guard autoReadEnabled else {
             autoReadFinishedMediaIndex = nil
@@ -1068,7 +1098,11 @@ extension ReaderView {
         switch currentPageFileType {
         case .image:
             if readingDirection == .vertical {
-                startVerticalAutoReadScroll()
+                if images[currentIndex] == nil {
+                    loadPage(currentIndex)
+                } else {
+                    startVerticalAutoReadScroll()
+                }
             } else {
                 scheduleAutoReadPageTurn()
             }
@@ -1102,10 +1136,13 @@ extension ReaderView {
     func stopAutoReadTask() {
         autoReadTask?.cancel()
         autoReadTask = nil
+        autoReadProgressStartDate = nil
+        autoReadProgressDuration = 0
     }
 
     private func scheduleAutoReadPageTurn() {
         let delay = max(1, min(autoReadInterval, 10))
+        startAutoReadProgress(duration: TimeInterval(delay))
         autoReadTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, canRunAutoRead else { return }
@@ -1129,7 +1166,7 @@ extension ReaderView {
             return
         }
 
-        let duration = TimeInterval(max(1, min(autoReadInterval, 10)))
+        let duration = verticalAutoReadScrollDuration()
         isProgrammaticVerticalScroll = true
         withAnimation(.linear(duration: duration)) {
             progressValue = Double(targetIndex)
@@ -1149,6 +1186,40 @@ extension ReaderView {
             isProgrammaticVerticalScroll = false
             refreshAutoRead()
         }
+    }
+
+    private func verticalAutoReadScrollDuration() -> TimeInterval {
+        let interval = TimeInterval(max(1, min(autoReadInterval, 10)))
+        let viewportHeight = pageHeight > 0
+            ? pageHeight
+            : max(UIScreen.main.bounds.height, 1)
+        let viewportWidth = pageWidth > 0
+            ? pageWidth
+            : max(UIScreen.main.bounds.width, 1)
+        let margin = verticalAddMargin ? CGFloat(verticalMargin) : 0
+        let contentWidth = max(viewportWidth - margin * 2, 1)
+        let scrollDistance = max(
+            verticalPageHeight(
+                index: currentIndex,
+                width: contentWidth,
+                viewportHeight: viewportHeight
+            ),
+            1
+        )
+        let pointsPerSecond = viewportHeight / interval
+        return max(scrollDistance / pointsPerSecond, 0.1)
+    }
+
+    private func startAutoReadProgress(duration: TimeInterval) {
+        autoReadProgressDuration = max(duration, 0.001)
+        autoReadProgressStartDate = Date()
+    }
+
+    func autoReadProgress(at date: Date) -> CGFloat {
+        guard let startDate = autoReadProgressStartDate,
+              autoReadProgressDuration > 0 else { return 0 }
+        let elapsed = date.timeIntervalSince(startDate)
+        return CGFloat(min(max(elapsed / autoReadProgressDuration, 0), 1))
     }
 
     private func startCurrentAutoReadMedia() {

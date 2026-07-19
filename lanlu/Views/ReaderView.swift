@@ -124,6 +124,8 @@ struct ReaderView: View {
     @State var showAutoReadSettings = false
     @State var showTableOfContents = false
     @State var autoReadTask: Task<Void, Never>?
+    @State var autoReadProgressStartDate: Date?
+    @State var autoReadProgressDuration: TimeInterval = 0
     @State var autoReadFinishedMediaIndex: Int?
     @State var autoReadPausedPageIndex: Int?
     @State var thumbnailImages: [Int: UIImage] = [:]
@@ -166,7 +168,7 @@ struct ReaderView: View {
     @AppStorage("reader_double_tap_zoom") var doubleTapZoom = true
     @AppStorage("reader_tap_gesture_mode") var tapGestureModeRaw = ReaderTapGestureMode.leftRight.rawValue
     @AppStorage("reader_volume_button_mode") var volumeButtonModeRaw = ReaderVolumeButtonMode.off.rawValue
-    @AppStorage("reader_auto_read_enabled") var autoReadEnabled = false
+    @State var autoReadEnabled = false
     @AppStorage("reader_auto_read_interval") var autoReadInterval = 5
     @AppStorage("reader_auto_read_images_only") var autoReadImagesOnly = false
     @AppStorage("reader_audio_autoplay") var audioAutoplay = false
