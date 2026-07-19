@@ -39,6 +39,10 @@
 "tab_categories" = "分类";
 "tab_bookshelf" = "书架";
 "categories_no_smart_filters" = "当前服务器不存在智能分类";
+"categories_no_results" = "没有找到档案";
+"categories_select" = "选择";
+"categories_smart_filters" = "智能分类";
+"categories_categories" = "分类";
 "tab_settings" = "设置";
 "switch_server" = "切换";
 "home_placeholder" = "首页";

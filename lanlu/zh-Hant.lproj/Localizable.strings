@@ -39,6 +39,10 @@
 "tab_categories" = "分類";
 "tab_bookshelf" = "書架";
 "categories_no_smart_filters" = "當前服務器不存在智能分類";
+"categories_no_results" = "沒有找到檔案";
+"categories_select" = "選擇";
+"categories_smart_filters" = "智能分類";
+"categories_categories" = "分類";
 "tab_settings" = "設置";
 "switch_server" = "切換";
 "home_placeholder" = "首頁";

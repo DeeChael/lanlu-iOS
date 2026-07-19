@@ -39,6 +39,10 @@
 "tab_categories" = "Categories";
 "tab_bookshelf" = "Bookshelf";
 "categories_no_smart_filters" = "This server has no smart filters.";
+"categories_no_results" = "No archives found.";
+"categories_select" = "Select";
+"categories_smart_filters" = "Smart Filters";
+"categories_categories" = "Categories";
 "tab_settings" = "Settings";
 "switch_server" = "Switch";
 "home_placeholder" = "Home";

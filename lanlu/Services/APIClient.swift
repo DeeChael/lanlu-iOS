@@ -1097,7 +1097,21 @@ class APIClient {
 
     // MARK: - Search
 
-    func search(favoriteOnly: Bool = false, untaggedOnly: Bool = false, groupbyTanks: Bool = false, filter: String? = nil, tags: String? = nil, sortby: String = "created_at", order: String = "desc", dateFrom: String? = nil, dateTo: String? = nil, page: Int = 1, pageSize: Int = 20) async throws -> SearchResponse {
+    func search(
+        favoriteOnly: Bool = false,
+        untaggedOnly: Bool = false,
+        newonly: Bool = false,
+        groupbyTanks: Bool = false,
+        filter: String? = nil,
+        tags: String? = nil,
+        category_id: String? = nil,
+        sortby: String = "created_at",
+        order: String = "desc",
+        dateFrom: String? = nil,
+        dateTo: String? = nil,
+        page: Int = 1,
+        pageSize: Int = 20
+    ) async throws -> SearchResponse {
         var urlString = baseURL
         if !urlString.contains("://") {
             urlString = "https://" + urlString
@@ -1120,6 +1134,9 @@ class APIClient {
         if untaggedOnly {
             items.append(URLQueryItem(name: "untaggedonly", value: "true"))
         }
+        if newonly {
+            items.append(URLQueryItem(name: "newonly", value: "true"))
+        }
         if groupbyTanks {
             items.append(URLQueryItem(name: "groupby_tanks", value: "true"))
         }
@@ -1128,6 +1145,9 @@ class APIClient {
         }
         if let tags, !tags.isEmpty {
             items.append(URLQueryItem(name: "tags", value: tags))
+        }
+        if let category_id, !category_id.isEmpty {
+            items.append(URLQueryItem(name: "category_id", value: category_id))
         }
         if let dateFrom, !dateFrom.isEmpty {
             items.append(URLQueryItem(name: "date_from", value: dateFrom))
