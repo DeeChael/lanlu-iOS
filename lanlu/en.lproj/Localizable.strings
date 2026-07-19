@@ -302,6 +302,9 @@
 "reader_volume_button_off" = "Off";
 "reader_volume_up_next" = "Volume Up for Next Page";
 "reader_volume_down_next" = "Volume Down for Next Page";
+"reader_auto_read" = "Auto Read";
+"reader_auto_read_interval" = "Page Interval";
+"reader_auto_read_images_only" = "Images Only";
 "reader_tap_mode_left_right" = "Left and Right";
 "reader_tap_mode_l_shape" = "L Shape";
 "reader_tap_mode_edges" = "Edges";

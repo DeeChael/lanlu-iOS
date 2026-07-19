@@ -76,7 +76,7 @@ extension ReaderView {
         }
     }
 
-    func prepareAudio() {
+    func prepareAudio(autoplay: Bool = false) {
         guard audioPlayer == nil else { return }
         guard currentIndex >= 0, currentIndex < files.count else { return }
         let path = filePath(at: currentIndex)
@@ -131,6 +131,10 @@ extension ReaderView {
                 audioArtist = artist
                 audioAlbum = album
                 startAudioTimer()
+                if (autoplay || shouldAutoPlayCurrentMedia)
+                    && !autoReadPausedOnCurrentPage {
+                    startAudio()
+                }
             }
         }
     }
@@ -154,7 +158,7 @@ extension ReaderView {
         guard !path.isEmpty else { return }
 
         if videoPlayerIndex == index, let videoPlayer {
-            if autoplay {
+            if autoplay && !autoReadPausedOnCurrentPage {
                 videoPlayer.play()
                 isVideoPlaying = true
             }
@@ -196,7 +200,7 @@ extension ReaderView {
                     videoAspectRatio = aspectRatio
                     isVideoLoading = false
                     installVideoObservers(on: player, item: item)
-                    if autoplay {
+                    if autoplay && !autoReadPausedOnCurrentPage {
                         player.play()
                         isVideoPlaying = true
                     }
@@ -289,6 +293,7 @@ extension ReaderView {
         ) { _ in
             isVideoPlaying = false
             videoCurrentTime = videoDuration
+            handleAutoReadMediaFinished()
         }
     }
 
@@ -340,7 +345,15 @@ extension ReaderView {
         audioTimer?.invalidate()
         audioTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
             Task { @MainActor in
+                let wasPlaying = isAudioPlaying
                 audioCurrentTime = audioPlayer?.currentTime ?? 0
+                if wasPlaying,
+                   audioDuration > 0,
+                   audioCurrentTime >= audioDuration - 0.1,
+                   audioPlayer?.isPlaying == false {
+                    isAudioPlaying = false
+                    handleAutoReadMediaFinished()
+                }
             }
         }
     }

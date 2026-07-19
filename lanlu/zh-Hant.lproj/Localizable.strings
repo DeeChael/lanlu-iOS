@@ -302,6 +302,9 @@
 "reader_volume_button_off" = "關";
 "reader_volume_up_next" = "音量加鍵下一頁";
 "reader_volume_down_next" = "音量減鍵下一頁";
+"reader_auto_read" = "自動閱讀";
+"reader_auto_read_interval" = "翻頁間隔";
+"reader_auto_read_images_only" = "僅圖片";
 "reader_tap_mode_left_right" = "左和右";
 "reader_tap_mode_l_shape" = "L 型";
 "reader_tap_mode_edges" = "邊緣";

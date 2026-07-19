@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 private enum ReaderImageLoadError: LocalizedError {
     case decodeFailed
@@ -254,6 +255,9 @@ struct ReaderSettingsView: View {
     @Binding var doubleTapZoom: Bool
     @Binding var tapGestureMode: String
     @Binding var volumeButtonMode: String
+    @Binding var autoReadEnabled: Bool
+    @Binding var autoReadInterval: Int
+    @Binding var autoReadImagesOnly: Bool
     @Binding var audioAutoplay: Bool
     @Binding var videoAutoplay: Bool
     @Binding var readingDirection: String
@@ -304,6 +308,13 @@ struct ReaderSettingsView: View {
                     .pickerStyle(.menu)
                     .tint(.secondary)
                 }
+                Section(String(localized: "reader_auto_read")) {
+                    ReaderAutoReadSettingsRows(
+                        autoReadEnabled: $autoReadEnabled,
+                        autoReadInterval: $autoReadInterval,
+                        autoReadImagesOnly: $autoReadImagesOnly
+                    )
+                }
                 Section(String(localized: "reader_settings_pagination")) {
                     Stepper(value: $preloadPageCount, in: 1...5) {
                         HStack {
@@ -350,6 +361,59 @@ struct ReaderSettingsView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { dismiss() } label: { Image(systemName: "xmark").fontWeight(.semibold) }
                 }
+            }
+        }
+    }
+}
+
+struct ReaderAutoReadSettingsRows: View {
+    @Binding var autoReadEnabled: Bool
+    @Binding var autoReadInterval: Int
+    @Binding var autoReadImagesOnly: Bool
+
+    var body: some View {
+        Toggle(String(localized: "reader_auto_read"), isOn: $autoReadEnabled)
+        Stepper(value: $autoReadInterval, in: 1...10) {
+            HStack {
+                Text(String(localized: "reader_auto_read_interval"))
+                Spacer()
+                Text("\(autoReadInterval)s")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        Toggle(String(localized: "reader_auto_read_images_only"), isOn: $autoReadImagesOnly)
+    }
+}
+
+struct ReaderAutoReadSettingsSheet: View {
+    @Binding var autoReadEnabled: Bool
+    @Binding var autoReadInterval: Int
+    @Binding var autoReadImagesOnly: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ReaderAutoReadSettingsRows(
+                        autoReadEnabled: $autoReadEnabled,
+                        autoReadInterval: $autoReadInterval,
+                        autoReadImagesOnly: $autoReadImagesOnly
+                    )
+                }
+            }
+            .navigationTitle(String(localized: "reader_auto_read"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").fontWeight(.semibold)
+                    }
+                }
+            }
+            .onChange(of: autoReadEnabled) { _, enabled in
+                if !enabled { dismiss() }
             }
         }
     }
@@ -483,6 +547,195 @@ private struct ReaderTapGestureDiagram: View {
 }
 
 extension ReaderView {
+    func handleReaderAppear() {
+        rebuildHorizontalPaginationCache()
+        if readingDirection != .vertical {
+            let normalizedIndex = horizontalUnit(containing: currentIndex).first ?? currentIndex
+            currentIndex = normalizedIndex
+            progressValue = Double(normalizedIndex)
+        }
+        currentPageFileType = fileType(at: currentIndex)
+        if files.count <= 1 && mediaToolbarIcon != nil {
+            bottomControlFocus = .fileControl
+        }
+        audioCover = nil
+        prepareCurrentMediaIfNeeded(at: currentIndex)
+
+        if readingDirection == .vertical {
+            preloadVerticalPages(around: currentIndex)
+        } else {
+            loadPage(currentIndex)
+            preloadAdjacent()
+            trimPageCache(around: currentIndex)
+        }
+        refreshAutoRead()
+    }
+
+    func handleReaderDisappear() {
+        stopAutoReadTask()
+        cancelAllTasks()
+        stopAudio()
+        stopVideo()
+        saveProgress()
+    }
+
+    func handleCurrentIndexChange(from oldIndex: Int, to newIndex: Int) {
+        autoReadFinishedMediaIndex = nil
+        let newUnit = horizontalUnit(containing: newIndex)
+        for index in horizontalUnit(containing: oldIndex) where !newUnit.contains(index) {
+            loadTasks[index]?.cancel()
+            loadTasks[index] = nil
+            isLoading.remove(index)
+        }
+        updateBottomToolbar(for: newIndex)
+
+        audioCover = nil
+        audioTitle = nil
+        audioArtist = nil
+        audioAlbum = nil
+        stopAudio()
+        stopVideo()
+        prepareCurrentMediaIfNeeded(at: newIndex)
+        resetZoom(animated: false)
+
+        if readingDirection == .vertical {
+            preloadVerticalPages(around: newIndex)
+        } else {
+            loadPage(newIndex)
+            preloadAdjacent()
+            trimPageCache(around: newIndex)
+        }
+        refreshAutoRead()
+    }
+
+    func handleReadingDirectionChange() {
+        resetZoom(animated: false)
+        withAnimation(.easeOut(duration: 0.25)) {
+            progressValue = Double(currentIndex)
+        }
+        withoutAnimation {
+            dragOffset = 0
+            isDragging = false
+            isPageAnimating = false
+        }
+
+        if readingDirection == .vertical {
+            preloadVerticalPages(around: currentIndex)
+            requestVerticalPage(currentIndex, animated: false)
+        } else {
+            refreshHorizontalPagination()
+        }
+        refreshAutoRead()
+    }
+
+    func handlePreloadPageCountChange() {
+        guard readingDirection != .vertical else { return }
+        preloadAdjacent()
+        trimPageCache(around: currentIndex)
+    }
+
+    func handleDoublePageSettingChange() {
+        rebuildHorizontalPaginationCache()
+        refreshHorizontalPagination()
+    }
+
+    func handleFirstPageSettingChange() {
+        guard doublePageEnabled else { return }
+        rebuildHorizontalPaginationCache()
+        refreshHorizontalPagination()
+    }
+
+    func handleAutoReadEnabledChange(_ enabled: Bool) {
+        if enabled {
+            resetZoom(animated: false)
+            showReaderSettings = false
+            showControls = false
+        }
+        refreshAutoRead()
+    }
+
+    func handleAutoReadRefreshChange(
+        from oldState: ReaderAutoReadRefreshState,
+        to newState: ReaderAutoReadRefreshState
+    ) {
+        if oldState.enabled != newState.enabled {
+            handleAutoReadEnabledChange(newState.enabled)
+        } else {
+            refreshAutoRead()
+        }
+    }
+
+    func handleReaderMemoryWarning() {
+        let currentIndices = readingDirection == .vertical
+            ? Set([currentIndex])
+            : Set(horizontalUnit(containing: currentIndex))
+        for (index, task) in loadTasks where !currentIndices.contains(index) {
+            task.cancel()
+        }
+        loadTasks = loadTasks.filter { currentIndices.contains($0.key) }
+        images = images.filter { currentIndices.contains($0.key) }
+        thumbnailImages.removeAll()
+        CacheManager.shared.clearMemoryCaches()
+        LogManager.shared.log("[Reader] Released image caches after memory warning")
+    }
+
+    private func prepareCurrentMediaIfNeeded(at index: Int) {
+        let shouldAutoplay = shouldAutoPlayCurrentMedia
+        switch fileType(at: index) {
+        case .audio:
+            prepareAudio(autoplay: audioAutoplay || shouldAutoplay)
+        case .video:
+            prepareVideo(at: index, autoplay: videoAutoplay || shouldAutoplay)
+        default:
+            break
+        }
+    }
+
+    @ViewBuilder
+    var readerBottomSafeAreaContent: some View {
+        if isZoomed {
+            Section {
+                Button { resetZoom() } label: {
+                    Label(
+                        String(localized: "reader_reset_zoom"),
+                        systemImage: "arrow.counterclockwise"
+                    )
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, 6)
+                }
+                .padding(.horizontal, 16)
+                .buttonStyle(.glass)
+            }
+            .frame(height: 48)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .animation(.easeInOut(duration: 0.2), value: isZoomed)
+        }
+
+        if autoReadEnabled {
+            Section {
+                Button {
+                    showAutoReadSettings = true
+                } label: {
+                    Label(
+                        String(localized: "reader_auto_read"),
+                        systemImage: autoReadPausedOnCurrentPage
+                            ? "pause.fill"
+                            : "automatic.brakesignal"
+                    )
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, 6)
+                }
+                .padding(.horizontal, 16)
+                .buttonStyle(.glass)
+            }
+            .frame(height: 48)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .animation(.easeInOut(duration: 0.2), value: autoReadEnabled)
+        }
+    }
+
     /// 禁用 fullScreenCover 自带的底部呈现动画，只保留目录面板内部的左侧滑入动画。
     func presentTableOfContents() {
         var transaction = Transaction()
@@ -740,5 +993,175 @@ extension ReaderView {
 
         for task in thumbnailLoadTasks.values { task.cancel() }
         thumbnailLoadTasks.removeAll()
+    }
+}
+
+extension ReaderView {
+    var canRunAutoRead: Bool {
+        autoReadEnabled
+            && !showControls
+            && !showReaderSettings
+            && !showAutoReadSettings
+            && !showTableOfContents
+            && scenePhase == .active
+    }
+
+    var shouldAutoPlayCurrentMedia: Bool {
+        autoReadEnabled && !autoReadImagesOnly
+    }
+
+    var autoReadPausedOnCurrentPage: Bool {
+        guard autoReadEnabled else { return false }
+        switch currentPageFileType {
+        case .image:
+            return false
+        case .audio, .video:
+            return autoReadImagesOnly
+        case .unknown:
+            return true
+        }
+    }
+
+    func refreshAutoRead() {
+        autoReadTask?.cancel()
+        autoReadTask = nil
+
+        guard autoReadEnabled else {
+            autoReadFinishedMediaIndex = nil
+            return
+        }
+
+        if isZoomed {
+            resetZoom(animated: false)
+        }
+
+        guard canRunAutoRead else { return }
+        if autoReadPausedOnCurrentPage {
+            audioPlayer?.pause()
+            isAudioPlaying = false
+            videoPlayer?.pause()
+            isVideoPlaying = false
+            return
+        }
+        guard hasNextPage else {
+            stopAutoReadAtEnd()
+            return
+        }
+
+        switch currentPageFileType {
+        case .image:
+            if readingDirection == .vertical {
+                startVerticalAutoReadScroll()
+            } else {
+                scheduleAutoReadPageTurn()
+            }
+        case .audio, .video:
+            if autoReadFinishedMediaIndex == currentIndex {
+                scheduleImmediateAutoReadAdvance()
+            } else {
+                startCurrentAutoReadMedia()
+            }
+        case .unknown:
+            break
+        }
+    }
+
+    func handleAutoReadMediaFinished() {
+        guard autoReadEnabled,
+              !autoReadImagesOnly,
+              currentPageFileType == .audio || currentPageFileType == .video else { return }
+        autoReadFinishedMediaIndex = currentIndex
+        if canRunAutoRead {
+            scheduleImmediateAutoReadAdvance()
+        }
+    }
+
+    func stopAutoReadTask() {
+        autoReadTask?.cancel()
+        autoReadTask = nil
+    }
+
+    private func scheduleAutoReadPageTurn() {
+        let delay = max(1, min(autoReadInterval, 10))
+        autoReadTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, canRunAutoRead else { return }
+            advanceAutoReadPage()
+        }
+    }
+
+    private func scheduleImmediateAutoReadAdvance() {
+        autoReadTask?.cancel()
+        autoReadTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled, canRunAutoRead else { return }
+            advanceAutoReadPage()
+        }
+    }
+
+    private func startVerticalAutoReadScroll() {
+        let targetIndex = currentIndex + 1
+        guard targetIndex <= maxIndex else {
+            stopAutoReadAtEnd()
+            return
+        }
+
+        let duration = TimeInterval(max(1, min(autoReadInterval, 10)))
+        isProgrammaticVerticalScroll = true
+        withAnimation(.linear(duration: duration)) {
+            progressValue = Double(targetIndex)
+        }
+        verticalScrollRequest = ReaderVerticalScrollRequest(
+            index: targetIndex,
+            animated: true,
+            duration: duration
+        )
+
+        autoReadTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(duration))
+            guard !Task.isCancelled, canRunAutoRead else { return }
+            withoutAnimation {
+                currentIndex = targetIndex
+            }
+            isProgrammaticVerticalScroll = false
+            refreshAutoRead()
+        }
+    }
+
+    private func startCurrentAutoReadMedia() {
+        switch currentPageFileType {
+        case .audio:
+            if audioPlayer != nil, !isAudioPlaying {
+                startAudio()
+            }
+        case .video:
+            if let videoPlayer {
+                if videoDuration > 0, videoCurrentTime >= videoDuration - 0.1 {
+                    videoPlayer.seek(to: .zero)
+                    videoCurrentTime = 0
+                }
+                videoPlayer.play()
+                isVideoPlaying = true
+            } else if !isVideoLoading {
+                prepareVideo(at: currentIndex, autoplay: true)
+            }
+        default:
+            break
+        }
+    }
+
+    private func advanceAutoReadPage() {
+        guard hasNextPage else {
+            stopAutoReadAtEnd()
+            return
+        }
+        autoReadFinishedMediaIndex = nil
+        nextPage()
+    }
+
+    private func stopAutoReadAtEnd() {
+        stopAutoReadTask()
+        autoReadEnabled = false
+        showAutoReadSettings = false
     }
 }

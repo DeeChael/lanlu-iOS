@@ -60,6 +60,13 @@ struct ReaderVerticalScrollRequest: Equatable {
     let token = UUID()
     let index: Int
     let animated: Bool
+    let duration: TimeInterval?
+
+    init(index: Int, animated: Bool, duration: TimeInterval? = nil) {
+        self.index = index
+        self.animated = animated
+        self.duration = duration
+    }
 }
 
 struct ReaderVerticalPageFramePreferenceKey: PreferenceKey {
@@ -71,6 +78,17 @@ struct ReaderVerticalPageFramePreferenceKey: PreferenceKey {
     ) {
         value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
     }
+}
+
+struct ReaderAutoReadRefreshState: Equatable {
+    let enabled: Bool
+    let interval: Int
+    let imagesOnly: Bool
+    let controlsVisible: Bool
+    let readerSettingsVisible: Bool
+    let autoReadSettingsVisible: Bool
+    let tableOfContentsVisible: Bool
+    let appIsActive: Bool
 }
 
 struct ReaderView: View {
@@ -103,7 +121,10 @@ struct ReaderView: View {
     @State var verticalScrollRequest: ReaderVerticalScrollRequest?
     @State var isProgrammaticVerticalScroll = false
     @State var showReaderSettings = false
+    @State var showAutoReadSettings = false
     @State var showTableOfContents = false
+    @State var autoReadTask: Task<Void, Never>?
+    @State var autoReadFinishedMediaIndex: Int?
     @State var thumbnailImages: [Int: UIImage] = [:]
     @State var thumbnailFailedPages: Set<Int> = []
     @State var thumbnailLoadTasks: [Int: Task<Void, Never>] = [:]
@@ -144,6 +165,9 @@ struct ReaderView: View {
     @AppStorage("reader_double_tap_zoom") var doubleTapZoom = true
     @AppStorage("reader_tap_gesture_mode") var tapGestureModeRaw = ReaderTapGestureMode.leftRight.rawValue
     @AppStorage("reader_volume_button_mode") var volumeButtonModeRaw = ReaderVolumeButtonMode.off.rawValue
+    @AppStorage("reader_auto_read_enabled") var autoReadEnabled = false
+    @AppStorage("reader_auto_read_interval") var autoReadInterval = 5
+    @AppStorage("reader_auto_read_images_only") var autoReadImagesOnly = false
     @AppStorage("reader_audio_autoplay") var audioAutoplay = false
     @AppStorage("reader_video_autoplay") var videoAutoplay = false
     @AppStorage("reader_reading_direction") var readingDirectionRaw = ReaderReadingDirection.leftToRight.rawValue
@@ -187,6 +211,19 @@ struct ReaderView: View {
         readingDirection == .vertical
             ? currentIndex < maxIndex
             : adjacentHorizontalTarget(from: currentIndex, offset: 1) != nil
+    }
+
+    var autoReadRefreshState: ReaderAutoReadRefreshState {
+        ReaderAutoReadRefreshState(
+            enabled: autoReadEnabled,
+            interval: autoReadInterval,
+            imagesOnly: autoReadImagesOnly,
+            controlsVisible: showControls,
+            readerSettingsVisible: showReaderSettings,
+            autoReadSettingsVisible: showAutoReadSettings,
+            tableOfContentsVisible: showTableOfContents,
+            appIsActive: scenePhase == .active
+        )
     }
 
     func makeHorizontalPageUnits() -> [[Int]] {
@@ -286,7 +323,7 @@ struct ReaderView: View {
         )
     }
 
-    var body: some View {
+    private var readerPresentation: some View {
         GeometryReader { geo in
             readerCanvas(size: geo.size)
                 .onAppear {
@@ -502,21 +539,7 @@ struct ReaderView: View {
             }
         }
         .safeAreaBar(edge: .bottom) {
-            if isZoomed {
-                Section {
-                    Button { resetZoom() } label: {
-                        HStack {
-                            Label(String(localized: "reader_reset_zoom"), systemImage: "arrow.counterclockwise")
-                        }
-                        .frame(maxWidth: .infinity).contentShape(Rectangle())
-                        .padding(.vertical, 6)
-                    }
-                    .padding(.horizontal, 16).buttonStyle(.glass)
-                }
-                .frame(height: 48)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.2), value: isZoomed)
-            }
+            readerBottomSafeAreaContent
         }
         .statusBarHidden(!showControls)
         .background {
@@ -538,6 +561,9 @@ struct ReaderView: View {
                 doubleTapZoom: $doubleTapZoom,
                 tapGestureMode: $tapGestureModeRaw,
                 volumeButtonMode: $volumeButtonModeRaw,
+                autoReadEnabled: $autoReadEnabled,
+                autoReadInterval: $autoReadInterval,
+                autoReadImagesOnly: $autoReadImagesOnly,
                 audioAutoplay: $audioAutoplay,
                 videoAutoplay: $videoAutoplay,
                 readingDirection: $readingDirectionRaw,
@@ -548,6 +574,14 @@ struct ReaderView: View {
                 verticalMargin: $verticalMargin
             )
                 .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showAutoReadSettings) {
+            ReaderAutoReadSettingsSheet(
+                autoReadEnabled: $autoReadEnabled,
+                autoReadInterval: $autoReadInterval,
+                autoReadImagesOnly: $autoReadImagesOnly
+            )
+            .presentationSizing(.fitted)
         }
         .fullScreenCover(isPresented: $showTableOfContents) {
             ReaderTableOfContentsOverlay(
@@ -578,108 +612,36 @@ struct ReaderView: View {
             .presentationBackground(.clear)
             .interactiveDismissDisabled()
         }
-        .onAppear {
-            rebuildHorizontalPaginationCache()
-            if readingDirection != .vertical {
-                let normalizedIndex = horizontalUnit(containing: currentIndex).first ?? currentIndex
-                currentIndex = normalizedIndex
-                progressValue = Double(normalizedIndex)
-            }
-            currentPageFileType = fileType(at: currentIndex)
-            if files.count <= 1 && mediaToolbarIcon != nil  {
-                bottomControlFocus = .fileControl
-            }
-            audioCover = nil
-            if currentPageFileType == .audio {
-                prepareAudio()
-                if audioAutoplay { startAudio() }
-            } else if currentPageFileType == .video {
-                prepareVideo(at: currentIndex, autoplay: videoAutoplay)
-            }
+    }
 
-            if readingDirection == .vertical {
-                preloadVerticalPages(around: currentIndex)
-            } else {
-                loadPage(currentIndex)
-                preloadAdjacent()
-                trimPageCache(around: currentIndex)
-            }
-        }
-        .onDisappear { cancelAllTasks(); stopAudio(); stopVideo(); saveProgress() }
+    private var readerLifecyclePresentation: some View {
+        readerPresentation
+        .onAppear(perform: handleReaderAppear)
+        .onDisappear(perform: handleReaderDisappear)
         .onChange(of: currentIndex) { oldIndex, newIndex in
-            for index in horizontalUnit(containing: oldIndex) where !horizontalUnit(containing: newIndex).contains(index) {
-                loadTasks[index]?.cancel()
-                loadTasks[index] = nil
-                isLoading.remove(index)
-            }
-            updateBottomToolbar(for: newIndex)
-
-            audioCover = nil
-            audioTitle = nil
-            audioArtist = nil
-            audioAlbum = nil
-            stopAudio()
-            stopVideo()
-            if fileType(at: newIndex) == .audio {
-                prepareAudio()
-                if audioAutoplay { startAudio() }
-            } else if fileType(at: newIndex) == .video {
-                prepareVideo(at: newIndex, autoplay: videoAutoplay)
-            }
-            resetZoom(animated: false)
-
-            if readingDirection == .vertical {
-                preloadVerticalPages(around: newIndex)
-            } else {
-                loadPage(newIndex)
-                preloadAdjacent()
-                trimPageCache(around: newIndex)
-            }
+            handleCurrentIndexChange(from: oldIndex, to: newIndex)
         }
         .onChange(of: readingDirectionRaw) { _, _ in
-            resetZoom(animated: false)
-            withAnimation(.easeOut(duration: 0.25)) {
-                progressValue = Double(currentIndex)
-            }
-            withoutAnimation {
-                dragOffset = 0
-                isDragging = false
-                isPageAnimating = false
-            }
-
-            if readingDirection == .vertical {
-                preloadVerticalPages(around: currentIndex)
-                requestVerticalPage(currentIndex, animated: false)
-            } else {
-                refreshHorizontalPagination()
-            }
+            handleReadingDirectionChange()
         }
         .onChange(of: preloadPageCount) { _, _ in
-            guard readingDirection != .vertical else { return }
-            preloadAdjacent()
-            trimPageCache(around: currentIndex)
+            handlePreloadPageCountChange()
         }
         .onChange(of: doublePageEnabled) { _, _ in
-            rebuildHorizontalPaginationCache()
-            refreshHorizontalPagination()
+            handleDoublePageSettingChange()
         }
         .onChange(of: firstPageAlwaysSingle) { _, _ in
-            guard doublePageEnabled else { return }
-            rebuildHorizontalPaginationCache()
-            refreshHorizontalPagination()
+            handleFirstPageSettingChange()
+        }
+    }
+
+    var body: some View {
+        readerLifecyclePresentation
+        .onChange(of: autoReadRefreshState) { oldState, newState in
+            handleAutoReadRefreshChange(from: oldState, to: newState)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-            let currentIndices = readingDirection == .vertical
-                ? Set([currentIndex])
-                : Set(horizontalUnit(containing: currentIndex))
-            for (index, task) in loadTasks where !currentIndices.contains(index) {
-                task.cancel()
-            }
-            loadTasks = loadTasks.filter { currentIndices.contains($0.key) }
-            images = images.filter { currentIndices.contains($0.key) }
-            thumbnailImages.removeAll()
-            CacheManager.shared.clearMemoryCaches()
-            LogManager.shared.log("[Reader] Released image caches after memory warning")
+            handleReaderMemoryWarning()
         }
     }
 
@@ -757,7 +719,10 @@ struct ReaderView: View {
 
                 DispatchQueue.main.async {
                     if request.animated {
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        withAnimation(
+                            request.duration.map(Animation.linear(duration:))
+                                ?? .easeInOut(duration: 0.3)
+                        ) {
                             scrollProxy.scrollTo(request.index, anchor: .top)
                         }
                     } else {
@@ -767,7 +732,8 @@ struct ReaderView: View {
                     }
 
                     DispatchQueue.main.asyncAfter(
-                        deadline: .now() + (request.animated ? 0.34 : 0.05)
+                        deadline: .now()
+                            + (request.animated ? (request.duration ?? 0.3) + 0.04 : 0.05)
                     ) {
                         isProgrammaticVerticalScroll = false
                     }
@@ -997,6 +963,7 @@ struct ReaderView: View {
     }
 
     func handleDoubleTap() {
+        guard !autoReadEnabled else { return }
         guard doubleTapZoom else { return }
         guard currentFileIsImage else { return }
 
@@ -1079,6 +1046,9 @@ struct ReaderView: View {
 
     func handleDragChanged(_ value: DragGesture.Value) {
         guard !isPageAnimating else { return }
+        if autoReadEnabled {
+            stopAutoReadTask()
+        }
 
         if currentFileIsImage, currentScale > 1.001 {
             let proposed = CGSize(
@@ -1138,6 +1108,7 @@ struct ReaderView: View {
     }
 
     func handleMagnificationChanged(_ value: CGFloat) {
+        guard !autoReadEnabled else { return }
         guard !isPageAnimating else { return }
         guard !isDragging else { return }
         guard currentFileIsImage else { return }
@@ -1154,6 +1125,7 @@ struct ReaderView: View {
     }
 
     func handleMagnificationEnded(_ value: CGFloat) {
+        guard !autoReadEnabled else { return }
         guard !isPageAnimating else { return }
         guard !isDragging else { return }
         guard currentFileIsImage else { return }
@@ -1450,7 +1422,10 @@ struct ReaderView: View {
                 }
                 .task(id: index) {
                     guard index == currentIndex else { return }
-                    prepareVideo(at: index, autoplay: videoAutoplay)
+                    prepareVideo(
+                        at: index,
+                        autoplay: videoAutoplay || shouldAutoPlayCurrentMedia
+                    )
                 }
             }
         }
@@ -1580,6 +1555,7 @@ struct ReaderView: View {
                 dragOffset = 0
             }
             isDragging = false
+            refreshAutoRead()
         }
     }
 
