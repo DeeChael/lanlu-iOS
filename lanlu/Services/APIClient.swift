@@ -1276,12 +1276,65 @@ class APIClient {
         let author: String?
         let entry: String?
         let pluginType: String?
+        let tags: String?
+        let permissions: [String]?
+        let icon: String?
         let enabled: Bool?
         let installed: Bool?
+        let updateURL: String?
+        let hasSchema: Bool?
+        let parameters: [AdminPluginParameter]?
+        let createdAt: String?
+        let updatedAt: String?
 
         enum CodingKeys: String, CodingKey {
-            case id, name, namespace, version, description, author, entry, enabled, installed
+            case id, name, namespace, version, description, author, entry, tags
+            case permissions, icon, enabled, installed, parameters
             case pluginType = "plugin_type"
+            case updateURL = "update_url"
+            case hasSchema = "has_schema"
+            case createdAt = "created_at"
+            case updatedAt = "updated_at"
+        }
+    }
+
+    struct AdminPluginParameter: Codable, Identifiable, Sendable {
+        let desc: String
+        let name: String
+        let type: String
+        let value: String?
+        let defaultValue: String?
+
+        var id: String { name }
+
+        enum CodingKeys: String, CodingKey {
+            case desc, name, type, value
+            case defaultValue = "default_value"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            desc = try container.decodeIfPresent(String.self, forKey: .desc) ?? ""
+            name = try container.decode(String.self, forKey: .name)
+            type = try container.decodeIfPresent(String.self, forKey: .type) ?? "string"
+            value = Self.decodeString(container, key: .value)
+            defaultValue = Self.decodeString(container, key: .defaultValue)
+        }
+
+        private static func decodeString(
+            _ container: KeyedDecodingContainer<CodingKeys>,
+            key: CodingKeys
+        ) -> String? {
+            if let value = try? container.decodeIfPresent(String.self, forKey: key) {
+                return value
+            }
+            if let value = try? container.decodeIfPresent(Int.self, forKey: key) {
+                return String(value)
+            }
+            if let value = try? container.decodeIfPresent(Bool.self, forKey: key) {
+                return value ? "1" : "0"
+            }
+            return nil
         }
     }
 
@@ -1367,6 +1420,54 @@ class APIClient {
             return plugins
         }
         throw AuthError.networkError(String(localized: "connection_failed"))
+    }
+
+    func installAdminPlugin(url pluginURL: String) async throws {
+        try await submitAdminPluginRequest(
+            path: "/api/admin/plugins/install",
+            method: "POST",
+            body: ["url": pluginURL]
+        )
+    }
+
+    func setAdminPluginEnabled(namespace: String, enabled: Bool) async throws {
+        try await submitAdminPluginRequest(
+            path: "/api/admin/plugins/\(namespace)/enabled",
+            method: "PUT",
+            body: ["enabled": enabled]
+        )
+    }
+
+    func deleteAdminPlugin(namespace: String) async throws {
+        let url = try makeURL("/api/admin/plugins/\(namespace)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+    }
+
+    private func submitAdminPluginRequest(
+        path: String,
+        method: String,
+        body: [String: Any]
+    ) async throws {
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        applyAuthHeader(&request)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
     }
 
     func createCategory(_ payload: CreateCategoryPayload) async throws {

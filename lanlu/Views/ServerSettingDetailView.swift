@@ -57,6 +57,8 @@ struct ServerSettingDetailView: View {
                 UserManagementView(server: server)
             } else if setting == .systemSettings {
                 SystemSettingsView(server: server)
+            } else if setting == .pluginManagement {
+                PluginManagementView(server: server)
             } else if setting == .statistics {
                 ServerStatisticsView(server: server)
             } else {
