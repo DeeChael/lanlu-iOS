@@ -282,8 +282,14 @@ private struct PluginManagementRow: View {
                                 typeBadge
                             }
                             Text("\(String(localized: "plugin_namespace"))：\(plugin.namespace)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Text("\(String(localized: "plugin_author"))：\(plugin.author ?? "-")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Text("\(String(localized: "plugin_version"))：\(plugin.version ?? "-")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 4)
                         Image(systemName: expanded ? "chevron.down" : "chevron.left")
