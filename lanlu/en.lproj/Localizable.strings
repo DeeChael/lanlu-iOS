@@ -289,7 +289,8 @@
 "reader_dir_picker" = "Direction";
 "reader_dir_ltr" = "Left to Right";
 "reader_dir_rtl" = "Right to Left";
-"reader_dir_vertical" = "Vertical";
+"reader_dir_vertical_paged" = "Vertical";
+"reader_dir_vertical" = "Vertical Comic";
 "reader_settings_playback" = "Playback";
 "reader_settings_audio_autoplay" = "Auto-Play Audio";
 "reader_settings_video_autoplay" = "Auto-Play Video";

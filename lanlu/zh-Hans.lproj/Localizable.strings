@@ -289,6 +289,7 @@
 "reader_dir_picker" = "方向";
 "reader_dir_ltr" = "从左到右";
 "reader_dir_rtl" = "从右到左";
+"reader_dir_vertical_paged" = "纵向";
 "reader_dir_vertical" = "条漫";
 "reader_settings_playback" = "播放";
 "reader_settings_audio_autoplay" = "音频自动播放";

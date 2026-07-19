@@ -533,7 +533,10 @@ extension ReaderView {
             guard targetIndex >= 0 else { return }
             requestVerticalPage(targetIndex, animated: true)
         } else if let targetIndex = adjacentHorizontalTarget(from: currentIndex, offset: -1) {
-            animatePageChange(to: targetIndex, pageWidth: pageWidth)
+            animatePageChange(
+                to: targetIndex,
+                pageWidth: readingDirection == .verticalPaged ? pageHeight : pageWidth
+            )
         }
     }
 
@@ -543,7 +546,10 @@ extension ReaderView {
             guard targetIndex <= maxIndex else { return }
             requestVerticalPage(targetIndex, animated: true)
         } else if let targetIndex = adjacentHorizontalTarget(from: currentIndex, offset: 1) {
-            animatePageChange(to: targetIndex, pageWidth: pageWidth)
+            animatePageChange(
+                to: targetIndex,
+                pageWidth: readingDirection == .verticalPaged ? pageHeight : pageWidth
+            )
         }
     }
 

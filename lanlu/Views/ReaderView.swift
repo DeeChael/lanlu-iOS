@@ -19,6 +19,7 @@ enum ReaderBottomControlFocus {
 enum ReaderReadingDirection: String, CaseIterable, Identifiable {
     case leftToRight
     case rightToLeft
+    case verticalPaged
     case vertical
 
     var id: String { rawValue }
@@ -27,6 +28,7 @@ enum ReaderReadingDirection: String, CaseIterable, Identifiable {
         switch self {
         case .leftToRight: return String(localized: "reader_dir_ltr")
         case .rightToLeft: return String(localized: "reader_dir_rtl")
+        case .verticalPaged: return String(localized: "reader_dir_vertical_paged")
         case .vertical: return String(localized: "reader_dir_vertical")
         }
     }
@@ -90,6 +92,7 @@ struct ReaderView: View {
     @State var isDragging = false
     @State var isPageAnimating = false
     @State var pageWidth: CGFloat = 0
+    @State var pageHeight: CGFloat = 0
     @State var isZoomed = false
     @State var currentScale: CGFloat = 1.0
     @State var lastScale: CGFloat = 1.0
@@ -168,6 +171,22 @@ struct ReaderView: View {
 
     var currentFileIsImage: Bool {
         fileType(at: currentIndex) == .image
+    }
+
+    var usesVerticalPageControls: Bool {
+        readingDirection == .verticalPaged || readingDirection == .vertical
+    }
+
+    var hasPreviousPage: Bool {
+        readingDirection == .vertical
+            ? currentIndex > 0
+            : adjacentHorizontalTarget(from: currentIndex, offset: -1) != nil
+    }
+
+    var hasNextPage: Bool {
+        readingDirection == .vertical
+            ? currentIndex < maxIndex
+            : adjacentHorizontalTarget(from: currentIndex, offset: 1) != nil
     }
 
     func makeHorizontalPageUnits() -> [[Int]] {
@@ -270,9 +289,13 @@ struct ReaderView: View {
     var body: some View {
         GeometryReader { geo in
             readerCanvas(size: geo.size)
-                .onAppear { pageWidth = geo.size.width }
-                .onChange(of: geo.size.width) { _, newValue in
-                    pageWidth = newValue
+                .onAppear {
+                    pageWidth = geo.size.width
+                    pageHeight = geo.size.height
+                }
+                .onChange(of: geo.size) { _, newValue in
+                    pageWidth = newValue.width
+                    pageHeight = newValue.height
                 }
         }
         .ignoresSafeArea()
@@ -324,41 +347,23 @@ struct ReaderView: View {
                         if (bottomControlFocus == .bookProgress) {
                             Button { previousPage() } label: {
                                 Image(
-                                    systemName: readingDirection == .vertical
+                                    systemName: usesVerticalPageControls
                                     ? "chevron.up"
                                     : "chevron.left"
                                 )
                             }
-                            .disabled(
-                                readingDirection == .vertical
-                                    ? currentIndex <= 0
-                                    : adjacentHorizontalTarget(from: currentIndex, offset: -1) == nil
-                            )
-                            .opacity(
-                                (readingDirection == .vertical
-                                    ? currentIndex <= 0
-                                    : adjacentHorizontalTarget(from: currentIndex, offset: -1) == nil)
-                                ? 0.5 : 1
-                            )
+                            .disabled(!hasPreviousPage)
+                            .opacity(hasPreviousPage ? 1 : 0.5)
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             Button { nextPage() } label: {
                                 Image(
-                                    systemName: readingDirection == .vertical
+                                    systemName: usesVerticalPageControls
                                     ? "chevron.down"
                                     : "chevron.right"
                                 )
                             }
-                            .disabled(
-                                readingDirection == .vertical
-                                    ? currentIndex >= maxIndex
-                                    : adjacentHorizontalTarget(from: currentIndex, offset: 1) == nil
-                            )
-                            .opacity(
-                                (readingDirection == .vertical
-                                    ? currentIndex >= maxIndex
-                                    : adjacentHorizontalTarget(from: currentIndex, offset: 1) == nil)
-                                ? 0.5 : 1
-                            )
+                            .disabled(!hasNextPage)
+                            .opacity(hasNextPage ? 1 : 0.5)
                             .transition(.move(edge: .leading).combined(with: .opacity))
                         }
                     }
@@ -884,24 +889,35 @@ struct ReaderView: View {
         let previousTarget = adjacentHorizontalTarget(from: currentIndex, offset: -1)
         let nextTarget = adjacentHorizontalTarget(from: currentIndex, offset: 1)
 
-        HStack(spacing: 0) {
-            if readingDirection == .rightToLeft {
-                horizontalUnitView(target: nextTarget, size: size)
-            } else {
+        if readingDirection == .verticalPaged {
+            VStack(spacing: 0) {
                 horizontalUnitView(target: previousTarget, size: size)
-            }
 
-            horizontalUnitView(indices: currentUnit, size: size)
-                .frame(width: size.width, height: size.height)
+                horizontalUnitView(indices: currentUnit, size: size)
+                    .frame(width: size.width, height: size.height)
 
-            if readingDirection == .rightToLeft {
-                horizontalUnitView(target: previousTarget, size: size)
-            } else {
                 horizontalUnitView(target: nextTarget, size: size)
             }
+            .offset(y: -size.height + dragOffset)
+        } else {
+            HStack(spacing: 0) {
+                if readingDirection == .rightToLeft {
+                    horizontalUnitView(target: nextTarget, size: size)
+                } else {
+                    horizontalUnitView(target: previousTarget, size: size)
+                }
+
+                horizontalUnitView(indices: currentUnit, size: size)
+                    .frame(width: size.width, height: size.height)
+
+                if readingDirection == .rightToLeft {
+                    horizontalUnitView(target: previousTarget, size: size)
+                } else {
+                    horizontalUnitView(target: nextTarget, size: size)
+                }
+            }
+            .offset(x: -size.width + dragOffset)
         }
-        // 无论阅读方向如何，当前页都始终位于三页容器的中间。
-        .offset(x: -size.width + dragOffset)
     }
 
     @ViewBuilder
@@ -949,7 +965,7 @@ struct ReaderView: View {
             .onTapGesture { location in
                 handleSingleTap(at: location, pageSize: pageSize)
             }
-            .gesture(pageDragGesture(pageWidth: pageSize.width))
+            .gesture(pageDragGesture(pageSize: pageSize))
             .simultaneousGesture(zoomGesture)
     }
 
@@ -960,13 +976,13 @@ struct ReaderView: View {
             }
     }
 
-    func pageDragGesture(pageWidth: CGFloat) -> some Gesture {
+    func pageDragGesture(pageSize: CGSize) -> some Gesture {
         DragGesture()
             .onChanged { value in
                 handleDragChanged(value)
             }
             .onEnded { value in
-                handleDragEnded(value, pageWidth: pageWidth)
+                handleDragEnded(value, pageSize: pageSize)
             }
     }
 
@@ -1074,10 +1090,16 @@ struct ReaderView: View {
             }
         } else {
             isDragging = true
-            let translation = value.translation.width
+            let translation = readingDirection == .verticalPaged
+                ? value.translation.height
+                : value.translation.width
             let needsDamping: Bool
 
-            if readingDirection == .rightToLeft {
+            if readingDirection == .verticalPaged {
+                needsDamping =
+                    (adjacentHorizontalTarget(from: currentIndex, offset: -1) == nil && translation > 0) ||
+                    (adjacentHorizontalTarget(from: currentIndex, offset: 1) == nil && translation < 0)
+            } else if readingDirection == .rightToLeft {
                 // 右滑进入更高页码；左滑进入更低页码。
                 needsDamping =
                     (adjacentHorizontalTarget(from: currentIndex, offset: 1) == nil && translation > 0) ||
@@ -1094,7 +1116,7 @@ struct ReaderView: View {
         }
     }
 
-    func handleDragEnded(_ value: DragGesture.Value, pageWidth: CGFloat) {
+    func handleDragEnded(_ value: DragGesture.Value, pageSize: CGSize) {
         guard !isPageAnimating else { return }
 
         if currentFileIsImage, currentScale > 1.001 {
@@ -1106,7 +1128,12 @@ struct ReaderView: View {
             panOffset = corrected
             lastPanOffset = corrected
         } else {
-            finishPageDrag(value, pageWidth: pageWidth)
+            finishPageDrag(
+                value,
+                pageWidth: readingDirection == .verticalPaged
+                    ? pageSize.height
+                    : pageSize.width
+            )
         }
     }
 
@@ -1500,7 +1527,9 @@ struct ReaderView: View {
         let movesToHigherIndex = targetIndex > currentIndex
         let targetOffset: CGFloat
 
-        if readingDirection == .rightToLeft {
+        if readingDirection == .verticalPaged {
+            targetOffset = movesToHigherIndex ? -w : w
+        } else if readingDirection == .rightToLeft {
             // 右到左：更高页码在左侧，因此容器向右移动。
             targetOffset = movesToHigherIndex ? w : -w
         } else {
@@ -1523,25 +1552,29 @@ struct ReaderView: View {
     }
 
     func finishPageDrag(_ value: DragGesture.Value, pageWidth w: CGFloat) {
-        let translation = value.translation.width
-        let predictedTranslation =
-            value.predictedEndLocation.x - value.location.x
-        let swipedRight =
+        let isVertical = readingDirection == .verticalPaged
+        let translation = isVertical
+            ? value.translation.height
+            : value.translation.width
+        let predictedTranslation = isVertical
+            ? value.predictedEndLocation.y - value.location.y
+            : value.predictedEndLocation.x - value.location.x
+        let swipedPositive =
             translation > w * 0.25 || predictedTranslation > 100
-        let swipedLeft =
+        let swipedNegative =
             translation < -w * 0.25 || predictedTranslation < -100
 
-        let rightSwipeTarget = readingDirection == .rightToLeft
+        let positiveSwipeTarget = readingDirection == .rightToLeft
             ? adjacentHorizontalTarget(from: currentIndex, offset: 1)
             : adjacentHorizontalTarget(from: currentIndex, offset: -1)
-        let leftSwipeTarget = readingDirection == .rightToLeft
+        let negativeSwipeTarget = readingDirection == .rightToLeft
             ? adjacentHorizontalTarget(from: currentIndex, offset: -1)
             : adjacentHorizontalTarget(from: currentIndex, offset: 1)
 
-        if swipedRight, let rightSwipeTarget {
-            animatePageChange(to: rightSwipeTarget, pageWidth: w)
-        } else if swipedLeft, let leftSwipeTarget {
-            animatePageChange(to: leftSwipeTarget, pageWidth: w)
+        if swipedPositive, let positiveSwipeTarget {
+            animatePageChange(to: positiveSwipeTarget, pageWidth: w)
+        } else if swipedNegative, let negativeSwipeTarget {
+            animatePageChange(to: negativeSwipeTarget, pageWidth: w)
         } else {
             withAnimation(.easeOut(duration: 0.2)) {
                 dragOffset = 0
