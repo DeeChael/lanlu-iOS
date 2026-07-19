@@ -27,14 +27,14 @@ enum ServerSetting: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .accountSecurity: "shield"
-        case .category: "folder"
-        case .tags: "tag"
-        case .smartFilters: "line.3.horizontal.decrease"
-        case .userManagement: "person.2"
-        case .systemSettings: "server.rack"
-        case .pluginManagement: "puzzlepiece"
-        case .statistics: "chart.bar"
+        case .accountSecurity: "shield.fill"
+        case .category: "folder.fill"
+        case .tags: "tag.fill"
+        case .smartFilters: "line.3.horizontal.decrease.circle.fill"
+        case .userManagement: "person.2.fill"
+        case .systemSettings: "externaldrive.fill"
+        case .pluginManagement: "puzzlepiece.extension.fill"
+        case .statistics: "chart.bar.fill"
         }
     }
 }

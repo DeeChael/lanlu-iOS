@@ -162,7 +162,7 @@ struct SettingsTabView: View {
 
             Section(String(localized: "client_settings")) {
                 HStack {
-                    Label(String(localized: "setting_theme"), systemImage: "paintpalette")
+                    Label(String(localized: "setting_theme"), systemImage: "paintpalette.fill")
                     Spacer()
                     NativeSegmentedControl(
                         selection: $themeMode,
@@ -179,7 +179,7 @@ struct SettingsTabView: View {
                     showLanguagePicker = true
                 } label: {
                     HStack {
-                        Label(String(localized: "setting_language"), systemImage: "globe")
+                        Label(String(localized: "setting_language"), systemImage: "globe.fill")
                         Spacer()
                         Text(languageLabel)
                             .foregroundColor(.secondary)
@@ -198,7 +198,7 @@ struct SettingsTabView: View {
                     showDiagnostics = true
                 } label: {
                     HStack {
-                        Label(String(localized: "setting_diagnostics"), systemImage: "ant")
+                        Label(String(localized: "setting_diagnostics"), systemImage: "ant.fill")
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption)
@@ -216,7 +216,7 @@ struct SettingsTabView: View {
                     showClearCacheAlert = true
                 } label: {
                     HStack {
-                        Label(String(localized: "setting_clear_cache"), systemImage: "trash")
+                        Label(String(localized: "setting_clear_cache"), systemImage: "trash.fill")
                         Spacer()
                     }
                     .contentShape(Rectangle())

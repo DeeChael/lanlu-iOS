@@ -42,7 +42,7 @@ struct ClientSettingsSheetView: View {
                         showLanguagePicker = true
                     } label: {
                         HStack {
-                            Label(String(localized: "setting_language"), systemImage: "globe")
+                            Label(String(localized: "setting_language"), systemImage: "globe.fill")
                             Spacer()
                             Text(languageLabel)
                                 .foregroundColor(.secondary)
