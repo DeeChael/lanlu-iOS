@@ -2,8 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AVFoundation
 import AVKit
-import MediaPlayer
-import CryptoKit
 import ImageIO
 
 extension Notification.Name {
@@ -12,14 +10,6 @@ extension Notification.Name {
 
 enum ReaderPageFileType {
     case unknown, image, video, audio
-}
-
-private enum ReaderImageLoadError: LocalizedError {
-    case decodeFailed
-
-    var errorDescription: String? {
-        "Image decode failed"
-    }
 }
 
 enum ReaderBottomControlFocus {
@@ -62,142 +52,15 @@ enum ReaderTapGestureMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum ReaderVolumeButtonMode: String, CaseIterable, Identifiable {
-    case off
-    case volumeUpNext
-    case volumeDownNext
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .off: String(localized: "reader_volume_button_off")
-        case .volumeUpNext: String(localized: "reader_volume_up_next")
-        case .volumeDownNext: String(localized: "reader_volume_down_next")
-        }
-    }
-}
-
-private struct ReaderVolumeButtonControl: UIViewRepresentable {
-    let mode: ReaderVolumeButtonMode
-    let onVolumeUp: () -> Void
-    let onVolumeDown: () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onVolumeUp: onVolumeUp, onVolumeDown: onVolumeDown)
-    }
-
-    func makeUIView(context: Context) -> MPVolumeView {
-        let view = MPVolumeView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-        view.showsRouteButton = false
-        view.showsVolumeSlider = true
-        view.alpha = 0.001
-        context.coordinator.attach(to: view, mode: mode)
-        return view
-    }
-
-    func updateUIView(_ uiView: MPVolumeView, context: Context) {
-        context.coordinator.update(
-            mode: mode,
-            onVolumeUp: onVolumeUp,
-            onVolumeDown: onVolumeDown
-        )
-    }
-
-    static func dismantleUIView(_ uiView: MPVolumeView, coordinator: Coordinator) {
-        coordinator.detach()
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        private let audioSession = AVAudioSession.sharedInstance()
-        private var observation: NSKeyValueObservation?
-        private weak var slider: UISlider?
-        private var originalVolume: Float?
-        private var isResetting = false
-        private var mode: ReaderVolumeButtonMode = .off
-        private var onVolumeUp: () -> Void
-        private var onVolumeDown: () -> Void
-        private let baselineVolume: Float = 0.5
-
-        init(onVolumeUp: @escaping () -> Void, onVolumeDown: @escaping () -> Void) {
-            self.onVolumeUp = onVolumeUp
-            self.onVolumeDown = onVolumeDown
-        }
-
-        func attach(to volumeView: MPVolumeView, mode: ReaderVolumeButtonMode) {
-            self.mode = mode
-            slider = volumeView.subviews.compactMap { $0 as? UISlider }.first
-            originalVolume = audioSession.outputVolume
-            try? audioSession.setActive(true)
-
-            observation = audioSession.observe(\.outputVolume, options: [.new]) { [weak self] _, change in
-                guard let newVolume = change.newValue else { return }
-                DispatchQueue.main.async {
-                    self?.handleVolumeChange(newVolume)
-                }
-            }
-            resetVolumeToBaseline()
-        }
-
-        func update(
-            mode: ReaderVolumeButtonMode,
-            onVolumeUp: @escaping () -> Void,
-            onVolumeDown: @escaping () -> Void
-        ) {
-            self.mode = mode
-            self.onVolumeUp = onVolumeUp
-            self.onVolumeDown = onVolumeDown
-        }
-
-        func detach() {
-            observation?.invalidate()
-            observation = nil
-            if let originalVolume {
-                setSystemVolume(originalVolume)
-            }
-            slider = nil
-            originalVolume = nil
-            mode = .off
-        }
-
-        private func handleVolumeChange(_ newVolume: Float) {
-            guard mode != .off, !isResetting else { return }
-            let difference = newVolume - baselineVolume
-            guard abs(difference) > 0.001 else { return }
-
-            if difference > 0 {
-                onVolumeUp()
-            } else {
-                onVolumeDown()
-            }
-            resetVolumeToBaseline()
-        }
-
-        private func resetVolumeToBaseline() {
-            isResetting = true
-            setSystemVolume(baselineVolume)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-                self?.isResetting = false
-            }
-        }
-
-        private func setSystemVolume(_ volume: Float) {
-            guard let slider else { return }
-            slider.setValue(volume, animated: false)
-            slider.sendActions(for: .valueChanged)
-        }
-    }
-}
 
 
-fileprivate struct ReaderVerticalScrollRequest: Equatable {
+struct ReaderVerticalScrollRequest: Equatable {
     let token = UUID()
     let index: Int
     let animated: Bool
 }
 
-fileprivate struct ReaderVerticalPageFramePreferenceKey: PreferenceKey {
+struct ReaderVerticalPageFramePreferenceKey: PreferenceKey {
     static var defaultValue: [Int: CGRect] = [:]
 
     static func reduce(
@@ -209,8 +72,8 @@ fileprivate struct ReaderVerticalPageFramePreferenceKey: PreferenceKey {
 }
 
 struct ReaderView: View {
-    @Environment(\.dismiss) fileprivate var dismiss
-    @Environment(\.scenePhase) fileprivate var scenePhase
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) var scenePhase
 
     let arcid: String
     let files: [APIClient.PageFile]
@@ -218,53 +81,53 @@ struct ReaderView: View {
     let server: Server
     let pageFileTypes: [ReaderPageFileType]
 
-    @State fileprivate var currentIndex: Int
-    @State fileprivate var showControls = false
-    @State fileprivate var images: [Int: UIImage] = [:]
-    @State fileprivate var isLoading: Set<Int> = []
-    @State fileprivate var dragOffset: CGFloat = 0
-    @State fileprivate var verticalDrag: CGFloat = 0
-    @State fileprivate var isDragging = false
-    @State fileprivate var isPageAnimating = false
-    @State fileprivate var pageWidth: CGFloat = 0
-    @State fileprivate var isZoomed = false
-    @State fileprivate var currentScale: CGFloat = 1.0
-    @State fileprivate var lastScale: CGFloat = 1.0
-    @State fileprivate var panOffset: CGSize = .zero
-    @State fileprivate var lastPanOffset: CGSize = .zero
-    @State fileprivate var loadTasks: [Int: Task<Void, Never>] = [:]
-    @State fileprivate var imageAspectRatios: [Int: CGFloat] = [:]
-    @State fileprivate var verticalScrollRequest: ReaderVerticalScrollRequest?
-    @State fileprivate var isProgrammaticVerticalScroll = false
-    @State fileprivate var showReaderSettings = false
-    @State fileprivate var showTableOfContents = false
-    @State fileprivate var thumbnailImages: [Int: UIImage] = [:]
-    @State fileprivate var thumbnailFailedPages: Set<Int> = []
-    @State fileprivate var thumbnailLoadTasks: [Int: Task<Void, Never>] = [:]
-    @State fileprivate var currentPageFileType: ReaderPageFileType = .unknown
-    @State fileprivate var bottomControlFocus: ReaderBottomControlFocus = .bookProgress
-    @State fileprivate var audioCover: UIImage?
-    @State fileprivate var audioCovers: [Int: UIImage] = [:]
-    @State fileprivate var audioPlayer: AVAudioPlayer?
-    @State fileprivate var isAudioPlaying = false
-    @State fileprivate var audioDuration: TimeInterval = 0
-    @State fileprivate var audioCurrentTime: TimeInterval = 0
-    @State fileprivate var audioTimer: Timer?
-    @State fileprivate var audioTitle: String?
-    @State fileprivate var audioArtist: String?
-    @State fileprivate var audioAlbum: String?
-    @State fileprivate var videoPlayer: AVPlayer?
-    @State fileprivate var videoPlayerIndex: Int?
-    @State fileprivate var videoCurrentTime: Double = 0
-    @State fileprivate var videoDuration: Double = 0
-    @State fileprivate var isVideoPlaying = false
-    @State fileprivate var isVideoLoading = false
-    @State fileprivate var videoAspectRatio: CGFloat = 16 / 9
-    @State fileprivate var videoTimeObserver: Any?
-    @State fileprivate var videoEndObserver: NSObjectProtocol?
-    @State fileprivate var videoLoadTask: Task<Void, Never>?
-    @State fileprivate var videoCacheTask: Task<Void, Never>?
-    fileprivate var mediaToolbarIcon: String? {
+    @State var currentIndex: Int
+    @State var showControls = false
+    @State var images: [Int: UIImage] = [:]
+    @State var isLoading: Set<Int> = []
+    @State var dragOffset: CGFloat = 0
+    @State var verticalDrag: CGFloat = 0
+    @State var isDragging = false
+    @State var isPageAnimating = false
+    @State var pageWidth: CGFloat = 0
+    @State var isZoomed = false
+    @State var currentScale: CGFloat = 1.0
+    @State var lastScale: CGFloat = 1.0
+    @State var panOffset: CGSize = .zero
+    @State var lastPanOffset: CGSize = .zero
+    @State var loadTasks: [Int: Task<Void, Never>] = [:]
+    @State var imageAspectRatios: [Int: CGFloat] = [:]
+    @State var verticalScrollRequest: ReaderVerticalScrollRequest?
+    @State var isProgrammaticVerticalScroll = false
+    @State var showReaderSettings = false
+    @State var showTableOfContents = false
+    @State var thumbnailImages: [Int: UIImage] = [:]
+    @State var thumbnailFailedPages: Set<Int> = []
+    @State var thumbnailLoadTasks: [Int: Task<Void, Never>] = [:]
+    @State var currentPageFileType: ReaderPageFileType = .unknown
+    @State var bottomControlFocus: ReaderBottomControlFocus = .bookProgress
+    @State var audioCover: UIImage?
+    @State var audioCovers: [Int: UIImage] = [:]
+    @State var audioPlayer: AVAudioPlayer?
+    @State var isAudioPlaying = false
+    @State var audioDuration: TimeInterval = 0
+    @State var audioCurrentTime: TimeInterval = 0
+    @State var audioTimer: Timer?
+    @State var audioTitle: String?
+    @State var audioArtist: String?
+    @State var audioAlbum: String?
+    @State var videoPlayer: AVPlayer?
+    @State var videoPlayerIndex: Int?
+    @State var videoCurrentTime: Double = 0
+    @State var videoDuration: Double = 0
+    @State var isVideoPlaying = false
+    @State var isVideoLoading = false
+    @State var videoAspectRatio: CGFloat = 16 / 9
+    @State var videoTimeObserver: Any?
+    @State var videoEndObserver: NSObjectProtocol?
+    @State var videoLoadTask: Task<Void, Never>?
+    @State var videoCacheTask: Task<Void, Never>?
+    var mediaToolbarIcon: String? {
         switch currentPageFileType {
         case .audio:
             return "music.note"
@@ -274,40 +137,40 @@ struct ReaderView: View {
             return nil
         }
     }
-    @State fileprivate var progressValue: Double
-    @AppStorage("reader_double_tap_zoom") fileprivate var doubleTapZoom = true
-    @AppStorage("reader_tap_gesture_mode") fileprivate var tapGestureModeRaw = ReaderTapGestureMode.leftRight.rawValue
-    @AppStorage("reader_volume_button_mode") fileprivate var volumeButtonModeRaw = ReaderVolumeButtonMode.off.rawValue
-    @AppStorage("reader_audio_autoplay") fileprivate var audioAutoplay = false
-    @AppStorage("reader_video_autoplay") fileprivate var videoAutoplay = false
-    @AppStorage("reader_reading_direction") fileprivate var readingDirectionRaw = ReaderReadingDirection.leftToRight.rawValue
-    @AppStorage("reader_preload_page_count") fileprivate var preloadPageCount = 2
-    @AppStorage("reader_double_page") fileprivate var doublePageEnabled = false
-    @AppStorage("reader_first_page_single") fileprivate var firstPageAlwaysSingle = false
-    @AppStorage("reader_vertical_add_margin") fileprivate var verticalAddMargin = false
-    @AppStorage("reader_vertical_margin") fileprivate var verticalMargin = 16
-    @State fileprivate var horizontalPageUnits: [[Int]]
-    @State fileprivate var horizontalUnitIndexByPage: [Int: Int]
+    @State var progressValue: Double
+    @AppStorage("reader_double_tap_zoom") var doubleTapZoom = true
+    @AppStorage("reader_tap_gesture_mode") var tapGestureModeRaw = ReaderTapGestureMode.leftRight.rawValue
+    @AppStorage("reader_volume_button_mode") var volumeButtonModeRaw = ReaderVolumeButtonMode.off.rawValue
+    @AppStorage("reader_audio_autoplay") var audioAutoplay = false
+    @AppStorage("reader_video_autoplay") var videoAutoplay = false
+    @AppStorage("reader_reading_direction") var readingDirectionRaw = ReaderReadingDirection.leftToRight.rawValue
+    @AppStorage("reader_preload_page_count") var preloadPageCount = 2
+    @AppStorage("reader_double_page") var doublePageEnabled = false
+    @AppStorage("reader_first_page_single") var firstPageAlwaysSingle = false
+    @AppStorage("reader_vertical_add_margin") var verticalAddMargin = false
+    @AppStorage("reader_vertical_margin") var verticalMargin = 16
+    @State var horizontalPageUnits: [[Int]]
+    @State var horizontalUnitIndexByPage: [Int: Int]
 
-    fileprivate var readingDirection: ReaderReadingDirection {
+    var readingDirection: ReaderReadingDirection {
         ReaderReadingDirection(rawValue: readingDirectionRaw) ?? .leftToRight
     }
 
-    fileprivate var tapGestureMode: ReaderTapGestureMode {
+    var tapGestureMode: ReaderTapGestureMode {
         ReaderTapGestureMode(rawValue: tapGestureModeRaw) ?? .leftRight
     }
 
-    fileprivate var volumeButtonMode: ReaderVolumeButtonMode {
+    var volumeButtonMode: ReaderVolumeButtonMode {
         ReaderVolumeButtonMode(rawValue: volumeButtonModeRaw) ?? .off
     }
 
     var maxIndex: Int { max(0, files.count - 1) }
 
-    fileprivate var currentFileIsImage: Bool {
+    var currentFileIsImage: Bool {
         fileType(at: currentIndex) == .image
     }
 
-    fileprivate func makeHorizontalPageUnits() -> [[Int]] {
+    func makeHorizontalPageUnits() -> [[Int]] {
         guard doublePageEnabled else { return files.indices.map { [$0] } }
         var units: [[Int]] = []
         var index = 0
@@ -331,7 +194,7 @@ struct ReaderView: View {
         return units
     }
 
-    fileprivate func rebuildHorizontalPaginationCache() {
+    func rebuildHorizontalPaginationCache() {
         let units = makeHorizontalPageUnits()
         var unitIndexByPage: [Int: Int] = [:]
         unitIndexByPage.reserveCapacity(files.count)
@@ -344,28 +207,28 @@ struct ReaderView: View {
         horizontalUnitIndexByPage = unitIndexByPage
     }
 
-    fileprivate func horizontalUnit(containing index: Int) -> [Int] {
+    func horizontalUnit(containing index: Int) -> [Int] {
         guard let unitIndex = horizontalUnitIndexByPage[index],
               horizontalPageUnits.indices.contains(unitIndex) else { return [index] }
         return horizontalPageUnits[unitIndex]
     }
 
-    fileprivate func horizontalUnitIndex(containing index: Int) -> Int? {
+    func horizontalUnitIndex(containing index: Int) -> Int? {
         horizontalUnitIndexByPage[index]
     }
 
-    fileprivate func adjacentHorizontalTarget(from index: Int, offset: Int) -> Int? {
+    func adjacentHorizontalTarget(from index: Int, offset: Int) -> Int? {
         guard let unitIndex = horizontalUnitIndex(containing: index) else { return nil }
         let targetUnitIndex = unitIndex + offset
         guard horizontalPageUnits.indices.contains(targetUnitIndex) else { return nil }
         return horizontalPageUnits[targetUnitIndex].first
     }
 
-    fileprivate func isInCurrentHorizontalUnit(_ index: Int) -> Bool {
+    func isInCurrentHorizontalUnit(_ index: Int) -> Bool {
         horizontalUnit(containing: currentIndex).contains(index)
     }
 
-    fileprivate func horizontalPreloadImageIndices(after unitIndex: Int) -> [Int] {
+    func horizontalPreloadImageIndices(after unitIndex: Int) -> [Int] {
         let units = horizontalPageUnits
         guard units.indices.contains(unitIndex) else { return [] }
 
@@ -818,7 +681,7 @@ struct ReaderView: View {
     // MARK: - Reader Canvas
 
     @ViewBuilder
-    fileprivate func readerCanvas(size: CGSize) -> some View {
+    func readerCanvas(size: CGSize) -> some View {
         switch readingDirection {
         case .vertical:
             verticalReaderCanvas(size: size)
@@ -831,7 +694,7 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
-    fileprivate func verticalReaderCanvas(size: CGSize) -> some View {
+    func verticalReaderCanvas(size: CGSize) -> some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
@@ -909,7 +772,7 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
-    fileprivate func verticalPageView(
+    func verticalPageView(
         for index: Int,
         width: CGFloat,
         viewportHeight: CGFloat
@@ -956,7 +819,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func verticalPageHeight(
+    func verticalPageHeight(
         index: Int,
         width: CGFloat,
         viewportHeight: CGFloat
@@ -986,7 +849,7 @@ struct ReaderView: View {
         return viewportHeight
     }
 
-    fileprivate func updateVerticalCurrentPage(
+    func updateVerticalCurrentPage(
         from frames: [Int: CGRect],
         viewportHeight: CGFloat
     ) {
@@ -1015,397 +878,8 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func audioPageView(for index: Int, size: CGSize) -> some View {
-        let file = index >= 0 && index < files.count ? files[index] : nil
-        let filePath = file?.defaultSource?.path ?? file?.path ?? ""
-        let fileName = (filePath as NSString).lastPathComponent
-        let cover = audioCovers[index] ?? (index == currentIndex ? audioCover : nil)
-        let title = index == currentIndex ? audioTitle : nil
-        let artist = index == currentIndex ? audioArtist : nil
-        let album = index == currentIndex ? audioAlbum : nil
-
-        let coverView = ZStack(alignment: .center) {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemGray5))
-            if let cover {
-                Image(uiImage: cover)
-                    .resizable()
-                    .scaledToFill()
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-            } else {
-                Image(systemName: "music.note")
-                    .font(.system(size: 60))
-                    .foregroundColor(.secondary)
-            }
-        }
-
-        let informationView = VStack(alignment: .leading, spacing: 4) {
-            Text(title ?? fileName)
-                .font(.title2)
-                .foregroundColor(.primary)
-                .lineLimit(1)
-            Text(artist ?? String(localized: "reader_audio_artist"))
-                .font(.body)
-                .foregroundColor(.primary)
-                .lineLimit(1)
-            Text(album ?? String(localized: "reader_audio_album"))
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .italic()
-                .lineLimit(1)
-        }
-
-        return Group {
-            if size.width > size.height {
-                let coverSize = max(min(size.height - 64, size.width * 0.42), 160)
-                HStack(spacing: 32) {
-                    coverView
-                        .frame(width: coverSize, height: coverSize)
-
-                    informationView
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
-                .safeAreaPadding(.horizontal)
-                .safeAreaPadding(.vertical)
-            } else {
-                VStack(spacing: 16) {
-                    Spacer()
-                    coverView
-                        .frame(width: size.width - 64, height: size.width - 64)
-
-                    informationView
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 32)
-                    Spacer()
-                }
-            }
-        }
-        .frame(width: size.width, height: size.height)
-        .task(id: index) {
-            await loadAudioCover(at: index)
-        }
-    }
-
-    fileprivate func prepareAudio() {
-        guard audioPlayer == nil else { return }
-        guard currentIndex >= 0, currentIndex < files.count else { return }
-        let path = filePath(at: currentIndex)
-        guard !path.isEmpty else { return }
-        Task {
-            let cacheKey = "page_\(arcid)_\(path)"
-            let data: Data
-            if let cached = CacheManager.shared.getCover(id: cacheKey) {
-                data = cached
-            } else {
-                guard let d = try? await server.apiClient.fetchPageImage(arcid: arcid, path: path) else { return }
-                CacheManager.shared.cacheCover(id: cacheKey, data: d)
-                data = d
-            }
-            guard let player = try? AVAudioPlayer(data: data) else { return }
-
-            // Cache audio data and read metadata
-            if CacheManager.shared.getCover(id: cacheKey) == nil {
-                CacheManager.shared.cacheCover(id: cacheKey, data: data)
-            }
-            let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!.appendingPathComponent("image_cache", isDirectory: true)
-            try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-            let fileURL = cacheDir.appendingPathComponent(cacheKey)
-            try? data.write(to: fileURL)
-
-            let metaKey = "audio_meta_\(arcid)_\(path)"
-            var title: String?
-            var artist: String?
-            var album: String?
-            if let saved = UserDefaults.standard.dictionary(forKey: metaKey) as? [String: String] {
-                title = saved["title"]; artist = saved["artist"]; album = saved["album"]
-            } else {
-                let asset = AVURLAsset(url: fileURL)
-                let metadata = try? await asset.load(.commonMetadata)
-                for item in metadata ?? [] {
-                    if item.commonKey == .commonKeyTitle { title = try? await item.load(.value) as? String }
-                    if item.commonKey == .commonKeyArtist { artist = try? await item.load(.value) as? String }
-                    if item.commonKey == .commonKeyAlbumName { album = try? await item.load(.value) as? String }
-                }
-                var dict: [String: String] = [:]
-                if let t = title { dict["title"] = t }
-                if let a = artist { dict["artist"] = a }
-                if let a = album { dict["album"] = a }
-                UserDefaults.standard.set(dict, forKey: metaKey)
-            }
-
-            await MainActor.run {
-                audioPlayer = player
-                audioDuration = player.duration
-                audioCurrentTime = player.currentTime
-                audioTitle = title
-                audioArtist = artist
-                audioAlbum = album
-                startAudioTimer()
-            }
-        }
-    }
-
-    fileprivate func startAudio() {
-        audioPlayer?.play()
-        isAudioPlaying = true
-    }
-
-    fileprivate func stopAudio() {
-        audioPlayer?.stop()
-        audioPlayer = nil
-        isAudioPlaying = false
-        audioTimer?.invalidate()
-        audioTimer = nil
-    }
-
-    fileprivate func prepareVideo(at index: Int, autoplay: Bool) {
-        guard index >= 0, index < files.count else { return }
-        let path = filePath(at: index)
-        guard !path.isEmpty else { return }
-
-        if videoPlayerIndex == index, let videoPlayer {
-            if autoplay {
-                videoPlayer.play()
-                isVideoPlaying = true
-            }
-            return
-        }
-
-        stopVideo()
-        isVideoLoading = true
-        videoPlayerIndex = index
-        LogManager.shared.log("[Reader] Video prepare index=\(index) autoplay=\(autoplay)")
-        videoLoadTask = Task {
-            do {
-                let source = try videoSource(path: path)
-                LogManager.shared.log("[Reader] Video source index=\(index) cached=\(source.isCached)")
-                guard !Task.isCancelled, currentIndex == index else { return }
-
-                let asset = AVURLAsset(
-                    url: source.url,
-                    options: source.headers.map {
-                        ["AVURLAssetHTTPHeaderFieldsKey": $0]
-                    }
-                )
-                let tracks = try await asset.loadTracks(withMediaType: .video)
-                var aspectRatio: CGFloat = 16 / 9
-                if let track = tracks.first {
-                    let naturalSize = try await track.load(.naturalSize)
-                    let transform = try await track.load(.preferredTransform)
-                    let transformedSize = naturalSize.applying(transform)
-                    let width = abs(transformedSize.width)
-                    let height = abs(transformedSize.height)
-                    if width > 0, height > 0 { aspectRatio = width / height }
-                }
-
-                let item = AVPlayerItem(asset: asset)
-                let player = AVPlayer(playerItem: item)
-                await MainActor.run {
-                    guard currentIndex == index else { return }
-                    videoPlayer = player
-                    videoAspectRatio = aspectRatio
-                    isVideoLoading = false
-                    installVideoObservers(on: player, item: item)
-                    if autoplay {
-                        player.play()
-                        isVideoPlaying = true
-                    }
-                }
-                LogManager.shared.log("[Reader] Video ready index=\(index)")
-
-                if !source.isCached {
-                    cacheVideoInBackground(path: path, destination: source.cacheURL)
-                }
-            } catch {
-                LogManager.shared.log("[Reader] Video prepare failed index=\(index): \(error.localizedDescription)")
-                await MainActor.run {
-                    if currentIndex == index {
-                        isVideoLoading = false
-                        videoPlayerIndex = nil
-                    }
-                }
-            }
-        }
-    }
-
-    fileprivate func videoSource(path: String) throws -> (
-        url: URL,
-        headers: [String: String]?,
-        cacheURL: URL,
-        isCached: Bool
-    ) {
-        let digest = SHA256.hash(data: Data("\(arcid)|\(path)".utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
-        let ext = (path as NSString).pathExtension
-        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("reader_media", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let cacheURL = directory.appendingPathComponent(digest).appendingPathExtension(ext)
-        if FileManager.default.fileExists(atPath: cacheURL.path) {
-            return (cacheURL, nil, cacheURL, true)
-        }
-
-        let request = try server.apiClient.pageRequest(arcid: arcid, path: path)
-        guard let url = request.url else {
-            throw AuthError.networkError(String(localized: "invalid_url"))
-        }
-        let headers = request.allHTTPHeaderFields?.isEmpty == false
-            ? request.allHTTPHeaderFields
-            : nil
-        return (url, headers, cacheURL, false)
-    }
-
-    fileprivate func cacheVideoInBackground(path: String, destination: URL) {
-        videoCacheTask?.cancel()
-        videoCacheTask = Task {
-            do {
-                let request = try server.apiClient.pageRequest(arcid: arcid, path: path)
-                let (temporaryURL, response) = try await URLSession.shared.download(for: request)
-                guard !Task.isCancelled,
-                      let httpResponse = response as? HTTPURLResponse,
-                      httpResponse.statusCode == 200 else { return }
-
-                let stagedURL = destination.appendingPathExtension("download")
-                try? FileManager.default.removeItem(at: stagedURL)
-                try FileManager.default.moveItem(at: temporaryURL, to: stagedURL)
-                if FileManager.default.fileExists(atPath: destination.path) {
-                    try FileManager.default.removeItem(at: destination)
-                }
-                try FileManager.default.moveItem(at: stagedURL, to: destination)
-                LogManager.shared.log("[Reader] Video cache completed")
-            } catch {
-                if !Task.isCancelled {
-                    LogManager.shared.log("[Reader] video cache failed: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-
-    fileprivate func installVideoObservers(on player: AVPlayer, item: AVPlayerItem) {
-        videoTimeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
-            queue: .main
-        ) { time in
-            videoCurrentTime = time.seconds.isFinite ? time.seconds : 0
-            let seconds = item.duration.seconds
-            if seconds.isFinite { videoDuration = seconds }
-            isVideoPlaying = player.timeControlStatus == .playing
-        }
-        videoEndObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { _ in
-            isVideoPlaying = false
-            videoCurrentTime = videoDuration
-        }
-    }
-
-    fileprivate func toggleVideoPlayback() {
-        guard let videoPlayer else { return }
-        if isVideoPlaying {
-            videoPlayer.pause()
-            isVideoPlaying = false
-        } else {
-            if videoDuration > 0, videoCurrentTime >= videoDuration - 0.1 {
-                videoPlayer.seek(to: .zero)
-            }
-            videoPlayer.play()
-            isVideoPlaying = true
-        }
-    }
-
-    fileprivate func seekVideo(to seconds: Double) {
-        videoPlayer?.seek(
-            to: CMTime(seconds: seconds, preferredTimescale: 600),
-            toleranceBefore: .zero,
-            toleranceAfter: .zero
-        )
-    }
-
-    fileprivate func stopVideo() {
-        videoLoadTask?.cancel()
-        videoLoadTask = nil
-        videoCacheTask?.cancel()
-        videoCacheTask = nil
-        videoPlayer?.pause()
-        if let observer = videoTimeObserver, let videoPlayer {
-            videoPlayer.removeTimeObserver(observer)
-        }
-        if let observer = videoEndObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        videoTimeObserver = nil
-        videoEndObserver = nil
-        videoPlayer = nil
-        videoPlayerIndex = nil
-        videoCurrentTime = 0
-        videoDuration = 0
-        isVideoPlaying = false
-        isVideoLoading = false
-    }
-
-    fileprivate func startAudioTimer() {
-        audioTimer?.invalidate()
-        audioTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
-            Task { @MainActor in
-                audioCurrentTime = audioPlayer?.currentTime ?? 0
-            }
-        }
-    }
-
-    fileprivate func timeString(_ time: TimeInterval) -> String {
-        let totalSeconds = Int(time)
-        let h = totalSeconds / 3600
-        let m = (totalSeconds % 3600) / 60
-        let s = totalSeconds % 60
-        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
-        return String(format: "%02d:%02d", m, s)
-    }
-
-    fileprivate func loadAudioCover(at index: Int) async {
-        guard index >= 0, index < files.count else { return }
-        guard audioCovers[index] == nil else { return }
-
-        let file = files[index]
-        let thumbId = file.defaultSource?.metadata?.thumbAssetId
-            ?? file.metadata?.thumbAssetId
-            ?? 0
-        guard thumbId > 0 else { return }
-
-        let cacheKey = "thumb_\(thumbId)"
-
-        if let cached = CacheManager.shared.getCover(id: cacheKey),
-           let image = UIImage(data: cached) {
-            await MainActor.run {
-                audioCovers[index] = image
-                if index == currentIndex {
-                    audioCover = image
-                }
-            }
-            return
-        }
-
-        do {
-            let data = try await server.apiClient.fetchAsset(assetId: thumbId)
-            guard !Task.isCancelled else { return }
-            CacheManager.shared.cacheCover(id: cacheKey, data: data)
-
-            guard let image = UIImage(data: data) else { return }
-            await MainActor.run {
-                audioCovers[index] = image
-                if index == currentIndex {
-                    audioCover = image
-                }
-            }
-        } catch {}
-    }
-
     @ViewBuilder
-    fileprivate func pageStrip(size: CGSize) -> some View {
+    func pageStrip(size: CGSize) -> some View {
         let currentUnit = horizontalUnit(containing: currentIndex)
         let previousTarget = adjacentHorizontalTarget(from: currentIndex, offset: -1)
         let nextTarget = adjacentHorizontalTarget(from: currentIndex, offset: 1)
@@ -1431,7 +905,7 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
-    fileprivate func horizontalUnitView(target: Int?, size: CGSize) -> some View {
+    func horizontalUnitView(target: Int?, size: CGSize) -> some View {
         if let target {
             horizontalUnitView(indices: horizontalUnit(containing: target), size: size)
         } else {
@@ -1441,7 +915,7 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
-    fileprivate func horizontalUnitView(indices: [Int], size: CGSize) -> some View {
+    func horizontalUnitView(indices: [Int], size: CGSize) -> some View {
         if indices.count == 2,
            fileType(at: indices[0]) == .image,
            fileType(at: indices[1]) == .image {
@@ -1468,7 +942,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func interactionOverlay(pageSize: CGSize) -> some View {
+    func interactionOverlay(pageSize: CGSize) -> some View {
         Color.clear
             .contentShape(Rectangle())
             .highPriorityGesture(doubleTapGesture)
@@ -1479,14 +953,14 @@ struct ReaderView: View {
             .simultaneousGesture(zoomGesture)
     }
 
-    fileprivate var doubleTapGesture: some Gesture {
+    var doubleTapGesture: some Gesture {
         TapGesture(count: 2)
             .onEnded {
                 handleDoubleTap()
             }
     }
 
-    fileprivate func pageDragGesture(pageWidth: CGFloat) -> some Gesture {
+    func pageDragGesture(pageWidth: CGFloat) -> some Gesture {
         DragGesture()
             .onChanged { value in
                 handleDragChanged(value)
@@ -1496,7 +970,7 @@ struct ReaderView: View {
             }
     }
 
-    fileprivate var zoomGesture: some Gesture {
+    var zoomGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
                 handleMagnificationChanged(value)
@@ -1506,7 +980,7 @@ struct ReaderView: View {
             }
     }
 
-    fileprivate func handleDoubleTap() {
+    func handleDoubleTap() {
         guard doubleTapZoom else { return }
         guard currentFileIsImage else { return }
 
@@ -1523,7 +997,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func handleSingleTap(at location: CGPoint, pageSize: CGSize) {
+    func handleSingleTap(at location: CGPoint, pageSize: CGSize) {
         let horizontal = location.x / max(pageSize.width, 1)
         let vertical = location.y / max(pageSize.height, 1)
 
@@ -1569,13 +1043,13 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func toggleReaderControls() {
+    func toggleReaderControls() {
         withAnimation(.easeInOut(duration: 0.2)) {
             showControls.toggle()
         }
     }
 
-    fileprivate func refreshHorizontalPagination() {
+    func refreshHorizontalPagination() {
         guard readingDirection != .vertical else { return }
         let normalizedIndex = horizontalUnit(containing: currentIndex).first ?? currentIndex
         withoutAnimation {
@@ -1587,7 +1061,7 @@ struct ReaderView: View {
         trimPageCache(around: normalizedIndex)
     }
 
-    fileprivate func handleDragChanged(_ value: DragGesture.Value) {
+    func handleDragChanged(_ value: DragGesture.Value) {
         guard !isPageAnimating else { return }
 
         if currentFileIsImage, currentScale > 1.001 {
@@ -1620,7 +1094,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func handleDragEnded(_ value: DragGesture.Value, pageWidth: CGFloat) {
+    func handleDragEnded(_ value: DragGesture.Value, pageWidth: CGFloat) {
         guard !isPageAnimating else { return }
 
         if currentFileIsImage, currentScale > 1.001 {
@@ -1636,7 +1110,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func handleMagnificationChanged(_ value: CGFloat) {
+    func handleMagnificationChanged(_ value: CGFloat) {
         guard !isPageAnimating else { return }
         guard !isDragging else { return }
         guard currentFileIsImage else { return }
@@ -1652,7 +1126,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func handleMagnificationEnded(_ value: CGFloat) {
+    func handleMagnificationEnded(_ value: CGFloat) {
         guard !isPageAnimating else { return }
         guard !isDragging else { return }
         guard currentFileIsImage else { return }
@@ -1675,16 +1149,16 @@ struct ReaderView: View {
 
     // MARK: - File Helpers
 
-    fileprivate func filePath(at index: Int) -> String {
+    func filePath(at index: Int) -> String {
         guard index >= 0, index < files.count else { return "" }
         return files[index].defaultSource?.path ?? files[index].path ?? ""
     }
 
-    fileprivate func isImageFile(_ path: String) -> Bool {
+    func isImageFile(_ path: String) -> Bool {
         Self.detectFileType(path) == .image
     }
 
-    fileprivate static func detectFileType(_ path: String) -> ReaderPageFileType {
+    static func detectFileType(_ path: String) -> ReaderPageFileType {
         let clean = path.split(whereSeparator: { $0 == "?" || $0 == "#" }).first.map(String.init) ?? path
         let ext = (clean as NSString).pathExtension.lowercased()
         guard !ext.isEmpty else { return .unknown }
@@ -1701,12 +1175,12 @@ struct ReaderView: View {
         return .unknown
     }
 
-    fileprivate func fileType(at index: Int) -> ReaderPageFileType {
+    func fileType(at index: Int) -> ReaderPageFileType {
         guard pageFileTypes.indices.contains(index) else { return .unknown }
         return pageFileTypes[index]
     }
 
-    fileprivate func iconForFile(_ path: String) -> String {
+    func iconForFile(_ path: String) -> String {
         let ext = (path as NSString).pathExtension.lowercased()
         let video: Set<String> = ["mp4","mov","avi","mkv","webm","wmv","m4v","3gp"]
         if video.contains(ext) { return "video.fill" }
@@ -1725,7 +1199,7 @@ struct ReaderView: View {
 
     // MARK: - Table of Contents
 
-    fileprivate func hasThumbnailSource(at index: Int) -> Bool {
+    func hasThumbnailSource(at index: Int) -> Bool {
         guard index >= 0, index < files.count else { return false }
         let file = files[index]
         let thumbnailAssetId =
@@ -1736,7 +1210,7 @@ struct ReaderView: View {
         return thumbnailAssetId > 0 || fileType(at: index) == .image
     }
 
-    fileprivate func selectPageFromTableOfContents(_ index: Int) {
+    func selectPageFromTableOfContents(_ index: Int) {
         guard index >= 0, index < files.count else { return }
 
         if readingDirection == .vertical {
@@ -1759,7 +1233,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func loadThumbnail(_ index: Int, maxDimensionPoints: CGFloat) {
+    func loadThumbnail(_ index: Int, maxDimensionPoints: CGFloat) {
         guard index >= 0, index < files.count else { return }
         guard thumbnailImages[index] == nil else { return }
         guard !thumbnailFailedPages.contains(index) else { return }
@@ -1858,7 +1332,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func downsampleImage(
+    func downsampleImage(
         data: Data,
         maxPixelSize: CGFloat
     ) -> UIImage? {
@@ -1891,7 +1365,7 @@ struct ReaderView: View {
         return UIImage(cgImage: image)
     }
 
-    fileprivate func trimThumbnailCache(around index: Int) {
+    func trimThumbnailCache(around index: Int) {
         let keepRange = max(0, index - 24)...min(maxIndex, index + 24)
         for pageIndex in thumbnailImages.keys where !keepRange.contains(pageIndex) {
             thumbnailImages.removeValue(forKey: pageIndex)
@@ -1901,7 +1375,7 @@ struct ReaderView: View {
     // MARK: - Page View
 
     @ViewBuilder
-    fileprivate func pageView(
+    func pageView(
         for index: Int,
         size: CGSize,
         imageAlignment: Alignment = .center
@@ -1930,7 +1404,7 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
-    fileprivate func videoPageView(for index: Int, size: CGSize) -> some View {
+    func videoPageView(for index: Int, size: CGSize) -> some View {
         ZStack {
             Color.black
             if videoPlayerIndex == index, let videoPlayer {
@@ -1957,7 +1431,7 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
-    fileprivate func loadingPageView(index: Int, size: CGSize) -> some View {
+    func loadingPageView(index: Int, size: CGSize) -> some View {
         VStack(spacing: 12) {
             ProgressView().scaleEffect(1.5)
             Text("\(index + 1) / \(files.count)")
@@ -1967,7 +1441,7 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
-    fileprivate func filePlaceholder(path: String, size: CGSize) -> some View {
+    func filePlaceholder(path: String, size: CGSize) -> some View {
         VStack(spacing: 12) {
             Image(systemName: iconForFile(path))
                 .font(.system(size: 48))
@@ -1982,7 +1456,7 @@ struct ReaderView: View {
     }
 
     // MARK: - Animation Helpers
-    fileprivate func updateBottomToolbar(for index: Int) {
+    func updateBottomToolbar(for index: Int) {
         let newFileType = fileType(at: index)
 
         // 脱离 currentIndex 的 withoutAnimation 事务
@@ -2000,12 +1474,12 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func withoutAnimation(_ action: () -> Void) {
+    func withoutAnimation(_ action: () -> Void) {
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) { action() }
     }
 
-    fileprivate func clampedPanOffset(_ proposed: CGSize, scale: CGFloat) -> CGSize {
+    func clampedPanOffset(_ proposed: CGSize, scale: CGFloat) -> CGSize {
         guard let image = images[currentIndex],
               image.size.width > 0, image.size.height > 0 else { return .zero }
         let fitScale = min(UIScreen.main.bounds.width / image.size.width, UIScreen.main.bounds.height / image.size.height)
@@ -2016,7 +1490,7 @@ struct ReaderView: View {
         return CGSize(width: min(max(proposed.width, -mx), mx), height: min(max(proposed.height, -my), my))
     }
 
-    fileprivate func animatePageChange(to targetIndex: Int, pageWidth w: CGFloat) {
+    func animatePageChange(to targetIndex: Int, pageWidth w: CGFloat) {
         guard w > 0,
               targetIndex >= 0,
               targetIndex <= maxIndex,
@@ -2048,7 +1522,7 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func finishPageDrag(_ value: DragGesture.Value, pageWidth w: CGFloat) {
+    func finishPageDrag(_ value: DragGesture.Value, pageWidth w: CGFloat) {
         let translation = value.translation.width
         let predictedTranslation =
             value.predictedEndLocation.x - value.location.x
@@ -2076,741 +1550,12 @@ struct ReaderView: View {
         }
     }
 
-    fileprivate func resetZoom(animated: Bool = true) {
+    func resetZoom(animated: Bool = true) {
         let action = {
             currentScale = 1.0; lastScale = 1.0
             panOffset = .zero; lastPanOffset = .zero; isZoomed = false
         }
         if animated { withAnimation(.smooth(duration: 0.25)) { action() } }
         else { withoutAnimation { action() } }
-    }
-}
-
-private struct ReaderTableOfContentsOverlay: View {
-    let pageCount: Int
-    let currentIndex: Int
-    let thumbnailImages: [Int: UIImage]
-    let thumbnailFailedPages: Set<Int>
-    let pathAt: (Int) -> String
-    let hasThumbnailSource: (Int) -> Bool
-    let iconForPath: (String) -> String
-    let loadThumbnail: (Int, CGFloat) -> Void
-    let selectPage: (Int) -> Void
-    let dismiss: () -> Void
-
-    @State private var isPanelVisible = false
-    @State private var isClosing = false
-
-    var body: some View {
-        GeometryReader { geometry in
-            let panelWidth = min(
-                max(geometry.size.width * 0.48, 180),
-                420
-            )
-            let thumbnailWidth = max(
-                72,
-                min(
-                    geometry.size.width / 3,
-                    panelWidth - 32
-                )
-            )
-            let thumbnailHeight = thumbnailWidth * 4 / 3
-
-            ZStack(alignment: .leading) {
-                Color.black
-                    .ignoresSafeArea(.container, edges: [.vertical, .horizontal])
-                    .opacity(isPanelVisible ? 0.32 : 0)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        closePanel(completion: dismiss)
-                    }
-
-                VStack(spacing: 0) {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(localized: "reader_toc_title"))
-                                .font(.headline)
-                            Text("\(currentIndex + 1) / \(pageCount)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-
-                        Spacer(minLength: 0)
-
-                        Button {
-                            closePanel(completion: dismiss)
-                        } label: {
-                            Image(systemName: "xmark")
-                                .fontWeight(.semibold)
-                                .frame(width: 32, height: 32)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 16)
-
-                    Divider()
-
-                    ScrollViewReader { scrollProxy in
-                        ScrollView(.vertical) {
-                            LazyVStack(spacing: 16) {
-                                ForEach(0..<pageCount, id: \.self) { index in
-                                    Button {
-                                        closePanel {
-                                            selectPage(index)
-                                        }
-                                    } label: {
-                                        thumbnailCell(
-                                            for: index,
-                                            width: thumbnailWidth,
-                                            height: thumbnailHeight
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .id(index)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 18)
-                            .padding(.bottom, 18)
-                        }
-                        .scrollIndicators(.hidden)
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                scrollProxy.scrollTo(currentIndex, anchor: .center)
-                            }
-                        }
-                    }
-                }
-                .frame(width: panelWidth)
-                .frame(maxHeight: .infinity)
-                .background(.regularMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
-                }
-                .shadow(radius: 24, y: 8)
-                .padding(.leading, 12)
-                .offset(x: isPanelVisible ? 0 : -(panelWidth + 32))
-            }
-            .onAppear {
-                DispatchQueue.main.async {
-                    withAnimation(.easeOut(duration: 0.24)) {
-                        isPanelVisible = true
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func thumbnailCell(
-        for index: Int,
-        width: CGFloat,
-        height: CGFloat
-    ) -> some View {
-        let path = pathAt(index)
-        let canLoadThumbnail = hasThumbnailSource(index)
-        let isCurrentPage = index == currentIndex
-
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.quaternary)
-
-            if let image = thumbnailImages[index] {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: width, height: height)
-                    .padding(4)
-            } else if canLoadThumbnail {
-                if thumbnailFailedPages.contains(index) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ProgressView()
-                }
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: iconForPath(path))
-                        .font(.system(size: 30))
-                    Text((path as NSString).lastPathComponent)
-                        .font(.caption2)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                }
-            }
-        }
-        .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(alignment: .bottomTrailing) {
-            Text("\(index + 1)")
-                .font(.caption2)
-                .monospacedDigit()
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                // .background(.regularMaterial, in: Capsule())
-                .glassEffect(.regular, in: Capsule())
-                .padding(7)
-        }
-        .padding(4)
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(
-                    isCurrentPage ? Color.accentColor : Color.clear,
-                    lineWidth: 3
-                )
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .onAppear {
-            if canLoadThumbnail,
-               thumbnailImages[index] == nil,
-               !thumbnailFailedPages.contains(index) {
-                loadThumbnail(index, max(width, height))
-            }
-        }
-    }
-
-    private func closePanel(completion: @escaping () -> Void) {
-        guard !isClosing else { return }
-        isClosing = true
-
-        withAnimation(.easeIn(duration: 0.2)) {
-            isPanelVisible = false
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            completion()
-        }
-    }
-}
-
-struct ReaderPageView: View {
-    let image: UIImage
-    let scale: CGFloat
-    let panOffset: CGSize
-    let alignment: Alignment
-
-    var body: some View {
-        GeometryReader { proxy in
-            let imageAspectRatio = image.size.width / max(image.size.height, 1)
-            let containerAspectRatio = proxy.size.width / max(proxy.size.height, 1)
-            let fittedSize = imageAspectRatio > containerAspectRatio
-                ? CGSize(
-                    width: proxy.size.width,
-                    height: proxy.size.width / imageAspectRatio
-                )
-                : CGSize(
-                    width: proxy.size.height * imageAspectRatio,
-                    height: proxy.size.height
-                )
-
-            Image(uiImage: image)
-                .resizable()
-                .frame(width: fittedSize.width, height: fittedSize.height)
-                .scaleEffect(scale)
-                .offset(panOffset)
-                .frame(
-                    width: proxy.size.width,
-                    height: proxy.size.height,
-                    alignment: alignment
-                )
-                .clipped()
-        }
-    }
-}
-
-struct ReaderSettingsView: View {
-    @Binding var doubleTapZoom: Bool
-    @Binding var tapGestureMode: String
-    @Binding var volumeButtonMode: String
-    @Binding var audioAutoplay: Bool
-    @Binding var videoAutoplay: Bool
-    @Binding var readingDirection: String
-    @Binding var preloadPageCount: Int
-    @Binding var doublePageEnabled: Bool
-    @Binding var firstPageAlwaysSingle: Bool
-    @Binding var verticalAddMargin: Bool
-    @Binding var verticalMargin: Int
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section(String(localized: "reader_dir_section")) {
-                    Picker(String(localized: "reader_dir_picker"), selection: $readingDirection) {
-                        ForEach(ReaderReadingDirection.allCases) { direction in
-                            Text(direction.title)
-                                .tag(direction.rawValue)
-                        }
-                    }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                }
-                Section(String(localized: "reader_settings_gesture")) {
-                    Toggle(String(localized: "reader_settings_double_tap"), isOn: $doubleTapZoom)
-                    NavigationLink {
-                        ReaderTapGestureSettingsView(selection: $tapGestureMode)
-                    } label: {
-                        HStack {
-                            Text(String(localized: "reader_tap_gesture"))
-                            Spacer()
-                            Text(
-                                ReaderTapGestureMode(rawValue: tapGestureMode)?.title
-                                    ?? ReaderTapGestureMode.leftRight.title
-                            )
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Picker(
-                        String(localized: "reader_volume_button_page_turn"),
-                        selection: $volumeButtonMode
-                    ) {
-                        ForEach(ReaderVolumeButtonMode.allCases) { mode in
-                            Text(mode.title).tag(mode.rawValue)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .tint(.secondary)
-                }
-                Section(String(localized: "reader_settings_pagination")) {
-                    Stepper(value: $preloadPageCount, in: 1...5) {
-                        HStack {
-                            Text(String(localized: "reader_preload_pages"))
-                            Spacer()
-                            Text("\(preloadPageCount)")
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
-
-                    Toggle(String(localized: "reader_double_page"), isOn: $doublePageEnabled)
-                    Toggle(
-                        String(localized: "reader_first_page_single"),
-                        isOn: $firstPageAlwaysSingle
-                    )
-                    .disabled(!doublePageEnabled)
-                }
-                Section(String(localized: "reader_settings_vertical_comic")) {
-                    Toggle(
-                        String(localized: "reader_vertical_add_margin"),
-                        isOn: $verticalAddMargin
-                    )
-                    Stepper(value: $verticalMargin, in: 4...128, step: 4) {
-                        HStack {
-                            Text(String(localized: "reader_vertical_margin"))
-                            Spacer()
-                            Text("\(verticalMargin)")
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
-                    .foregroundStyle(verticalAddMargin ? .primary : .secondary)
-                    .disabled(!verticalAddMargin)
-                }
-                Section(String(localized: "reader_settings_playback")) {
-                    Toggle(String(localized: "reader_settings_audio_autoplay"), isOn: $audioAutoplay)
-                    Toggle(String(localized: "reader_settings_video_autoplay"), isOn: $videoAutoplay)
-                }
-            }
-            .navigationTitle(String(localized: "reader_settings"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { dismiss() } label: { Image(systemName: "xmark").fontWeight(.semibold) }
-                }
-            }
-        }
-    }
-}
-
-private struct ReaderTapGestureSettingsView: View {
-    @Binding var selection: String
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
-
-    var body: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(ReaderTapGestureMode.allCases) { mode in
-                    Button {
-                        selection = mode.rawValue
-                    } label: {
-                        ReaderTapGestureCard(
-                            mode: mode,
-                            isSelected: selection == mode.rawValue
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(16)
-        }
-        .navigationTitle(String(localized: "reader_tap_gesture"))
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct ReaderTapGestureCard: View {
-    let mode: ReaderTapGestureMode
-    let isSelected: Bool
-
-    var body: some View {
-        VStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Color(uiColor: .systemBackground))
-
-                ReaderTapGestureDiagram(mode: mode)
-                    .padding(12)
-            }
-            .aspectRatio(0.72, contentMode: .fit)
-
-            Text(mode.title)
-                .font(.headline)
-                .foregroundStyle(.primary)
-        }
-        .padding(10)
-        .background(
-            isSelected
-                ? Color.accentColor.opacity(0.08)
-                : Color(uiColor: .secondarySystemGroupedBackground),
-            in: RoundedRectangle(cornerRadius: 16)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(
-                    isSelected ? Color.accentColor : Color(uiColor: .separator),
-                    lineWidth: isSelected ? 2 : 0.5
-                )
-        }
-        .overlay(alignment: .topTrailing) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.title3)
-                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.35))
-                .padding(8)
-        }
-    }
-}
-
-private struct ReaderTapGestureDiagram: View {
-    let mode: ReaderTapGestureMode
-
-    private let previousColor = Color.blue.opacity(0.38)
-    private let nextColor = Color.green.opacity(0.38)
-
-    var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            let height = geometry.size.height
-
-            ZStack(alignment: .topLeading) {
-                Color.clear
-                switch mode {
-                case .leftRight:
-                    region(x: 0, y: 0, width: width / 3, height: height, color: previousColor)
-                    region(x: width * 2 / 3, y: 0, width: width / 3, height: height, color: nextColor)
-                case .lShape:
-                    region(x: 0, y: 0, width: width, height: height / 3, color: previousColor)
-                    region(x: 0, y: height * 2 / 3, width: width, height: height / 3, color: nextColor)
-                    region(x: 0, y: height / 3, width: width / 3, height: height / 3, color: previousColor)
-                    region(x: width * 2 / 3, y: height / 3, width: width / 3, height: height / 3, color: nextColor)
-                case .kindle:
-                    region(x: 0, y: height / 3, width: width / 3, height: height * 2 / 3, color: previousColor)
-                    region(x: width / 3, y: height / 3, width: width * 2 / 3, height: height * 2 / 3, color: nextColor)
-                case .edges:
-                    region(x: 0, y: 0, width: width / 3, height: height, color: nextColor)
-                    region(x: width * 2 / 3, y: 0, width: width / 3, height: height, color: nextColor)
-                    region(x: width / 3, y: height * 2 / 3, width: width / 3, height: height / 3, color: previousColor)
-                case .disabled:
-                    EmptyView()
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
-            }
-        }
-    }
-
-    private func region(
-        x: CGFloat,
-        y: CGFloat,
-        width: CGFloat,
-        height: CGFloat,
-        color: Color
-    ) -> some View {
-        Rectangle()
-            .fill(color)
-            .frame(width: width, height: height)
-            .offset(x: x, y: y)
-    }
-}
-
-extension ReaderView {
-    /// 禁用 fullScreenCover 自带的底部呈现动画，只保留目录面板内部的左侧滑入动画。
-    fileprivate func presentTableOfContents() {
-        var transaction = Transaction()
-        transaction.animation = nil
-        transaction.disablesAnimations = true
-
-        withTransaction(transaction) {
-            showTableOfContents = true
-        }
-    }
-
-    /// 面板自身完成左滑退出后，立即移除透明的 fullScreenCover 容器。
-    fileprivate func dismissTableOfContents() {
-        var transaction = Transaction()
-        transaction.animation = nil
-        transaction.disablesAnimations = true
-
-        withTransaction(transaction) {
-            showTableOfContents = false
-        }
-    }
-
-    fileprivate func handleVolumeUpButton() {
-        switch volumeButtonMode {
-        case .off:
-            break
-        case .volumeUpNext:
-            nextPage()
-        case .volumeDownNext:
-            previousPage()
-        }
-    }
-
-    fileprivate func handleVolumeDownButton() {
-        switch volumeButtonMode {
-        case .off:
-            break
-        case .volumeUpNext:
-            previousPage()
-        case .volumeDownNext:
-            nextPage()
-        }
-    }
-
-    fileprivate func previousPage() {
-        if readingDirection == .vertical {
-            let targetIndex = currentIndex - 1
-            guard targetIndex >= 0 else { return }
-            requestVerticalPage(targetIndex, animated: true)
-        } else if let targetIndex = adjacentHorizontalTarget(from: currentIndex, offset: -1) {
-            animatePageChange(to: targetIndex, pageWidth: pageWidth)
-        }
-    }
-
-    fileprivate func nextPage() {
-        if readingDirection == .vertical {
-            let targetIndex = currentIndex + 1
-            guard targetIndex <= maxIndex else { return }
-            requestVerticalPage(targetIndex, animated: true)
-        } else if let targetIndex = adjacentHorizontalTarget(from: currentIndex, offset: 1) {
-            animatePageChange(to: targetIndex, pageWidth: pageWidth)
-        }
-    }
-
-    fileprivate func requestVerticalPage(
-        _ index: Int,
-        animated: Bool
-    ) {
-        guard index >= 0, index <= maxIndex else { return }
-
-        isProgrammaticVerticalScroll = true
-        withAnimation(.easeOut(duration: 0.25)) {
-            progressValue = Double(index)
-        }
-        withoutAnimation {
-            currentIndex = index
-        }
-        preloadVerticalPages(around: index)
-        verticalScrollRequest = ReaderVerticalScrollRequest(
-            index: index,
-            animated: animated
-        )
-    }
-
-    fileprivate func loadPage(_ index: Int) {
-        guard index >= 0, index < files.count else { return }
-        guard images[index] == nil else { return }
-        guard !isLoading.contains(index) else { return }
-
-        let path = filePath(at: index)
-        guard !path.isEmpty else { return }
-        guard fileType(at: index) == .image else { return }
-
-        isLoading.insert(index)
-        loadTasks[index]?.cancel()
-
-        loadTasks[index] = Task {
-            let cacheKey = "page_\(arcid)_\(path)"
-
-            var attempt = 0
-            while !Task.isCancelled {
-                attempt += 1
-                do {
-                    let data: Data
-                    let loadedFromCache: Bool
-                    if attempt == 1,
-                       let cached = CacheManager.shared.getCover(id: cacheKey) {
-                        data = cached
-                        loadedFromCache = true
-                    } else {
-                        data = try await server.apiClient.fetchPageImage(arcid: arcid, path: path)
-                        loadedFromCache = false
-                    }
-
-                    guard !Task.isCancelled else { break }
-                    guard let image = readerImage(from: data) else {
-                        throw ReaderImageLoadError.decodeFailed
-                    }
-
-                    if !loadedFromCache {
-                        CacheManager.shared.cacheCover(id: cacheKey, data: data)
-                    }
-                    await MainActor.run {
-                        images[index] = image
-                        if image.size.width > 0, image.size.height > 0 {
-                            imageAspectRatios[index] = image.size.height / image.size.width
-                        }
-                        isLoading.remove(index)
-                        loadTasks[index] = nil
-                    }
-                    return
-                } catch {
-                    guard !Task.isCancelled else { break }
-                    let shouldRetry = await MainActor.run {
-                        readingDirection == .vertical
-                            ? currentIndex == index
-                            : isInCurrentHorizontalUnit(index)
-                    }
-                    if !shouldRetry {
-                        break
-                    }
-                    LogManager.shared.log(
-                        "[Reader] Current image retry index=\(index) attempt=\(attempt): \(error.localizedDescription)"
-                    )
-                    try? await Task.sleep(for: .milliseconds(800))
-                }
-            }
-
-            await MainActor.run {
-                isLoading.remove(index)
-                loadTasks[index] = nil
-            }
-        }
-    }
-
-    fileprivate func preloadAdjacent() {
-        guard readingDirection != .vertical,
-              let currentUnitIndex = horizontalUnitIndex(containing: currentIndex) else { return }
-
-        let units = horizontalPageUnits
-        for pageIndex in units[currentUnitIndex] where fileType(at: pageIndex) == .image {
-            loadPage(pageIndex)
-        }
-        for pageIndex in horizontalPreloadImageIndices(after: currentUnitIndex) {
-            loadPage(pageIndex)
-        }
-    }
-
-    fileprivate func preloadVerticalPages(around index: Int) {
-        guard readingDirection == .vertical,
-              !files.isEmpty else { return }
-
-        let preloadRange = max(0, index - 1)...min(maxIndex, index + 2)
-        for pageIndex in preloadRange where fileType(at: pageIndex) == .image {
-            loadPage(pageIndex)
-        }
-
-        trimPageCache(around: index)
-    }
-
-    fileprivate func trimPageCache(around index: Int) {
-        let keepIndices: Set<Int>
-        if readingDirection == .vertical {
-            keepIndices = Set(max(0, index - 2)...min(maxIndex, index + 2))
-        } else if let currentUnitIndex = horizontalUnitIndex(containing: index) {
-            let units = horizontalPageUnits
-            var horizontalKeepIndices = Set(units[currentUnitIndex])
-            if currentUnitIndex > 0 {
-                horizontalKeepIndices.formUnion(units[currentUnitIndex - 1])
-            }
-            horizontalKeepIndices.formUnion(
-                horizontalPreloadImageIndices(after: currentUnitIndex)
-            )
-            keepIndices = horizontalKeepIndices
-        } else {
-            keepIndices = [index]
-        }
-        let imageIndexesToRemove = images.keys.filter {
-            !keepIndices.contains($0)
-        }
-        for pageIndex in imageIndexesToRemove {
-            images.removeValue(forKey: pageIndex)
-        }
-
-        let taskIndexesToCancel = loadTasks.keys.filter {
-            !keepIndices.contains($0)
-        }
-        for pageIndex in taskIndexesToCancel {
-            // 只发出取消信号，由任务自身统一清理状态，避免快速跳页时
-            // 旧任务覆盖同一页的新任务状态。
-            loadTasks[pageIndex]?.cancel()
-        }
-    }
-
-    fileprivate func readerImage(from data: Data) -> UIImage? {
-        let screen = UIScreen.main.bounds.size
-        let scale = UIScreen.main.scale
-        let longestScreenEdge = max(screen.width, screen.height) * scale
-        let maxPixelSize = min(max(longestScreenEdge, 1_536), 2_048)
-        return downsampleImage(data: data, maxPixelSize: maxPixelSize)
-    }
-
-    fileprivate func saveProgress() {
-        let page = currentIndex + 1
-        Task { try? await server.apiClient.updateProgress(arcid: arcid, page: page) }
-        // Update cached metadata progress
-        if var data = CacheManager.shared.getArchiveMetadata(arcid: arcid),
-           var meta = try? JSONDecoder().decode(APIClient.ArchiveMetadata.self, from: data) {
-            meta.progress = page
-            if let encoded = try? JSONEncoder().encode(meta) {
-                CacheManager.shared.cacheArchiveMetadata(arcid: arcid, data: encoded)
-            }
-        }
-
-        NotificationCenter.default.post(
-            name: .readerProgressDidChange,
-            object: nil,
-            userInfo: [
-                "serverId": server.baseURL,
-                "arcid": arcid,
-                "page": page
-            ]
-        )
-    }
-
-    fileprivate func cancelAllTasks() {
-        for task in loadTasks.values { task.cancel() }
-        loadTasks.removeAll()
-
-        for task in thumbnailLoadTasks.values { task.cancel() }
-        thumbnailLoadTasks.removeAll()
     }
 }
