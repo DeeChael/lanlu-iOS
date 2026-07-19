@@ -645,6 +645,7 @@ struct ReaderView: View {
                     }
                     .padding(.horizontal, 16).buttonStyle(.glass)
                 }
+                .frame(height: 48)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeInOut(duration: 0.2), value: isZoomed)
             }
