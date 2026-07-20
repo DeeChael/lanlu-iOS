@@ -271,6 +271,7 @@ struct ReaderSettingsView: View {
     @Binding var textLineSpacing: Int
     @Binding var textParagraphSpacing: Int
     @Binding var textPageMargin: Int
+    var showsAutoReadToggle = true
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -317,7 +318,8 @@ struct ReaderSettingsView: View {
                     ReaderAutoReadSettingsRows(
                         autoReadEnabled: $autoReadEnabled,
                         autoReadInterval: $autoReadInterval,
-                        autoReadImagesOnly: $autoReadImagesOnly
+                        autoReadImagesOnly: $autoReadImagesOnly,
+                        showsEnabledToggle: showsAutoReadToggle
                     )
                 }
                 Section(String(localized: "reader_settings_pagination")) {
@@ -411,9 +413,12 @@ struct ReaderAutoReadSettingsRows: View {
     @Binding var autoReadEnabled: Bool
     @Binding var autoReadInterval: Int
     @Binding var autoReadImagesOnly: Bool
+    var showsEnabledToggle = true
 
     var body: some View {
-        Toggle(String(localized: "reader_auto_read"), isOn: $autoReadEnabled)
+        if showsEnabledToggle {
+            Toggle(String(localized: "reader_auto_read"), isOn: $autoReadEnabled)
+        }
         Stepper(value: $autoReadInterval, in: 1...10) {
             HStack {
                 Text(String(localized: "reader_auto_read_interval"))
@@ -457,6 +462,51 @@ struct ReaderAutoReadSettingsSheet: View {
                 if !enabled { dismiss() }
             }
         }
+    }
+}
+
+struct StandaloneReaderSettingsView: View {
+    @State private var unusedAutoReadEnabled = false
+    @AppStorage("reader_double_tap_zoom") private var doubleTapZoom = true
+    @AppStorage("reader_tap_gesture_mode") private var tapGestureMode = ReaderTapGestureMode.leftRight.rawValue
+    @AppStorage("reader_volume_button_mode") private var volumeButtonMode = ReaderVolumeButtonMode.off.rawValue
+    @AppStorage("reader_auto_read_interval") private var autoReadInterval = 5
+    @AppStorage("reader_auto_read_images_only") private var autoReadImagesOnly = false
+    @AppStorage("reader_audio_autoplay") private var audioAutoplay = false
+    @AppStorage("reader_video_autoplay") private var videoAutoplay = false
+    @AppStorage("reader_reading_direction") private var readingDirection = ReaderReadingDirection.leftToRight.rawValue
+    @AppStorage("reader_preload_page_count") private var preloadPageCount = 2
+    @AppStorage("reader_double_page") private var doublePageEnabled = false
+    @AppStorage("reader_first_page_single") private var firstPageAlwaysSingle = false
+    @AppStorage("reader_vertical_add_margin") private var verticalAddMargin = false
+    @AppStorage("reader_vertical_margin") private var verticalMargin = 16
+    @AppStorage("reader_text_font_size") private var textFontSize = 18
+    @AppStorage("reader_text_line_spacing") private var textLineSpacing = 6
+    @AppStorage("reader_text_paragraph_spacing") private var textParagraphSpacing = 12
+    @AppStorage("reader_text_page_margin") private var textPageMargin = 20
+
+    var body: some View {
+        ReaderSettingsView(
+            doubleTapZoom: $doubleTapZoom,
+            tapGestureMode: $tapGestureMode,
+            volumeButtonMode: $volumeButtonMode,
+            autoReadEnabled: $unusedAutoReadEnabled,
+            autoReadInterval: $autoReadInterval,
+            autoReadImagesOnly: $autoReadImagesOnly,
+            audioAutoplay: $audioAutoplay,
+            videoAutoplay: $videoAutoplay,
+            readingDirection: $readingDirection,
+            preloadPageCount: $preloadPageCount,
+            doublePageEnabled: $doublePageEnabled,
+            firstPageAlwaysSingle: $firstPageAlwaysSingle,
+            verticalAddMargin: $verticalAddMargin,
+            verticalMargin: $verticalMargin,
+            textFontSize: $textFontSize,
+            textLineSpacing: $textLineSpacing,
+            textParagraphSpacing: $textParagraphSpacing,
+            textPageMargin: $textPageMargin,
+            showsAutoReadToggle: false
+        )
     }
 }
 

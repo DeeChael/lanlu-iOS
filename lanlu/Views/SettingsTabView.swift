@@ -20,6 +20,7 @@ struct SettingsTabView: View {
     @State private var isSyncingStats = false
 
     @State private var showLanguagePicker = false
+    @State private var showReaderSettings = false
     @State private var showDiagnostics = false
     @State private var showClearCacheAlert = false
     @State private var cacheInfo = ""
@@ -192,6 +193,24 @@ struct SettingsTabView: View {
                 .buttonStyle(.plain)
                 .sheet(isPresented: $showLanguagePicker) {
                     LanguagePickerView(selected: $language)
+                }
+
+                Button {
+                    showReaderSettings = true
+                } label: {
+                    HStack {
+                        Label(String(localized: "reader_settings"), systemImage: "book.pages.fill")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showReaderSettings) {
+                    StandaloneReaderSettingsView()
+                        .presentationDetents([.large])
                 }
 
                 Button {
