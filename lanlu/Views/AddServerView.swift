@@ -90,8 +90,19 @@ struct AddServerView: View {
                     .textContentType(.URL)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.never)
+            } footer: {
+                HStack(spacing: 4) {
+                    Text(String(localized: "no_server_yet"))
+                    Text(String(localized: "learn_self_host"))
+                        .foregroundColor(.accentColor)
+                        .onTapGesture {
+                            guard let url = URL(string: "https://cnb.cool/copurx/lanlu") else { return }
+                            UIApplication.shared.open(url)
+                        }
+                }
+                .font(.caption)
+                
             }
-
             if let errorMessage {
                 Section {
                     Text(errorMessage)

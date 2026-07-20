@@ -1,5 +1,7 @@
 "app_name" = "蘭鹿";
 "add_server" = "添加伺服器";
+"no_server_yet" = "還沒有伺服器？";
+"learn_self_host" = "了解自建 LanLu 服務";
 "add_server_title" = "添加伺服器";
 "no_servers_yet" = "暫無伺服器";
 "no_servers_desc" = "連接一台蘭鹿伺服器以開始瀏覽您的檔案。";

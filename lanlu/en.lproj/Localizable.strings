@@ -1,5 +1,7 @@
 "app_name" = "LanLu";
 "add_server" = "Add Server";
+"no_server_yet" = "No server yet? ";
+"learn_self_host" = "Learn about self-hosting LanLu";
 "add_server_title" = "Add Server";
 "no_servers_yet" = "No Servers";
 "no_servers_desc" = "Connect to a LanLu server to start browsing your archives.";
