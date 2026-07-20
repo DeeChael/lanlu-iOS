@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import WebKit
 
 private enum ReaderImageLoadError: LocalizedError {
     case decodeFailed
@@ -266,6 +267,10 @@ struct ReaderSettingsView: View {
     @Binding var firstPageAlwaysSingle: Bool
     @Binding var verticalAddMargin: Bool
     @Binding var verticalMargin: Int
+    @Binding var textFontSize: Int
+    @Binding var textLineSpacing: Int
+    @Binding var textParagraphSpacing: Int
+    @Binding var textPageMargin: Int
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -350,6 +355,32 @@ struct ReaderSettingsView: View {
                     .foregroundStyle(verticalAddMargin ? .primary : .secondary)
                     .disabled(!verticalAddMargin)
                 }
+                Section(String(localized: "reader_settings_text")) {
+                    Stepper(value: $textFontSize, in: 12...36) {
+                        readerSettingValueRow(
+                            title: String(localized: "reader_text_font_size"),
+                            value: "\(textFontSize) pt"
+                        )
+                    }
+                    Stepper(value: $textLineSpacing, in: 0...20) {
+                        readerSettingValueRow(
+                            title: String(localized: "reader_text_line_spacing"),
+                            value: "\(textLineSpacing) pt"
+                        )
+                    }
+                    Stepper(value: $textParagraphSpacing, in: 0...32) {
+                        readerSettingValueRow(
+                            title: String(localized: "reader_text_paragraph_spacing"),
+                            value: "\(textParagraphSpacing) pt"
+                        )
+                    }
+                    Stepper(value: $textPageMargin, in: 8...64, step: 4) {
+                        readerSettingValueRow(
+                            title: String(localized: "reader_text_page_margin"),
+                            value: "\(textPageMargin) pt"
+                        )
+                    }
+                }
                 Section(String(localized: "reader_settings_playback")) {
                     Toggle(String(localized: "reader_settings_audio_autoplay"), isOn: $audioAutoplay)
                     Toggle(String(localized: "reader_settings_video_autoplay"), isOn: $videoAutoplay)
@@ -362,6 +393,16 @@ struct ReaderSettingsView: View {
                     Button { dismiss() } label: { Image(systemName: "xmark").fontWeight(.semibold) }
                 }
             }
+        }
+    }
+
+    private func readerSettingValueRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
     }
 }
@@ -684,6 +725,12 @@ extension ReaderView {
         }
         loadTasks = loadTasks.filter { currentIndices.contains($0.key) }
         images = images.filter { currentIndices.contains($0.key) }
+        textDocuments = textDocuments.filter { currentIndices.contains($0.key) }
+        textDocumentHeights = textDocumentHeights.filter { currentIndices.contains($0.key) }
+        for (index, task) in textLoadTasks where !currentIndices.contains(index) {
+            task.cancel()
+        }
+        textLoadTasks = textLoadTasks.filter { currentIndices.contains($0.key) }
         thumbnailImages.removeAll()
         CacheManager.shared.clearMemoryCaches()
         LogManager.shared.log("[Reader] Released image caches after memory warning")
@@ -817,11 +864,17 @@ extension ReaderView {
     }
 
     func previousPage() {
+        previousFile()
+    }
+
+    func previousFile() {
         if readingDirection == .vertical {
             let targetIndex = currentIndex - 1
             guard targetIndex >= 0 else { return }
+            prepareTextPageEntry(targetIndex, atEnd: true)
             requestVerticalPage(targetIndex, animated: true)
         } else if let targetIndex = adjacentHorizontalTarget(from: currentIndex, offset: -1) {
+            prepareTextPageEntry(targetIndex, atEnd: true)
             animatePageChange(
                 to: targetIndex,
                 pageWidth: readingDirection == .verticalPaged ? pageHeight : pageWidth
@@ -830,15 +883,31 @@ extension ReaderView {
     }
 
     func nextPage() {
+        nextFile()
+    }
+
+    func nextFile() {
         if readingDirection == .vertical {
             let targetIndex = currentIndex + 1
             guard targetIndex <= maxIndex else { return }
+            prepareTextPageEntry(targetIndex, atEnd: false)
             requestVerticalPage(targetIndex, animated: true)
         } else if let targetIndex = adjacentHorizontalTarget(from: currentIndex, offset: 1) {
+            prepareTextPageEntry(targetIndex, atEnd: false)
             animatePageChange(
                 to: targetIndex,
                 pageWidth: readingDirection == .verticalPaged ? pageHeight : pageWidth
             )
+        }
+    }
+
+    private func prepareTextPageEntry(_ index: Int, atEnd: Bool) {
+        guard fileType(at: index) == .html else { return }
+        textPageEntryRevision[index, default: 0] += 1
+        if atEnd {
+            textPageEnteringAtEnd.insert(index)
+        } else {
+            textPageEnteringAtEnd.remove(index)
         }
     }
 
@@ -995,6 +1064,15 @@ extension ReaderView {
             // 旧任务覆盖同一页的新任务状态。
             loadTasks[pageIndex]?.cancel()
         }
+
+        for pageIndex in textDocuments.keys where !keepIndices.contains(pageIndex) {
+            textDocuments.removeValue(forKey: pageIndex)
+            textDocumentHeights.removeValue(forKey: pageIndex)
+        }
+        for pageIndex in textLoadTasks.keys where !keepIndices.contains(pageIndex) {
+            textLoadTasks[pageIndex]?.cancel()
+            textLoadTasks.removeValue(forKey: pageIndex)
+        }
     }
 
     func readerImage(from data: Data) -> UIImage? {
@@ -1034,6 +1112,9 @@ extension ReaderView {
 
         for task in thumbnailLoadTasks.values { task.cancel() }
         thumbnailLoadTasks.removeAll()
+
+        for task in textLoadTasks.values { task.cancel() }
+        textLoadTasks.removeAll()
     }
 }
 
@@ -1057,7 +1138,7 @@ extension ReaderView {
             return true
         case .audio, .video:
             return !autoReadImagesOnly
-        case .unknown:
+        case .html, .unknown:
             return false
         }
     }
@@ -1118,7 +1199,7 @@ extension ReaderView {
             } else {
                 startCurrentAutoReadMedia()
             }
-        case .unknown:
+        case .html, .unknown:
             scheduleImmediateAutoReadAdvance()
         }
     }

@@ -9,7 +9,7 @@ extension Notification.Name {
 }
 
 enum ReaderPageFileType {
-    case unknown, image, video, audio
+    case unknown, image, html, video, audio
 }
 
 enum ReaderBottomControlFocus {
@@ -111,6 +111,8 @@ struct ReaderView: View {
     @State var isPageAnimating = false
     @State var pageWidth: CGFloat = 0
     @State var pageHeight: CGFloat = 0
+    @State var textSafeAreaTop: CGFloat = 0
+    @State var textSafeAreaBottom: CGFloat = 0
     @State var isZoomed = false
     @State var currentScale: CGFloat = 1.0
     @State var lastScale: CGFloat = 1.0
@@ -118,6 +120,11 @@ struct ReaderView: View {
     @State var lastPanOffset: CGSize = .zero
     @State var loadTasks: [Int: Task<Void, Never>] = [:]
     @State var imageAspectRatios: [Int: CGFloat] = [:]
+    @State var textDocuments: [Int: Data] = [:]
+    @State var textDocumentHeights: [Int: CGFloat] = [:]
+    @State var textLoadTasks: [Int: Task<Void, Never>] = [:]
+    @State var textPageEnteringAtEnd: Set<Int> = []
+    @State var textPageEntryRevision: [Int: Int] = [:]
     @State var verticalScrollRequest: ReaderVerticalScrollRequest?
     @State var isProgrammaticVerticalScroll = false
     @State var showReaderSettings = false
@@ -179,6 +186,10 @@ struct ReaderView: View {
     @AppStorage("reader_first_page_single") var firstPageAlwaysSingle = false
     @AppStorage("reader_vertical_add_margin") var verticalAddMargin = false
     @AppStorage("reader_vertical_margin") var verticalMargin = 16
+    @AppStorage("reader_text_font_size") var textFontSize = 18
+    @AppStorage("reader_text_line_spacing") var textLineSpacing = 6
+    @AppStorage("reader_text_paragraph_spacing") var textParagraphSpacing = 12
+    @AppStorage("reader_text_page_margin") var textPageMargin = 20
     @State var horizontalPageUnits: [[Int]]
     @State var horizontalUnitIndexByPage: [Int: Int]
 
@@ -332,10 +343,16 @@ struct ReaderView: View {
                 .onAppear {
                     pageWidth = geo.size.width
                     pageHeight = geo.size.height
+                    textSafeAreaTop = geo.safeAreaInsets.top
+                    textSafeAreaBottom = geo.safeAreaInsets.bottom
                 }
                 .onChange(of: geo.size) { _, newValue in
                     pageWidth = newValue.width
                     pageHeight = newValue.height
+                }
+                .onChange(of: geo.safeAreaInsets) { _, newValue in
+                    textSafeAreaTop = newValue.top
+                    textSafeAreaBottom = newValue.bottom
                 }
         }
         .ignoresSafeArea()
@@ -385,7 +402,7 @@ struct ReaderView: View {
                                 )
                         }
                         if (bottomControlFocus == .bookProgress) {
-                            Button { previousPage() } label: {
+                            Button { previousFile() } label: {
                                 Image(
                                     systemName: usesVerticalPageControls
                                     ? "chevron.up"
@@ -395,7 +412,7 @@ struct ReaderView: View {
                             .disabled(!hasPreviousPage)
                             .opacity(hasPreviousPage ? 1 : 0.5)
                             .transition(.move(edge: .leading).combined(with: .opacity))
-                            Button { nextPage() } label: {
+                            Button { nextFile() } label: {
                                 Image(
                                     systemName: usesVerticalPageControls
                                     ? "chevron.down"
@@ -574,7 +591,11 @@ struct ReaderView: View {
                 doublePageEnabled: $doublePageEnabled,
                 firstPageAlwaysSingle: $firstPageAlwaysSingle,
                 verticalAddMargin: $verticalAddMargin,
-                verticalMargin: $verticalMargin
+                verticalMargin: $verticalMargin,
+                textFontSize: $textFontSize,
+                textLineSpacing: $textLineSpacing,
+                textParagraphSpacing: $textParagraphSpacing,
+                textPageMargin: $textPageMargin
             )
                 .presentationDetents([.large])
         }
@@ -658,7 +679,9 @@ struct ReaderView: View {
         default:
             ZStack {
                 pageStrip(size: size)
-                interactionOverlay(pageSize: size)
+                if fileType(at: currentIndex) != .html {
+                    interactionOverlay(pageSize: size)
+                }
             }
         }
     }
@@ -752,7 +775,8 @@ struct ReaderView: View {
         viewportHeight: CGFloat
     ) -> some View {
         let path = filePath(at: index)
-        let isImage = fileType(at: index) == .image
+        let pageFileType = fileType(at: index)
+        let isImage = pageFileType == .image
         let horizontalMargin = isImage && verticalAddMargin
             ? CGFloat(verticalMargin)
             : 0
@@ -784,6 +808,13 @@ struct ReaderView: View {
                     loadPage(index)
                 }
             }
+        } else if pageFileType == .html {
+            textPageView(
+                for: index,
+                size: CGSize(width: width, height: height),
+                paged: false
+            )
+            .frame(width: width, height: height)
         } else {
             pageView(
                 for: index,
@@ -818,6 +849,10 @@ struct ReaderView: View {
             }
 
             return width * 4 / 3
+        }
+
+        if fileType(at: index) == .html {
+            return max(textDocumentHeights[index] ?? viewportHeight, 1)
         }
 
         return viewportHeight
@@ -1174,6 +1209,7 @@ struct ReaderView: View {
         if video.contains(ext) { return .video }
         let audio: Set<String> = ["mp3","wav","flac","aac","ogg","wma","m4a","aiff"]
         if audio.contains(ext) { return .audio }
+        if ext == "html" || ext == "htm" || ext == "xhtml" { return .html }
         return .unknown
     }
 
@@ -1192,7 +1228,7 @@ struct ReaderView: View {
         if archive.contains(ext) { return "archivebox.fill" }
         let doc: Set<String> = ["pdf","doc","docx","pages","rtf"]
         if doc.contains(ext) { return "doc.richtext.fill" }
-        let text: Set<String> = ["txt","md","json","xml","yaml","yml"]
+        let text: Set<String> = ["txt","md","json","xml","yaml","yml","html","htm","xhtml"]
         if text.contains(ext) { return "doc.text.fill" }
         let ebook: Set<String> = ["epub","mobi","azw","azw3"]
         if ebook.contains(ext) { return "book.closed.fill" }
@@ -1214,6 +1250,7 @@ struct ReaderView: View {
 
     func selectPageFromTableOfContents(_ index: Int) {
         guard index >= 0, index < files.count else { return }
+        textPageEnteringAtEnd.remove(index)
 
         if readingDirection == .vertical {
             requestVerticalPage(index, animated: false)
@@ -1389,6 +1426,8 @@ struct ReaderView: View {
             audioPageView(for: index, size: size)
         } else if pageFileType == .video {
             videoPageView(for: index, size: size)
+        } else if pageFileType == .html {
+            textPageView(for: index, size: size, paged: true)
         } else if pageFileType != .image {
             filePlaceholder(path: path, size: size)
         } else if let image = images[index] {

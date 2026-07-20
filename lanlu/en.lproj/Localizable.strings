@@ -316,6 +316,11 @@
 "reader_settings_vertical_comic" = "Vertical Comic";
 "reader_vertical_add_margin" = "Keep Margins";
 "reader_vertical_margin" = "Margin";
+"reader_settings_text" = "Text";
+"reader_text_font_size" = "Font Size";
+"reader_text_line_spacing" = "Line Spacing";
+"reader_text_paragraph_spacing" = "Paragraph Spacing";
+"reader_text_page_margin" = "Page Margin";
 "reader_reset_zoom" = "Reset Zoom";
 "reader_toc_title" = "Pages";
 "reader_tap_reload" = "Tap to reload";
