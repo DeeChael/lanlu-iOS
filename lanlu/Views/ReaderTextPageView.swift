@@ -110,9 +110,25 @@ struct ReaderTextPageView: UIViewRepresentable {
           break-inside: avoid-column !important;
           -webkit-column-break-inside: avoid !important;
         }
-        .lanlu-reader-media-block {
+        .lanlu-reader-media-page {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          width: 100% !important;
+          height: var(--reader-content-height, auto) !important;
+          overflow: hidden !important;
+          break-before: column !important;
+          break-after: column !important;
           break-inside: avoid-column !important;
+          -webkit-column-break-before: always !important;
+          -webkit-column-break-after: always !important;
           -webkit-column-break-inside: avoid !important;
+        }
+        .lanlu-reader-media-page > img,
+        .lanlu-reader-media-page > video,
+        .lanlu-reader-media-page > svg {
+          max-width: 100% !important;
+          max-height: 100% !important;
         }
         </style>
         """
@@ -156,14 +172,17 @@ struct ReaderTextPageView: UIViewRepresentable {
               document.documentElement.style.overflow = 'hidden';
               body.style.position = 'static';
               body.style.transform = 'none';
+              body.style.width = '100%';
               body.style.height = 'auto';
               body.style.columnWidth = 'auto';
-              body.style.marginTop = safeTop + 'px';
-              body.style.marginRight = '0px';
-              body.style.marginBottom = safeBottom + 'px';
-              body.style.marginLeft = '0px';
-              body.style.paddingLeft = '\(pageMargin)px';
-              body.style.paddingRight = '\(pageMargin)px';
+              body.style.setProperty('margin-top', safeTop + 'px', 'important');
+              body.style.setProperty('margin-right', '0px', 'important');
+              body.style.setProperty('margin-bottom', safeBottom + 'px', 'important');
+              body.style.setProperty('margin-left', '0px', 'important');
+              body.style.setProperty('padding-top', '0px', 'important');
+              body.style.setProperty('padding-right', '\(pageMargin)px', 'important');
+              body.style.setProperty('padding-bottom', '0px', 'important');
+              body.style.setProperty('padding-left', '\(pageMargin)px', 'important');
               body.style.overflow = 'visible';
               body.style.visibility = 'visible';
               const height = Math.max(body.scrollHeight, document.documentElement.scrollHeight);
@@ -192,15 +211,15 @@ struct ReaderTextPageView: UIViewRepresentable {
           };
           window.readerLayout = layout;
           addEventListener('load', () => {
-            document.querySelectorAll('img, video, svg').forEach(element => {
-              const container = element.closest('figure, p, div');
-              if (container && (
-                  container.tagName === 'FIGURE'
-                  || container.children.length === 1
-              )) {
-                container.classList.add('lanlu-reader-media-block');
-              }
-            });
+            if (paged) {
+              document.querySelectorAll('img, video, svg').forEach(element => {
+                if (element.parentElement?.classList.contains('lanlu-reader-media-page')) return;
+                const wrapper = document.createElement('div');
+                wrapper.className = 'lanlu-reader-media-page';
+                element.parentNode.insertBefore(wrapper, element);
+                wrapper.appendChild(element);
+              });
+            }
             setTimeout(layout, 0);
             document.querySelectorAll('img, video, svg').forEach(element => {
               element.addEventListener('load', layout, { once: true });
