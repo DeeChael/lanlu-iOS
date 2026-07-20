@@ -57,17 +57,18 @@ struct ReaderTextPageView: UIViewRepresentable {
             String(paragraphSpacing),
             String(pageMargin),
             String(describing: safeAreaTop),
-            String(describing: safeAreaBottom),
-            String(startsAtLastPage),
-            String(entryRevision)
+            String(describing: safeAreaBottom)
         ].joined(separator: ":")
 
-        guard context.coordinator.loadedSignature != signature else { return }
-        context.coordinator.loadedSignature = signature
-        webView.loadHTMLString(
-            styledHTML,
-            baseURL: context.coordinator.documentBaseURL
-        )
+        if context.coordinator.loadedSignature != signature {
+            context.coordinator.loadedSignature = signature
+            context.coordinator.isDocumentReady = false
+            webView.loadHTMLString(
+                styledHTML,
+                baseURL: context.coordinator.documentBaseURL
+            )
+        }
+        context.coordinator.applyEntryIfNeeded(to: webView)
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
@@ -96,20 +97,32 @@ struct ReaderTextPageView: UIViewRepresentable {
           margin: 0 !important;
           padding: 0 !important;
           overflow-wrap: anywhere;
+          visibility: hidden;
         }
         p { margin-top: 0 !important; margin-bottom: \(paragraphSpacing)px !important; }
-        img, video, svg { max-width: 100% !important; height: auto !important; }
+        img, video, svg {
+          display: block !important;
+          max-width: 100% !important;
+          max-height: var(--reader-content-height, none) !important;
+          width: auto !important;
+          height: auto !important;
+          object-fit: contain !important;
+          break-inside: avoid-column !important;
+          -webkit-column-break-inside: avoid !important;
+        }
+        .lanlu-reader-media-block {
+          break-inside: avoid-column !important;
+          -webkit-column-break-inside: avoid !important;
+        }
         </style>
         """
         let script = """
         <script>
         (() => {
           const paged = \(paged ? "true" : "false");
-          const startsAtLastPage = \(startsAtLastPage ? "true" : "false");
           let currentPage = 0;
           let pageCount = 1;
-          let didSetInitialPage = false;
-          let keepAtLastPage = startsAtLastPage;
+          let entryAtEnd = false;
           function layout() {
             const body = document.body;
             if (!body) return;
@@ -131,16 +144,14 @@ struct ReaderTextPageView: UIViewRepresentable {
               body.style.columnFill = 'auto';
               body.style.overflow = 'visible';
               body.style.padding = '0px';
+              body.style.transition = 'none';
+              document.documentElement.style.setProperty('--reader-content-height', contentHeight + 'px');
               pageCount = Math.max(1, Math.ceil((body.scrollWidth + \(pageMargin * 2)) / window.innerWidth));
-              if (!didSetInitialPage) {
-                currentPage = startsAtLastPage ? pageCount - 1 : 0;
-                didSetInitialPage = true;
-              } else if (keepAtLastPage) {
-                currentPage = pageCount - 1;
-              } else {
-                currentPage = Math.min(currentPage, pageCount - 1);
-              }
+              currentPage = entryAtEnd
+                ? Math.max(pageCount - 1, 0)
+                : Math.min(currentPage, pageCount - 1);
               body.style.transform = `translateX(${-currentPage * window.innerWidth}px)`;
+              body.style.visibility = 'visible';
             } else {
               document.documentElement.style.overflow = 'hidden';
               body.style.position = 'static';
@@ -154,6 +165,7 @@ struct ReaderTextPageView: UIViewRepresentable {
               body.style.paddingLeft = '\(pageMargin)px';
               body.style.paddingRight = '\(pageMargin)px';
               body.style.overflow = 'visible';
+              body.style.visibility = 'visible';
               const height = Math.max(body.scrollHeight, document.documentElement.scrollHeight);
               window.webkit.messageHandlers.readerText.postMessage({ action: 'height', value: height });
             }
@@ -163,14 +175,32 @@ struct ReaderTextPageView: UIViewRepresentable {
             if (!body) return false;
             const target = currentPage + delta;
             if (target < 0 || target >= pageCount) return false;
-            keepAtLastPage = false;
+            entryAtEnd = false;
             currentPage = target;
             body.style.transition = 'transform 220ms ease-out';
             body.style.transform = `translateX(${-currentPage * window.innerWidth}px)`;
             return true;
           };
+          window.readerSetEntry = atEnd => {
+            entryAtEnd = atEnd;
+            layout();
+            currentPage = atEnd ? Math.max(pageCount - 1, 0) : 0;
+            const body = document.body;
+            if (!body) return;
+            body.style.transition = 'none';
+            body.style.transform = `translateX(${-currentPage * window.innerWidth}px)`;
+          };
           window.readerLayout = layout;
           addEventListener('load', () => {
+            document.querySelectorAll('img, video, svg').forEach(element => {
+              const container = element.closest('figure, p, div');
+              if (container && (
+                  container.tagName === 'FIGURE'
+                  || container.children.length === 1
+              )) {
+                container.classList.add('lanlu-reader-media-block');
+              }
+            });
             setTimeout(layout, 0);
             document.querySelectorAll('img, video, svg').forEach(element => {
               element.addEventListener('load', layout, { once: true });
@@ -202,6 +232,8 @@ struct ReaderTextPageView: UIViewRepresentable {
 
         var parent: ReaderTextPageView
         var loadedSignature: String?
+        var isDocumentReady = false
+        private var appliedEntryRevision: Int?
         private weak var webView: WKWebView?
         private var swipeRecognizers: [UISwipeGestureRecognizer] = []
         private var resourceTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
@@ -259,8 +291,21 @@ struct ReaderTextPageView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            isDocumentReady = true
             webView.evaluateJavaScript("document.documentElement.style.webkitUserSelect='none'")
             applySafeArea(to: webView)
+            applyEntryIfNeeded(to: webView)
+        }
+
+        func applyEntryIfNeeded(to webView: WKWebView) {
+            guard isDocumentReady,
+                  appliedEntryRevision != parent.entryRevision else { return }
+            appliedEntryRevision = parent.entryRevision
+            webView.evaluateJavaScript(
+                "window.readerSetEntry && window.readerSetEntry("
+                + (parent.startsAtLastPage ? "true" : "false")
+                + ");"
+            )
         }
 
         func applySafeArea(to webView: WKWebView) {

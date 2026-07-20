@@ -1012,6 +1012,15 @@ extension ReaderView {
               let currentUnitIndex = horizontalUnitIndex(containing: currentIndex) else { return }
 
         let units = horizontalPageUnits
+        let nearbyUnitIndices = max(0, currentUnitIndex - 1)...min(
+            units.count - 1,
+            currentUnitIndex + 1
+        )
+        for unitIndex in nearbyUnitIndices {
+            for pageIndex in units[unitIndex] where fileType(at: pageIndex) == .html {
+                loadTextDocument(pageIndex)
+            }
+        }
         for pageIndex in units[currentUnitIndex] where fileType(at: pageIndex) == .image {
             loadPage(pageIndex)
         }
@@ -1027,6 +1036,9 @@ extension ReaderView {
         let preloadRange = max(0, index - 1)...min(maxIndex, index + 2)
         for pageIndex in preloadRange where fileType(at: pageIndex) == .image {
             loadPage(pageIndex)
+        }
+        for pageIndex in preloadRange where fileType(at: pageIndex) == .html {
+            loadTextDocument(pageIndex)
         }
 
         trimPageCache(around: index)
