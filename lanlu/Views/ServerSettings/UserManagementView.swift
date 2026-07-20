@@ -333,41 +333,14 @@ private struct ResetUserPasswordView: View {
     @State private var newPassword = ""
     @State private var confirmedPassword = ""
     @State private var showsNewPassword = false
-    @State private var verificationPassword = ""
-    @State private var showsVerificationPassword = false
-    @State private var needsStepUp = false
+    @State private var showStepUpVerification = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
             Form {
-                if needsStepUp {
-                    Section(String(localized: "password_verification")) {
-                        HStack {
-                            Group {
-                                if showsVerificationPassword {
-                                    TextField(String(localized: "password"), text: $verificationPassword)
-                                } else {
-                                    SecureField(String(localized: "password"), text: $verificationPassword)
-                                }
-                            }
-                            .textContentType(.password)
-
-                            Button {
-                                showsVerificationPassword.toggle()
-                            } label: {
-                                Image(systemName: showsVerificationPassword ? "eye.fill" : "eye.slash.fill")
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(
-                                String(localized: showsVerificationPassword ? "hide_password" : "show_password")
-                            )
-                        }
-                    }
-                } else {
-                    Section {
+                Section {
                         HStack {
                             Group {
                                 if showsNewPassword {
@@ -391,7 +364,6 @@ private struct ResetUserPasswordView: View {
                             }
                             .textContentType(.newPassword)
                         }
-                    }
                 }
 
                 Section {
@@ -400,7 +372,7 @@ private struct ResetUserPasswordView: View {
                     } label: {
                         HStack {
                             if isSubmitting { ProgressView() }
-                            Text(String(localized: needsStepUp ? "verify" : "confirm_action"))
+                            Text(String(localized: "confirm_action"))
                                 .fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
@@ -409,7 +381,7 @@ private struct ResetUserPasswordView: View {
                 }
             }
             .navigationTitle(
-                String(localized: needsStepUp ? "step_up_verification" : "change_user_password")
+                String(localized: "change_user_password")
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -424,14 +396,22 @@ private struct ResetUserPasswordView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .sheet(isPresented: $showStepUpVerification) {
+                StepUpVerificationSheet(server: server) {
+                    try await server.apiClient.resetAdminUserPassword(
+                        id: user.id,
+                        newPassword: newPassword
+                    )
+                    dismiss()
+                }
+                .presentationDetents([.large])
+            }
         }
     }
 
     private var submitDisabled: Bool {
         if isSubmitting { return true }
-        return needsStepUp
-            ? verificationPassword.isEmpty
-            : newPassword.isEmpty || confirmedPassword.isEmpty
+        return newPassword.isEmpty || confirmedPassword.isEmpty
     }
 
     private func passwordVisibilityButton(isVisible: Binding<Bool>) -> some View {
@@ -456,30 +436,10 @@ private struct ResetUserPasswordView: View {
 
     private func submit() {
         guard !submitDisabled else { return }
-        guard needsStepUp || newPassword == confirmedPassword else {
+        guard newPassword == confirmedPassword else {
             errorMessage = String(localized: "passwords_do_not_match")
             return
         }
-        isSubmitting = true
-        errorMessage = nil
-
-        Task {
-            do {
-                if !needsStepUp {
-                    needsStepUp = true
-                    isSubmitting = false
-                    return
-                }
-                try await server.apiClient.verifyStepUpPassword(verificationPassword)
-                try await server.apiClient.resetAdminUserPassword(
-                    id: user.id,
-                    newPassword: newPassword
-                )
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSubmitting = false
-            }
-        }
+        showStepUpVerification = true
     }
 }

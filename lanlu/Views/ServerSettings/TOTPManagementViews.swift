@@ -84,8 +84,7 @@ struct TOTPEnrollmentView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var name = ""
-    @State private var securityPassword = ""
-    @State private var showSecurityAlert = false
+    @State private var showSecurityVerification = false
     @State private var enrollment: TOTPEnrollmentData?
     @State private var verificationCode = ""
     @State private var recoveryCodes: [String] = []
@@ -119,17 +118,13 @@ struct TOTPEnrollmentView: View {
                 }
             }
         }
-        .alert(String(localized: "security_verification_required"), isPresented: $showSecurityAlert) {
-            SecureField(String(localized: "password"), text: $securityPassword)
-            Button(String(localized: "cancel"), role: .cancel) {
-                securityPassword = ""
+        .sheet(isPresented: $showSecurityVerification) {
+            StepUpVerificationSheet(server: server) {
+                enrollment = try await server.apiClient.startTOTPEnrollment(
+                    name: name.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
             }
-            Button(String(localized: "confirm_action")) {
-                Task { await startEnrollment() }
-            }
-            .disabled(securityPassword.isEmpty)
-        } message: {
-            Text(String(localized: "totp_enrollment_security_message"))
+            .presentationDetents([.large])
         }
         .interactiveDismissDisabled(isLoading)
     }
@@ -142,7 +137,7 @@ struct TOTPEnrollmentView: View {
             errorSection
             Section {
                 actionButton(String(localized: "confirm_action"), disabled: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
-                    showSecurityAlert = true
+                    showSecurityVerification = true
                 }
             }
         }
@@ -200,21 +195,6 @@ struct TOTPEnrollmentView: View {
             .frame(maxWidth: .infinity)
         }
         .disabled(disabled || isLoading)
-    }
-
-    private func startEnrollment() async {
-        isLoading = true
-        errorMessage = nil
-        do {
-            try await server.apiClient.verifyStepUpPassword(securityPassword)
-            enrollment = try await server.apiClient.startTOTPEnrollment(
-                name: name.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-            securityPassword = ""
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isLoading = false
     }
 
     private func confirmEnrollment(_ enrollment: TOTPEnrollmentData) async {

@@ -15,7 +15,9 @@
 "choose_auth_method" = "选择登录方式";
 "account_password" = "账号密码";
 "token" = "Token";
-"passkey" = "Passkey";
+"passkey" = "通行密钥";
+"passkey_login_description" = "使用保存在此设备或其他设备上的通行密钥登录。";
+"login_with_passkey" = "使用通行密钥登录";
 "servers" = "服务器";
 "never_used" = "从未使用";
 "last_used" = "上次使用";
@@ -190,6 +192,9 @@
 "verified" = "已验证";
 "unverified" = "未验证";
 "add_passkey" = "添加通行密钥";
+"passkey_name" = "通行密钥名称";
+"passkey_verification" = "通行密钥验证";
+"no_step_up_methods" = "当前账户没有可用的安全验证方式。";
 "login_device_management" = "登录设备管理";
 "sign_out_other_devices" = "退出其他设备";
 "sign_out_other_devices_confirm" = "确定要退出除当前设备以外的所有设备吗？";

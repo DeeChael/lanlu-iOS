@@ -16,6 +16,8 @@
 "account_password" = "Account & Password";
 "token" = "Token";
 "passkey" = "Passkey";
+"passkey_login_description" = "Sign in with a passkey saved on this or another device.";
+"login_with_passkey" = "Sign In with Passkey";
 "servers" = "Servers";
 "never_used" = "Never used";
 "last_used" = "Last used";
@@ -190,6 +192,9 @@
 "verified" = "Verified";
 "unverified" = "Unverified";
 "add_passkey" = "Add Passkey";
+"passkey_name" = "Passkey Name";
+"passkey_verification" = "Passkey Verification";
+"no_step_up_methods" = "No security verification method is available for this account.";
 "login_device_management" = "Login Device Management";
 "sign_out_other_devices" = "Sign Out Other Devices";
 "sign_out_other_devices_confirm" = "Sign out all devices except this one?";

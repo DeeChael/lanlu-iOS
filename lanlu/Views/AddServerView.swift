@@ -10,7 +10,7 @@ enum AuthMethod: String, CaseIterable {
         switch self {
         case .password: "person.fill"
         case .token: "key.fill"
-        case .passkey: "lock.fill"
+        case .passkey: "person.badge.key.fill"
         }
     }
 
@@ -142,14 +142,9 @@ struct AddServerView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(method == .passkey)
                 }
             } header: {
                 Text(String(localized: "choose_auth_method"))
-            } footer: {
-                Text("passkey_unavailable")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
     }

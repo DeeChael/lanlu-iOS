@@ -21,6 +21,7 @@ struct AccountSecurityView: View {
     @State private var hasLoadedPasskeys = false
     @State private var passkeyError: String?
     @State private var deletingPasskeyIds: Set<Int> = []
+    @State private var showPasskeyRegistration = false
     @State private var loginSessions: [LoginSession] = []
     @State private var isRefreshingLoginSessions = false
     @State private var hasLoadedLoginSessions = false
@@ -142,10 +143,30 @@ struct AccountSecurityView: View {
 
                 ForEach(passkeys) { credential in
                     HStack {
-                        Label(
-                            credential.name.isEmpty ? String(localized: "passkey_unnamed") : credential.name,
-                            systemImage: "person.badge.key"
-                        )
+                        Image(systemName: "person.badge.key")
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(
+                                    credential.name.isEmpty
+                                        ? String(localized: "passkey_unnamed")
+                                        : credential.name
+                                )
+                                if !credential.algorithm.isEmpty {
+                                    Text(credential.algorithm)
+                                        .font(.caption2)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .overlay(Capsule().stroke(.secondary, lineWidth: 1))
+                                }
+                            }
+                            if !credential.credentialId.isEmpty {
+                                Text(credential.credentialId)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
                         Spacer()
                         Text(credential.userVerified ? String(localized: "verified") : String(localized: "unverified"))
                             .foregroundStyle(.secondary)
@@ -168,7 +189,9 @@ struct AccountSecurityView: View {
                         .foregroundStyle(.red)
                 }
 
-                Button {} label: {
+                Button {
+                    showPasskeyRegistration = true
+                } label: {
                     Label(String(localized: "add_passkey"), systemImage: "plus")
                         .foregroundStyle(Color.accentColor)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -185,6 +208,12 @@ struct AccountSecurityView: View {
                     .buttonStyle(.plain)
                     .disabled(isRefreshingPasskeys)
                 }
+            }
+            .sheet(isPresented: $showPasskeyRegistration) {
+                PasskeyRegistrationSheet(server: server) {
+                    Task { await loadPasskeys() }
+                }
+                .presentationDetents([.large])
             }
 
             Section {
@@ -643,6 +672,158 @@ private enum PasswordChangeDestination: Hashable {
     case stepUpOptions
     case passwordVerification
     case totpVerification
+}
+
+private struct PasskeyRegistrationSheet: View {
+    let server: Server
+    let onRegistered: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var methods: [String] = []
+    @State private var selectedMethod: String?
+    @State private var password = ""
+    @State private var totpCode = ""
+    @State private var useRecoveryCode = false
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(String(localized: "passkey_name"), text: $name)
+                        .disabled(isLoading || !methods.isEmpty)
+                }
+
+                if methods.isEmpty {
+                    Section {
+                        actionButton(String(localized: "add"), disabled: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                            methods = try await server.apiClient.fetchStepUpMethods()
+                            if methods.isEmpty {
+                                throw AuthError.networkError(String(localized: "no_step_up_methods"))
+                            }
+                        }
+                    }
+                } else if selectedMethod == nil {
+                    Section(String(localized: "security_verification_required")) {
+                        if methods.contains("password") {
+                            methodButton("password", title: String(localized: "password_verification"), icon: "key.fill")
+                        }
+                        if methods.contains("totp") {
+                            methodButton("totp", title: String(localized: "totp_verification"), icon: "number.square.fill")
+                        }
+                        if methods.contains("passkey") {
+                            methodButton("passkey", title: String(localized: "passkey_verification"), icon: "person.badge.key.fill")
+                        }
+                    }
+                } else if selectedMethod == "password" {
+                    Section(String(localized: "password_verification")) {
+                        SecureField(String(localized: "password"), text: $password)
+                    }
+                    Section {
+                        actionButton(String(localized: "verify"), disabled: password.isEmpty) {
+                            try await server.apiClient.verifyStepUpPassword(password)
+                            try await registerPasskey()
+                        }
+                    }
+                } else if selectedMethod == "totp" {
+                    Section(String(localized: "totp_verification")) {
+                        TextField(
+                            String(localized: useRecoveryCode ? "recovery_code" : "totp_code"),
+                            text: $totpCode
+                        )
+                        .keyboardType(useRecoveryCode ? .asciiCapable : .numberPad)
+                        Button(String(localized: useRecoveryCode ? "use_verification_code" : "use_recovery_code")) {
+                            useRecoveryCode.toggle()
+                            totpCode = ""
+                        }
+                    }
+                    Section {
+                        actionButton(String(localized: "verify"), disabled: totpCode.isEmpty) {
+                            if useRecoveryCode {
+                                try await server.apiClient.verifyStepUpTOTP(recoveryCode: totpCode)
+                            } else {
+                                try await server.apiClient.verifyStepUpTOTP(code: totpCode)
+                            }
+                            try await registerPasskey()
+                        }
+                    }
+                }
+
+                if let errorMessage {
+                    Section { Text(errorMessage).foregroundStyle(.red).font(.caption) }
+                }
+            }
+            .navigationTitle(String(localized: "add_passkey"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                }
+            }
+        }
+    }
+
+    private func methodButton(_ method: String, title: String, icon: String) -> some View {
+        Button {
+            if method == "passkey" {
+                Task { await perform {
+                    let options = try await server.apiClient.fetchWebAuthnStepUpOptions()
+                    let assertion = try await WebAuthnService.shared.authenticate(options: options.publicKey)
+                    try await server.apiClient.verifyWebAuthnStepUp(
+                        challengeId: options.challengeId,
+                        credential: assertion
+                    )
+                    try await registerPasskey()
+                } }
+            } else {
+                selectedMethod = method
+            }
+        } label: {
+            Label(title, systemImage: icon)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+    }
+
+    private func actionButton(
+        _ title: String,
+        disabled: Bool,
+        action: @escaping () async throws -> Void
+    ) -> some View {
+        Button { Task { await perform(action) } } label: {
+            HStack {
+                if isLoading { ProgressView() }
+                else { Text(title).fontWeight(.semibold) }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .disabled(disabled || isLoading)
+    }
+
+    private func perform(_ action: @escaping () async throws -> Void) async {
+        isLoading = true
+        errorMessage = nil
+        do { try await action() }
+        catch { errorMessage = error.localizedDescription }
+        isLoading = false
+    }
+
+    private func registerPasskey() async throws {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let options = try await server.apiClient.fetchWebAuthnRegistrationOptions(name: trimmedName)
+        let credential = try await WebAuthnService.shared.register(options: options.publicKey)
+        try await server.apiClient.verifyWebAuthnRegistration(
+            challengeId: options.challengeId,
+            name: trimmedName,
+            credential: credential
+        )
+        onRegistered()
+        dismiss()
+    }
 }
 
 private struct PasswordChangeSheet: View {

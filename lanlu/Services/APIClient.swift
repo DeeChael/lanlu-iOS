@@ -130,12 +130,13 @@ struct PasskeyCredential: Decodable, Identifiable {
     let transports: [String]
     let userVerified: Bool
     let backupEligible: Bool
+    let backupState: Bool
     let createdAt: String
     let lastUsedAt: String
 
     private enum CodingKeys: String, CodingKey {
         case id, name, credentialId, algorithm, transports, userVerified, userVerfied
-        case backupEligible, createdAt, lastUsedAt
+        case backupEligible, backupState, createdAt, lastUsedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -149,9 +150,76 @@ struct PasskeyCredential: Decodable, Identifiable {
             ?? container.decodeIfPresent(Bool.self, forKey: .userVerfied)
             ?? false
         backupEligible = try container.decodeIfPresent(Bool.self, forKey: .backupEligible) ?? false
+        backupState = try container.decodeIfPresent(Bool.self, forKey: .backupState) ?? false
         createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
         lastUsedAt = try container.decodeIfPresent(String.self, forKey: .lastUsedAt) ?? ""
     }
+}
+
+struct WebAuthnRegistrationOptions: Decodable {
+    let challengeId: String
+    let publicKey: WebAuthnRegistrationPublicKey
+}
+
+struct WebAuthnRegistrationPublicKey: Decodable {
+    let challenge: String
+    let rp: WebAuthnRelyingParty
+    let user: WebAuthnUser
+    let timeout: Int?
+}
+
+struct WebAuthnRelyingParty: Decodable {
+    let id: String
+    let name: String?
+}
+
+struct WebAuthnUser: Decodable {
+    let id: String
+    let name: String
+    let displayName: String?
+}
+
+struct WebAuthnAuthenticationOptions: Decodable {
+    let challengeId: String
+    let publicKey: WebAuthnAuthenticationPublicKey
+}
+
+struct WebAuthnAuthenticationPublicKey: Decodable {
+    let challenge: String
+    let timeout: Int?
+    let rpId: String
+}
+
+struct StepUpOptionsData: Decodable {
+    let methods: [String]
+}
+
+struct WebAuthnAssertionPayload: Encodable {
+    let id: String
+    let rawId: String
+    let clientDataJSON: String
+    let authenticatorData: String
+    let signature: String
+    let userHandle: String?
+}
+
+struct WebAuthnRegistrationPayload: Encodable {
+    let id: String
+    let rawId: String
+    let clientDataJSON: String
+    let attestationObject: String
+    let transports: [String]
+}
+
+private struct WebAuthnCredentialRequest<Credential: Encodable>: Encodable {
+    let challengeId: String
+    let credential: Credential
+}
+
+private struct WebAuthnRegistrationVerifyRequest: Encodable {
+    let challengeId: String
+    let name: String
+    let credential: WebAuthnRegistrationPayload
 }
 
 private struct PasskeyCredentialsData: Decodable {
@@ -851,6 +919,138 @@ class APIClient {
             throw AuthError.networkError(String(localized: "connection_failed"))
         }
         return credentials
+    }
+
+    func fetchStepUpMethods() async throws -> [String] {
+        let url = try makeURL("/api/auth/step-up/options")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyAuthHeader(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+        let envelope = try JSONDecoder().decode(ApiEnvelope<StepUpOptionsData>.self, from: data)
+        return envelope.data?.methods ?? []
+    }
+
+    func fetchWebAuthnRegistrationOptions(name: String) async throws -> WebAuthnRegistrationOptions {
+        try await postWebAuthnOptions(
+            path: "/api/auth/webauthn/register/options",
+            body: ["name": name],
+            as: WebAuthnRegistrationOptions.self
+        )
+    }
+
+    func verifyWebAuthnRegistration(
+        challengeId: String,
+        name: String,
+        credential: WebAuthnRegistrationPayload
+    ) async throws {
+        try await postWebAuthn(
+            path: "/api/auth/webauthn/register/verify",
+            body: WebAuthnRegistrationVerifyRequest(
+                challengeId: challengeId,
+                name: name,
+                credential: credential
+            )
+        )
+    }
+
+    func fetchWebAuthnAuthenticationOptions() async throws -> WebAuthnAuthenticationOptions {
+        try await postWebAuthnOptions(
+            path: "/api/auth/webauthn/authenticate/options",
+            body: [String: String](),
+            as: WebAuthnAuthenticationOptions.self
+        )
+    }
+
+    func verifyWebAuthnAuthentication(
+        challengeId: String,
+        credential: WebAuthnAssertionPayload
+    ) async throws -> LoginSuccessData {
+        let result: LoginSuccessData = try await postWebAuthn(
+            path: "/api/auth/webauthn/authenticate/verify",
+            body: WebAuthnCredentialRequest(
+                challengeId: challengeId,
+                credential: credential
+            ),
+            decode: LoginSuccessData.self
+        )
+        token = result.token.token
+        return result
+    }
+
+    func fetchWebAuthnStepUpOptions() async throws -> WebAuthnAuthenticationOptions {
+        try await postWebAuthnOptions(
+            path: "/api/auth/step-up/webauthn/options",
+            body: [String: String](),
+            as: WebAuthnAuthenticationOptions.self
+        )
+    }
+
+    func verifyWebAuthnStepUp(
+        challengeId: String,
+        credential: WebAuthnAssertionPayload
+    ) async throws {
+        try await postWebAuthn(
+            path: "/api/auth/step-up/webauthn/verify",
+            body: WebAuthnCredentialRequest(
+                challengeId: challengeId,
+                credential: credential
+            )
+        )
+    }
+
+    private func postWebAuthnOptions<T: Decodable, Body: Encodable>(
+        path: String,
+        body: Body,
+        as type: T.Type
+    ) async throws -> T {
+        let data = try await postWebAuthnData(path: path, body: body)
+        let envelope = try JSONDecoder().decode(ApiEnvelope<T>.self, from: data)
+        guard let value = envelope.data else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return value
+    }
+
+    private func postWebAuthn<Body: Encodable>(
+        path: String,
+        body: Body
+    ) async throws {
+        _ = try await postWebAuthnData(path: path, body: body)
+    }
+
+    private func postWebAuthn<Body: Encodable, T: Decodable>(
+        path: String,
+        body: Body,
+        decode type: T.Type
+    ) async throws -> T {
+        let data = try await postWebAuthnData(path: path, body: body)
+        let envelope = try JSONDecoder().decode(ApiEnvelope<T>.self, from: data)
+        guard let value = envelope.data else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        return value
+    }
+
+    private func postWebAuthnData<Body: Encodable>(path: String, body: Body) async throws -> Data {
+        let url = try makeURL(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        applyAuthHeader(&request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.networkError(String(localized: "connection_failed"))
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw AuthError.networkError(apiMessage(from: data))
+        }
+        return data
     }
 
     func deletePasskeyCredential(id: Int) async throws {
