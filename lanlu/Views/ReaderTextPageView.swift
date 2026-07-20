@@ -14,12 +14,14 @@ struct ReaderTextPageView: UIViewRepresentable {
     let safeAreaBottom: CGFloat
     let startsAtLastPage: Bool
     let entryRevision: Int
+    let autoReadAdvanceRevision: Int
     let arcid: String
     let documentPath: String
     let apiClient: APIClient
     let onPreviousFile: () -> Void
     let onNextFile: () -> Void
     let onToggleControls: () -> Void
+    let onAutoReadStepCompleted: (Bool) -> Void
     let onHeightChange: (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -69,6 +71,7 @@ struct ReaderTextPageView: UIViewRepresentable {
             )
         }
         context.coordinator.applyEntryIfNeeded(to: webView)
+        context.coordinator.applyAutoReadAdvanceIfNeeded(to: webView)
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
@@ -253,6 +256,7 @@ struct ReaderTextPageView: UIViewRepresentable {
         var loadedSignature: String?
         var isDocumentReady = false
         private var appliedEntryRevision: Int?
+        private var appliedAutoReadAdvanceRevision = 0
         private weak var webView: WKWebView?
         private var swipeRecognizers: [UISwipeGestureRecognizer] = []
         private var resourceTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
@@ -314,6 +318,7 @@ struct ReaderTextPageView: UIViewRepresentable {
             webView.evaluateJavaScript("document.documentElement.style.webkitUserSelect='none'")
             applySafeArea(to: webView)
             applyEntryIfNeeded(to: webView)
+            applyAutoReadAdvanceIfNeeded(to: webView)
         }
 
         func applyEntryIfNeeded(to webView: WKWebView) {
@@ -325,6 +330,17 @@ struct ReaderTextPageView: UIViewRepresentable {
                 + (parent.startsAtLastPage ? "true" : "false")
                 + ");"
             )
+        }
+
+        func applyAutoReadAdvanceIfNeeded(to webView: WKWebView) {
+            guard isDocumentReady,
+                  parent.autoReadAdvanceRevision > 0,
+                  appliedAutoReadAdvanceRevision != parent.autoReadAdvanceRevision else { return }
+            appliedAutoReadAdvanceRevision = parent.autoReadAdvanceRevision
+            webView.evaluateJavaScript("window.readerMove && window.readerMove(1)") { [weak self] result, _ in
+                guard let self else { return }
+                self.parent.onAutoReadStepCompleted((result as? Bool) == true)
+            }
         }
 
         func applySafeArea(to webView: WKWebView) {
@@ -507,12 +523,22 @@ extension ReaderView {
                 safeAreaBottom: textSafeAreaBottom,
                 startsAtLastPage: textPageEnteringAtEnd.contains(index),
                 entryRevision: textPageEntryRevision[index] ?? 0,
+                autoReadAdvanceRevision: index == currentIndex
+                    && textAutoReadAdvanceIndex == index
+                    ? textAutoReadAdvanceRevision
+                    : 0,
                 arcid: arcid,
                 documentPath: filePath(at: index),
                 apiClient: server.apiClient,
                 onPreviousFile: previousFile,
                 onNextFile: nextFile,
                 onToggleControls: toggleReaderControls,
+                onAutoReadStepCompleted: { advancedInsideDocument in
+                    handleTextAutoReadStepCompleted(
+                        at: index,
+                        advancedInsideDocument: advancedInsideDocument
+                    )
+                },
                 onHeightChange: { height in
                     guard !paged, abs((textDocumentHeights[index] ?? 0) - height) > 1 else { return }
                     textDocumentHeights[index] = height

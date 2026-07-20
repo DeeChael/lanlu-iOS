@@ -622,6 +622,7 @@ extension ReaderView {
 
     func handleCurrentIndexChange(from oldIndex: Int, to newIndex: Int) {
         autoReadFinishedMediaIndex = nil
+        textAutoReadAdvanceIndex = nil
         if autoReadPausedPageIndex != newIndex {
             autoReadPausedPageIndex = nil
         }
@@ -1145,12 +1146,15 @@ extension ReaderView {
     }
 
     var currentPageSupportsAutoRead: Bool {
+        if readingDirection == .vertical {
+            return true
+        }
         switch currentPageFileType {
-        case .image:
+        case .image, .html:
             return true
         case .audio, .video:
             return !autoReadImagesOnly
-        case .html, .unknown:
+        case .unknown:
             return false
         }
     }
@@ -1183,7 +1187,7 @@ extension ReaderView {
             isVideoPlaying = false
             return
         }
-        guard hasNextPage else {
+        guard hasNextPage || (currentPageFileType == .html && readingDirection != .vertical) else {
             stopAutoReadAtEnd()
             return
         }
@@ -1205,14 +1209,32 @@ extension ReaderView {
                 isAudioPlaying = false
                 videoPlayer?.pause()
                 isVideoPlaying = false
-                scheduleImmediateAutoReadAdvance()
+                if readingDirection == .vertical {
+                    startVerticalAutoReadScroll()
+                } else {
+                    scheduleImmediateAutoReadAdvance()
+                }
             } else if autoReadFinishedMediaIndex == currentIndex {
                 scheduleImmediateAutoReadAdvance()
             } else {
                 startCurrentAutoReadMedia()
             }
-        case .html, .unknown:
-            scheduleImmediateAutoReadAdvance()
+        case .html:
+            if readingDirection == .vertical {
+                if textDocuments[currentIndex] == nil {
+                    loadTextDocument(currentIndex)
+                } else {
+                    startVerticalAutoReadScroll()
+                }
+            } else {
+                scheduleTextAutoReadPageTurn()
+            }
+        case .unknown:
+            if readingDirection == .vertical {
+                startVerticalAutoReadScroll()
+            } else {
+                scheduleImmediateAutoReadAdvance()
+            }
         }
     }
 
@@ -1229,6 +1251,7 @@ extension ReaderView {
     func stopAutoReadTask() {
         autoReadTask?.cancel()
         autoReadTask = nil
+        textAutoReadAdvanceIndex = nil
         autoReadProgressStartDate = nil
         autoReadProgressDuration = 0
     }
@@ -1240,6 +1263,34 @@ extension ReaderView {
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, canRunAutoRead else { return }
             advanceAutoReadPage()
+        }
+    }
+
+    private func scheduleTextAutoReadPageTurn() {
+        let delay = max(1, min(autoReadInterval, 10))
+        startAutoReadProgress(duration: TimeInterval(delay))
+        autoReadTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled,
+                  canRunAutoRead,
+                  currentPageFileType == .html else { return }
+            textAutoReadAdvanceIndex = currentIndex
+            textAutoReadAdvanceRevision += 1
+        }
+    }
+
+    func handleTextAutoReadStepCompleted(
+        at index: Int,
+        advancedInsideDocument: Bool
+    ) {
+        guard index == currentIndex, autoReadEnabled else { return }
+        textAutoReadAdvanceIndex = nil
+        if advancedInsideDocument {
+            refreshAutoRead()
+        } else if hasNextPage {
+            nextFile()
+        } else {
+            stopAutoReadAtEnd()
         }
     }
 

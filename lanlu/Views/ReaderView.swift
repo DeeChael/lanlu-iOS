@@ -125,6 +125,8 @@ struct ReaderView: View {
     @State var textLoadTasks: [Int: Task<Void, Never>] = [:]
     @State var textPageEnteringAtEnd: Set<Int> = []
     @State var textPageEntryRevision: [Int: Int] = [:]
+    @State var textAutoReadAdvanceRevision = 0
+    @State var textAutoReadAdvanceIndex: Int?
     @State var verticalScrollRequest: ReaderVerticalScrollRequest?
     @State var isProgrammaticVerticalScroll = false
     @State var showReaderSettings = false
